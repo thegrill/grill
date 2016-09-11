@@ -24,7 +24,7 @@ class AbstractBase(object):
     """docstring for AbstractBase"""
     def __init__(self, name=None):
         super(AbstractBase, self).__init__()
-        self._separator = '_'
+        self._setSeparator()
         self.__setName(name)
         self._setPatterns()
         self._setValues()
@@ -38,6 +38,9 @@ class AbstractBase(object):
 
     def __setName(self, name):
         self.name = name
+
+    def _setSeparator(self):
+        self._separator = '_'
 
     @property
     def separator(self):
