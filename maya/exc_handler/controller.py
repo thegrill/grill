@@ -14,7 +14,7 @@ from grill.core.mail import sendBug
 def _normpath(p):
     return os.path.normpath(os.path.abspath(p))
 
-LIB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_normpath(__file__)))))
+LIB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(_normpath(__file__))))
 _ORIG_HOOK = utils.formatGuiException
 _INFO_BODY = '''
 Scene Info
