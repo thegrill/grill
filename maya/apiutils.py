@@ -1,3 +1,18 @@
+# -*- coding: utf-8 -*-
+"""
+Animation data utilities.
+
+Utilities for the maya api 2.0
+
+Todo:
+    Extend documentation.
+
+.. moduleauthor:: Christian López Barrón <christianlb.vfx@outlook.com>
+
+"""
+
+# standard
+import maya.api.OpenMaya as om
 # grill
 from grill.maya.names import MyAttribute
 
@@ -7,7 +22,7 @@ def findPlug(target_dg_name, mplugs, depth=0, depth_limit=5, found_plug=None):
         return
     depth+=1
     for mplug in mplugs:
-        mdepnode, dg_name = _getMDependencyNodePath(mplug.node())
+        mdepnode, dg_name = getMDependencyNodePath(mplug.node())
         if dg_name==target_dg_name:
             return mplug
         affected_plugs = {}
