@@ -19,12 +19,13 @@ Todo:
 """
 # standard
 import re
-import traceback
+import sys
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaAnim as omanim
 # grill
 from grill import utils
 from grill.maya import apiutils
+from grill.core import exceptions
 from grill.core.logger import LOGGER
 
 _API_SOURCE = { 'curve' : {'isStatic', 'isWeighted', 'preInfinityType', 'postInfinityType'},
@@ -63,6 +64,9 @@ def getAnimCurveData(mcurve, target_dg_name=None):
     outputs = mcurve.findPlug('output', False).destinations()
     if target_dg_name:
         output = apiutils.findPlug(target_dg_name, outputs)
+        if not output:
+            msg = 'No connection was found between "{}" and target node "{}". Skipping curve data.'.format(mcurve.name(), target_dg_name)
+            raise exceptions.OutputError(msg)
     else:
         output = outputs[0]
     destination = { 'node': apiutils.getMDependencyNodePath(output.node())[1],
@@ -94,9 +98,14 @@ def _getNodeAnimCurvesData(dg_name, mitsel):
     data = {}
     while not mitsel.isDone():
         mcurve = omanim.MFnAnimCurve(mitsel.getDependNode())
-        curve_data = getAnimCurveData(mcurve, dg_name)
-        data[curve_data['destination']['attr']] = curve_data
-        mitsel.next()
+        try:
+            curve_data = getAnimCurveData(mcurve, dg_name)
+        except exceptions.OutputError:
+            LOGGER.warning(sys.exc_info()[1])
+        else:
+            data[curve_data['destination']['attr']] = curve_data
+        finally:
+            mitsel.next()
     return data
 
 def getNodeAnimCurves(dg_name):

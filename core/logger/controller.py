@@ -5,34 +5,33 @@ Grill logging module.
 # standard
 import os
 import logging
-from datetime import datetime
+# grill
+from grill.core import io
 # package
 from . import model
 
-_LOG_PATH = os.path.join(os.path.expanduser('~'), 'grill', 'log')
-_TIME_FORMAT = '%Y%m%d_%H%M%S'
 _LOGGERS = {}
-
-if not os.path.exists(_LOG_PATH):
-    os.makedirs(_LOG_PATH)
 
 
 def _createLogger(name):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    log_base_name = '{}_{}'.format(name, datetime.now().strftime(_TIME_FORMAT))
     basic_formatter = logging.Formatter(fmt='%(asctime)s %(name)s - %(levelname)s: %(message)s')
     # add stderr handling
-    error = logging.FileHandler(os.path.join(_LOG_PATH, '{}_stderr.txt'.format(log_base_name)))
+    log_file = io.getLogFile(name)
+    log_file.setFilter('stderr')
+    error = logging.FileHandler(log_file.path)
     error.addFilter(model.ErrorFilter())
     error.setFormatter(basic_formatter)
     logger.addHandler(error)
     # add stdout handling
-    out = logging.FileHandler(os.path.join(_LOG_PATH, '{}_stdout.txt'.format(log_base_name)))
+    log_file.setFilter('stdout')
+    out = logging.FileHandler(log_file.path)
     out.addFilter(model.OutFilter())
     out.setFormatter(basic_formatter)
     logger.addHandler(out)
     return logger
+
 
 def getLogger(name=None):
     name = 'grill.{}'.format(name) if name and name is not 'grill' else 'grill'
