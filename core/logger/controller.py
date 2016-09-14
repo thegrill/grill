@@ -6,6 +6,7 @@ Grill logging module.
 import os
 import logging
 # grill
+from grill import utils
 from grill.core import io
 # package
 from . import model
@@ -33,8 +34,9 @@ def _createLogger(name):
     return logger
 
 
-def getLogger(name=None):
-    name = 'grill.{}'.format(name) if name and name is not 'grill' else 'grill'
+def getLogger(name='grill'):
+    if name is not 'grill':
+        name = 'grill.{}'.format(utils.toCamelCase(name))
     if name not in _LOGGERS:
         _LOGGERS[name] = _createLogger(name)
     return _LOGGERS[name]
