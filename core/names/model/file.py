@@ -21,12 +21,9 @@ class File(Pipe):
         if not values and self.name:
             return super(File, self).getName(**values)
         try:
-            extension = values['extension']
-        except KeyError:
-            try:
-                extension = self.extension or '[extension]'
-            except AttributeError:
-                extension = '[extension]'
+            extension = values.get('extension') or self.extension or '[extension]'
+        except AttributeError:
+            extension = '[extension]'
         return '{}.{}'.format(super(File, self).getName(**values), extension)
 
     def _getPathPatternList(self):

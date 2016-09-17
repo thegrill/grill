@@ -31,8 +31,7 @@ class Pipe(Name):
             return '{}_[pipe]'.format(self.nice_name)
 
     def _filterV(self, v):
-        if not v:
-            return True
+        return v is None
 
     def _filterK(self, k):
         return k == 'pipe'
@@ -51,9 +50,10 @@ class Pipe(Name):
                 except AttributeError:
                     output = '[output]'
                 pipe = '_{}'.format(output)
-                frame = values.get('frame')
-                if frame:
-                    pipe = '{}.{}'.format(pipe, frame)
+                try:
+                    pipe = '{}.{}'.format(pipe, values['frame'])
+                except KeyError:
+                    pass
             else:
                 pipe = self.pipe or '_[pipe]' if self.name else '_[pipe]'
 

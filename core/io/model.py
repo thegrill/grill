@@ -25,8 +25,7 @@ class IOFile(File):
         return USER_GRILL
 
     def _getPathPatternList(self):
-        pattern = ['dirname']
-        return pattern
+        return ['dirname']
 
 
 class DateFile(IOFile):
