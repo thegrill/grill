@@ -90,10 +90,10 @@ class AbstractBase(object):
 
     @property
     def _values(self):
-        if self.name:
-            match = self.__regex.match(self.name)
-            if match:
-                return match.groupdict()
+        try:
+            return self.__regex.match(self.name).groupdict()
+        except (TypeError, AttributeError):
+            pass
 
     @property
     def nice_name(self):

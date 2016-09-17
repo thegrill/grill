@@ -17,20 +17,17 @@ _LOGGERS = {}
 def _createLogger(name):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    basic_formatter = logging.Formatter(fmt='%(asctime)s %(name)s - %(levelname)s: %(message)s')
-    # add stderr handling
+    formatter = logging.Formatter(fmt='%(asctime)s %(name)s - %(levelname)s: %(message)s')
+    def addHandler(path, log_filter):
+        handler = logging.FileHandler(path)
+        handler.addFilter(log_filter)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
     log_file = io.getLogFile(name)
     log_file.setFilter('stderr')
-    error = logging.FileHandler(log_file.path)
-    error.addFilter(model.ErrorFilter())
-    error.setFormatter(basic_formatter)
-    logger.addHandler(error)
-    # add stdout handling
+    addHandler(log_file.path, model.ErrorFilter())
     log_file.setFilter('stdout')
-    out = logging.FileHandler(log_file.path)
-    out.addFilter(model.OutFilter())
-    out.setFormatter(basic_formatter)
-    logger.addHandler(out)
+    addHandler(log_file.path, model.OutFilter())
     return logger
 
 

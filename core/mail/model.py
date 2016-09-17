@@ -6,6 +6,7 @@ Grill logging module.
 from grill.core.logger import LOGGER
 # standard
 import smtplib
+import threading
 from email.mime.text import MIMEText
 
 class Mailer(object):
@@ -50,7 +51,7 @@ class Mailer(object):
     def body(self, value):
         self._body = value
 
-    def send(self, *email_server_args):
+    def _send(self, *email_server_args):
         msg = MIMEText(self.body)
         msg['To'] = self.receiver
         msg['From'] = self.sender
@@ -68,6 +69,12 @@ class Mailer(object):
             raise
         finally:
             server.quit()
+
+    def send(self, *args, **kwargs):
+        t = threading.Thread(
+            target=self._send, args=args, kwargs=kwargs,
+            name='send_email_in_background')
+        t.start()
 
 
 class GMail(Mailer):

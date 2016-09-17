@@ -20,6 +20,7 @@ Todo:
 # standard
 import re
 import sys
+import traceback
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaAnim as omanim
 # grill
@@ -32,6 +33,9 @@ _API_SOURCE = { 'curve' : {'isStatic', 'isWeighted', 'preInfinityType', 'postInf
                 'key'   : {'value', 'isBreakdown', 'tangentsLocked', 'inTangentType', 'outTangentType'}}
 
 _API_ATTRS = {level:{utils.toUnderscores(attr):attr for attr in _API_SOURCE[level]} for level in _API_SOURCE}
+
+
+_RE_OBJ_EXT = re.compile('(Object does not exist)')
 
 
 def _animCurveData(mcurve):
@@ -65,7 +69,7 @@ def getAnimCurveData(mcurve, target_dg_name=None):
     if target_dg_name:
         output = apiutils.findPlug(target_dg_name, outputs)
         if not output:
-            msg = 'No connection was found between "{}" and target node "{}". Skipping curve data.'.format(mcurve.name(), target_dg_name)
+            msg = 'No connection was found between "{}" and target node "{}".'.format(mcurve.name(), target_dg_name)
             raise exceptions.OutputError(msg)
     else:
         output = outputs[0]
@@ -75,7 +79,7 @@ def getAnimCurveData(mcurve, target_dg_name=None):
     return {'outputs':[o.partialName(includeNodeName=True,useLongNames=True) for o in outputs],
             'destination':destination, 'data':data}
 
-def getAnimCurvesData(*dg_names):
+def itAnimCurvesData(*dg_names):
     """
     Gather data from the specified animation curve nodes.
 
@@ -86,27 +90,23 @@ def getAnimCurvesData(*dg_names):
         dict: The collected data of each curve.
     """
     omslist = om.MSelectionList()
-    data = {}
     for i, c in enumerate(dg_names):
         omslist.add(c)
         mcurve = omanim.MFnAnimCurve((omslist.getDependNode(i)))
-        curve_data = getAnimCurveData(mcurve)
-        data.setdefault(curve_data['destination']['node'], {}).setdefault(curve_data['destination']['attr'], curve_data)
-    return data
+        yield getAnimCurveData(mcurve)
 
-def _getNodeAnimCurvesData(dg_name, mitsel):
-    data = {}
+def itNodeAnimCurvesData(dg_name, mitsel):
     while not mitsel.isDone():
         mcurve = omanim.MFnAnimCurve(mitsel.getDependNode())
         try:
             curve_data = getAnimCurveData(mcurve, dg_name)
         except exceptions.OutputError:
-            LOGGER.warning(sys.exc_info()[1])
+            msg = '{} Skipping curve data.'.format(sys.exc_info()[1])
+            LOGGER.warning(msg)
         else:
-            data[curve_data['destination']['attr']] = curve_data
+            yield curve_data
         finally:
             mitsel.next()
-    return data
 
 def getNodeAnimCurves(dg_name):
     """
@@ -155,7 +155,7 @@ def getNodeAnimData(dg_name):
     Returns:
         dict: The collected animation data. See also getAnimCurvesData
     """
-    return _getNodeAnimCurvesData(dg_name, getNodeAnimCurves(dg_name))
+    return {data['destination']['attr']: data for data in itNodeAnimCurvesData(dg_name, getNodeAnimCurves(dg_name))}
 
 def setNodeAnimData(dg_name, data):
     """
@@ -172,7 +172,7 @@ def setNodeAnimData(dg_name, data):
             omslist.add(plug_path)
         except RuntimeError:
             tback = traceback.format_exc()
-            if re.compile('(Object does not exist)').search(tback):
+            if _RE_OBJ_EXT.search(tback):
                 msg = 'Could not set data on "{}" as it does not exist'.format(plug_path, traceback.format_exc())
                 LOGGER.error(msg)
                 continue
@@ -221,4 +221,4 @@ def _setAnimCurveKeyData(mcurve, index, data):
     if data['tangents_locked']:
         mcurve.setTangentsLocked(index, True)
 
-__all__ = ['getNodeAnimCurves', 'getNodeAnimData', 'setNodeAnimData']
+__all__ = ['getNodeAnimCurves', 'getNodeAnimData', 'setNodeAnimData', 'itAnimCurvesData', 'itNodeAnimCurvesData']
