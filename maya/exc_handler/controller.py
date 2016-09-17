@@ -6,15 +6,12 @@ Grill Maya exceptions handler control.
 import os
 import sys
 import platform
-import threading
 from maya import cmds, utils
 # grill
 from grill.core.mail import sendBug
+from grill.core.exceptions import isGrillException
 
-def _normpath(p):
-    return os.path.normpath(os.path.abspath(p))
 
-LIB_DIR = os.path.dirname(os.path.dirname(os.path.dirname(_normpath(__file__))))
 _ORIG_HOOK = utils.formatGuiException
 _INFO_BODY = '''
 Scene Info
@@ -35,29 +32,13 @@ Machine Inf
   Processor: {processor}
 '''
 
-def _sendBug(body):
-    t = threading.Thread(
-        target=sendBug, args=(body,),
-        name='send_email_in_background')
-    t.start()
-
-def _isGrillException(tb):
-    while tb:
-        codepath = tb.tb_frame.f_code.co_filename
-        if _normpath(codepath).startswith(LIB_DIR):
-            return True
-        tb = tb.tb_next
-    return False
-
 def _handleException(etype, evalue, tb, detail):
     s = utils._formatGuiException(etype, evalue, tb, detail)
     body = [s]
     body.append(_collectInfo())
-    _sendBug('\n'.join(body))
-    lines = [
-        s,
-        'An unhandled exception occurred.',
-        'An error report was automatically sent with details about the error.']
+    sendBug('\n'.join(body))
+    lines = [s, 'An unhandled exception occurred.',
+             'A report is automatically being sent with details about it.']
     return '\n'.join(lines)
 
 
@@ -79,7 +60,7 @@ def _collectInfo():
 
 def excepthook(etype, evalue, tb, detail=2):
     result = _ORIG_HOOK(etype, evalue, tb, detail)
-    if _isGrillException(tb):
+    if isGrillException(tb):
         result = _handleException(etype, evalue, tb, detail)
     return result
 
