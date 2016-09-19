@@ -92,7 +92,7 @@ def itAnimCurvesData(*dg_names):
     omslist = om.MSelectionList()
     for i, c in enumerate(dg_names):
         omslist.add(c)
-        mcurve = omanim.MFnAnimCurve((omslist.getDependNode(i)))
+        mcurve = omanim.MFnAnimCurve(omslist.getDependNode(i))
         yield getAnimCurveData(mcurve)
 
 def itNodeAnimCurvesData(dg_name, mitsel):
