@@ -35,3 +35,20 @@ class TestNames(unittest.TestCase):
         name.setName(name.getName(output='cache', frame=101))
         self.assertEqual(name.output, 'cache')
         self.assertEqual(name.frame, '101')
+
+    def testFile(self):
+        name = model.file.File()
+        name.getName()
+        self.assertFalse(name.getValues())
+        name_str = 'basename_data.ext'
+        name.setName(name_str)
+        values = name.getValues()
+        self.assertEqual(values['extension'], 'ext')
+        self.assertEqual(name_str, name.name)
+        self.assertEqual('basename', name.nice_name)
+        self.assertEqual('basename_data', name.pipe_name)
+        name.setName(name.getName(base='face', output='cache', frame=101, extension='png'))
+        self.assertEqual(name.extension, 'png')
+        self.assertEqual(name.output, 'cache')
+        self.assertEqual(name.frame, '101')
+        self.assertEqual(name.base, 'face')
