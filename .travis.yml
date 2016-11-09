@@ -2,4 +2,4 @@ language: python
 python:
   - "2.7"
 script:
-  - python buildtests.py
+  - python -m unittest discover $TRAVIS_BUILD_DIR
