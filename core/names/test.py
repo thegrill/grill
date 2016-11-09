@@ -52,3 +52,12 @@ class TestNames(unittest.TestCase):
         self.assertEqual(name.output, 'cache')
         self.assertEqual(name.frame, '101')
         self.assertEqual(name.base, 'face')
+
+    def testEnvironment(self):
+        name = model.environment.Environment()
+        name.setName(name.getName(project='flmabc', workarea='first', pipe='_base', extension='abc'))
+        name.getValues()
+        self.assertEqual(name.environment, 'flm')
+        name.setName(name.getName(environment='gme'))
+        self.assertEqual(name.environment, 'gme')
+        self.assertEqual(name.code, 'abc')
