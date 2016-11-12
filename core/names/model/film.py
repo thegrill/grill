@@ -44,9 +44,13 @@ class Film(Audiovisual):
     def getName(self, **values):
         if values and 'workarea' not in values:
             try:
-                values.update(workarea='{}{}{}'.format(values['kind'], values['group'], values['area']))
-            except KeyError:
+                kind = values.get('kind', self.kind)
+                group = values.get('group', self.group)
+                area = values.get('area', self.area)
+            except AttributeError:
                 pass
+            else:
+                values.update(workarea='{}{}{}'.format(kind, group, area))
         return super(Film, self).getName(**values)
 
     @property

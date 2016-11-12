@@ -16,6 +16,18 @@ def _getEnvironmentKwargs():
     return locals()
 
 
+def _getAudiovisualKwargs():
+    values = _getEnvironmentKwargs()
+    values.update(alias='boy', stage='concept')
+    return values
+
+
+def _getFilmKwargs():
+    values = _getAudiovisualKwargs()
+    values.update(workarea='achrgeo', variant='original', partition='master', layer='default')
+    return values
+
+
 class TestNames(unittest.TestCase):
 
     def testBaseName(self):
@@ -71,8 +83,12 @@ class TestNames(unittest.TestCase):
     def testAudiovisual(self):
         name = model.Audiovisual()
         self.assertEqual(name.getValues(), None)
-        values = _getEnvironmentKwargs()
-        values.update(alias='boy', stage='concept')
-        name.setName(name.getName(**values))
+        name.setName(name.getName(**_getAudiovisualKwargs()))
         for k, v in name.getValues().iteritems():
             self.assertIsInstance(v, str)
+
+    def testFilm(self):
+        name = model.Film()
+        name.setName(name.getName(**_getFilmKwargs()))
+        name.setName(name.getName(area='model'))
+        self.assertEqual(name.workarea, 'achrmodel')
