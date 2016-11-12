@@ -8,6 +8,14 @@ import unittest
 from . import model
 
 
+def _getEnvironmentKwargs():
+    pipe = '_base'
+    project = 'flmabc'
+    workarea = 'first'
+    extension = 'abc'
+    return locals()
+
+
 class TestNames(unittest.TestCase):
 
     def testBaseName(self):
@@ -18,7 +26,6 @@ class TestNames(unittest.TestCase):
         name.setName(name_str)
         values = name.getValues()
         self.assertTrue(values['base'] == name_str == name.nice_name == name.name)
-
 
     def testPipe(self):
         name = model.pipe.Pipe()
@@ -55,9 +62,18 @@ class TestNames(unittest.TestCase):
 
     def testEnvironment(self):
         name = model.environment.Environment()
-        name.setName(name.getName(project='flmabc', workarea='first', pipe='_base', extension='abc'))
+        name.setName(name.getName(**_getEnvironmentKwargs())
         name.getValues()
         self.assertEqual(name.environment, 'flm')
         name.setName(name.getName(environment='gme'))
         self.assertEqual(name.environment, 'gme')
         self.assertEqual(name.code, 'abc')
+
+    def testAudiovisual(self):
+        name = model.Audiovisual()
+        self.assertEqual(name.getValues(), None)
+        values = _getEnvironmentKwargs()
+        values.update(alias='boy', stage='concept')
+        name.setName(name.getName(**values))
+        for k, v in name.getValues().iteritems():
+            self.assertIsInstance(v, str)
