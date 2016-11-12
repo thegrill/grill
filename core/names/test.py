@@ -62,8 +62,7 @@ class TestNames(unittest.TestCase):
 
     def testEnvironment(self):
         name = model.environment.Environment()
-        name.setName(name.getName(**_getEnvironmentKwargs())
-        name.getValues()
+        name.setName(name.getName(**_getEnvironmentKwargs()))
         self.assertEqual(name.environment, 'flm')
         name.setName(name.getName(environment='gme'))
         self.assertEqual(name.environment, 'gme')
