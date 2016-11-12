@@ -21,9 +21,12 @@ class Environment(Project):
     def getName(self, **values):
         if values and 'project' not in values:
             try:
-                values.update(project='{}{}'.format(values['environment'], values['code']))
-            except KeyError:
+                environment = values.get('environment', self.environment)
+                code = values.get('code', self.code)
+            except AttributeError:
                 pass
+            else:
+                values.update(project='{}{}'.format(environment, code))
         return super(Environment, self).getName(**values)
 
     def _getPathPatternList(self):
