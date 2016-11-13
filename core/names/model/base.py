@@ -24,6 +24,7 @@ class AbstractBase(object):
     """docstring for AbstractBase"""
     def __init__(self, name=None):
         super(AbstractBase, self).__init__()
+        self.__values = None
         self._setSeparator()
         self.__setName(name)
         self._setPatterns()
@@ -62,10 +63,12 @@ class AbstractBase(object):
         return [getattr(self, p) for p in self._getPatternList()]
 
     def setName(self, name):
-        if not self.__regex.match(name):
+        match = self.__regex.match(name)
+        if not match:
             msg = 'Can not set invalid name "{}".'.format(name)
             raise NameError(msg)
         self.__setName(name)
+        self.__values = match.groupdict()
 
     def __setRegex(self):
         self.__regex = re.compile('^{}$'.format(self._getJoinedPattern()))
@@ -90,10 +93,7 @@ class AbstractBase(object):
 
     @property
     def _values(self):
-        try:
-            return self.__regex.match(self.name).groupdict()
-        except (TypeError, AttributeError):
-            pass
+        return self.__values
 
     @property
     def nice_name(self):
