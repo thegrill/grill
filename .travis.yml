@@ -4,6 +4,6 @@ python:
 install:
   - pip install python-coveralls
 script:
-  - python -m unittest discover $TRAVIS_BUILD_DIR -v
+  - coverage run -m unittest discover $TRAVIS_BUILD_DIR -v
 after_success:
   - coveralls
