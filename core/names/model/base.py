@@ -21,7 +21,8 @@ def __regex_pattern(pattern_name):
 
 class AbstractBase(object):
     __metaclass__ = abc.ABCMeta
-    """docstring for AbstractBase"""
+    """This is the base abstract class for Name objects. All subclasses should inherit from Name and not
+    from this one."""
     def __init__(self, name=None):
         super(AbstractBase, self).__init__()
         self.__values = None
@@ -45,6 +46,7 @@ class AbstractBase(object):
 
     @property
     def separator(self):
+        """str: The string that acts as a separator of all the fields in the name."""
         return self._separator
 
     @separator.setter
