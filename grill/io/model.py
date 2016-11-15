@@ -54,6 +54,9 @@ class LogFile(DateFile):
     def __init__(self, loggername, **kwargs):
         super(LogFile, self).__init__(loggername=loggername, **kwargs)
         self.set_filter('stdout')
+        path = os.path.dirname(self.path)
+        if not os.path.exists(path):
+            os.makedirs(path)
 
     def _set_values(self):
         super(LogFile, self)._set_values()
