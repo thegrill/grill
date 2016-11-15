@@ -9,7 +9,7 @@ This module provides the model for reading and writing data.
 import os
 from datetime import datetime
 # grill
-from grill.core.names import File
+from grill.names import File
 
 
 TIME_FORMAT = '%Y%m%d_%H%M%S'
