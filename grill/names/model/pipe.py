@@ -9,19 +9,19 @@ from .base import Name
 class Pipe(Name):
     """docstring for Pipe"""
 
-    def _setValues(self):
-        super(Pipe, self)._setValues()
+    def _set_values(self):
+        super(Pipe, self)._set_values()
         self._version = '\d+'
         self._output = '[a-zA-Z0-9]+'
         self._frame = '\d+'
         self._pipe = '([.]{}|_{}([.]{})?)'.format(self._version, self._output, self._frame)
 
-    def _setPatterns(self):
-        super(Pipe, self)._setPatterns()
-        self._setPattern('pipe', 'version', 'output', 'frame')
+    def _set_patterns(self):
+        super(Pipe, self)._set_patterns()
+        self._set_pattern('pipe', 'version', 'output', 'frame')
 
-    def _getJoinedPattern(self):
-        return '{}{}'.format(super(Pipe, self)._getJoinedPattern(), self._pipe)
+    def _get_joined_pattern(self):
+        return '{}{}'.format(super(Pipe, self)._get_joined_pattern(), self._pipe)
 
     @property
     def pipe_name(self):
@@ -30,15 +30,15 @@ class Pipe(Name):
         except AttributeError:
             return '{}_[pipe]'.format(self.nice_name)
 
-    def _filterV(self, v):
+    def _filter_v(self, v):
         return v is None
 
-    def _filterK(self, k):
+    def _filter_k(self, k):
         return k == 'pipe'
 
-    def getName(self, **values):
+    def get_name(self, **values):
         if not values and self.name:
-            return super(Pipe, self).getName(**values)
+            return super(Pipe, self).get_name(**values)
         if 'pipe' in values:
             pipe = values['pipe']
         else:
@@ -57,5 +57,5 @@ class Pipe(Name):
             else:
                 pipe = self.pipe or '_[pipe]' if self.name else '_[pipe]'
 
-        name = '{}{}'.format(super(Pipe, self).getName(**values), pipe)
+        name = '{}{}'.format(super(Pipe, self).get_name(**values), pipe)
         return name

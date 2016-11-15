@@ -10,17 +10,18 @@ import json
 # package
 from . import model
 
-def loadJson(path):
+
+def load_json(path):
     with open(path) as src:
         return json.load(src)
 
 
-def dumpJson(path, data):
+def dump_json(path, data):
     with open(path, 'w') as dst:
         json.dump(data, dst)
 
 
-def getLogFile(loggername):
+def get_log_file(loggername):
     return model.LogFile(loggername)
 
-__all__ = ['loadJson', 'dumpJson', 'getLogFile']
+__all__ = ['load_json', 'dump_json', 'get_log_file']
