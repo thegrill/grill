@@ -24,7 +24,7 @@ class IOFile(File):
     def dirname(self):
         return USER_GRILL
 
-    def _getPathPatternList(self):
+    def _get_path_pattern_list(self):
         return ['dirname']
 
 
@@ -33,19 +33,19 @@ class DateFile(IOFile):
     def __init__(self, *args, **kwargs):
         super(DateFile, self).__init__(*args)
         date, time = datetime.now().strftime(TIME_FORMAT).split('_')
-        self.setName(self.getName(  date=date, time=time,
+        self.set_name(self.get_name(date=date, time=time,
                                     pipe='_data', extension='txt', **kwargs))
 
-    def _setValues(self):
-        super(DateFile, self)._setValues()
+    def _set_values(self):
+        super(DateFile, self)._set_values()
         self._date = '[0-9]+'
         self._time = '[0-9]+'
 
-    def _setPatterns(self):
-        super(DateFile, self)._setPatterns()
-        self._setPattern('date', 'time')
+    def _set_patterns(self):
+        super(DateFile, self)._set_patterns()
+        self._set_pattern('date', 'time')
 
-    def _getPatternList(self):
+    def _get_pattern_list(self):
         return ['_date', '_time']
 
 
@@ -53,29 +53,29 @@ class LogFile(DateFile):
     """docstring for LogFile"""
     def __init__(self, loggername, **kwargs):
         super(LogFile, self).__init__(loggername=loggername, **kwargs)
-        self.setFilter('stdout')
+        self.set_filter('stdout')
 
-    def _setValues(self):
-        super(LogFile, self)._setValues()
+    def _set_values(self):
+        super(LogFile, self)._set_values()
         self._loggername = '[a-zA-Z0-9\.]+'
 
-    def _setPatterns(self):
-        super(LogFile, self)._setPatterns()
-        self._setPattern('loggername')
+    def _set_patterns(self):
+        super(LogFile, self)._set_patterns()
+        self._set_pattern('loggername')
 
     @property
     def logdir(self):
         return 'log'
 
-    def _getPatternList(self):
+    def _get_pattern_list(self):
         pattern = ['_loggername']
-        pattern.extend(super(LogFile, self)._getPatternList())
+        pattern.extend(super(LogFile, self)._get_pattern_list())
         return pattern
 
-    def _getPathPatternList(self):
-        pattern = super(LogFile, self)._getPathPatternList()
+    def _get_path_pattern_list(self):
+        pattern = super(LogFile, self)._get_path_pattern_list()
         pattern.extend(['logdir'])
         return pattern
 
-    def setFilter(self, filter_):
-        self.setName(self.getName(pipe='_{}'.format(filter_)))
+    def set_filter(self, filter_):
+        self.set_name(self.get_name(pipe='_{}'.format(filter_)))

@@ -9,15 +9,16 @@ import smtplib
 import threading
 from email.mime.text import MIMEText
 
+
 class Mailer(object):
     """docstring for Mailer"""
     def __init__(self, sender, password, receiver, subject, body):
         super(Mailer, self).__init__()
         self._sender = sender
         self._password = password
-        self.receiver = receiver
-        self.subject = subject
-        self.body = body
+        self._receiver = receiver
+        self._subject = subject
+        self._body = body
 
     @property
     def sender(self):
