@@ -1,2 +1,4 @@
 .idea/
 *.pyc
+dist/
+grill.egg-info/

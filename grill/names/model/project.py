@@ -8,18 +8,18 @@ from .file import File
 
 class Project(File):
     """docstring for Project"""
-    def _setValues(self):
-        super(Project, self)._setValues()
+    def _set_values(self):
+        super(Project, self)._set_values()
         self._project = '[a-zA-Z0-9]+'
         self._workarea = '[a-zA-Z0-9]+'
 
-    def _setPatterns(self):
-        super(Project, self)._setPatterns()
-        self._setPattern('project', 'workarea')
+    def _set_patterns(self):
+        super(Project, self)._set_patterns()
+        self._set_pattern('project', 'workarea')
 
-    def _getPatternList(self):
+    def _get_pattern_list(self):
         pattern = ['_project', '_workarea']
         return pattern
 
-    def _getPathPatternList(self):
+    def _get_path_pattern_list(self):
         return ['project', 'workarea']

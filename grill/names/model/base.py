@@ -26,22 +26,22 @@ class AbstractBase(object):
     def __init__(self, name=None):
         super(AbstractBase, self).__init__()
         self.__values = None
-        self._setSeparator()
-        self.__setName(name)
-        self._setPatterns()
-        self._setValues()
-        self.__setRegex()
+        self._set_separator()
+        self.__set_name(name)
+        self._set_patterns()
+        self._set_values()
+        self.__set_regex()
         self.__validate()
 
     def __validate(self):
         if not self.name:
             return
-        self.setName(self.name)
+        self.set_name(self.name)
 
-    def __setName(self, name):
+    def __set_name(self, name):
         self.name = name
 
-    def _setSeparator(self):
+    def _set_separator(self):
         self._separator = '_'
 
     @property
@@ -54,43 +54,43 @@ class AbstractBase(object):
         self._separator = value
 
     @abc.abstractmethod
-    def _setValues(self):
+    def _set_values(self):
         return
 
     @abc.abstractmethod
-    def _getPatternList(self):
+    def _get_pattern_list(self):
         return
 
-    def _getValuesPattern(self):
-        return [getattr(self, p) for p in self._getPatternList()]
+    def _get_values_pattern(self):
+        return [getattr(self, p) for p in self._get_pattern_list()]
 
-    def setName(self, name):
+    def set_name(self, name):
         match = self.__regex.match(name)
         if not match:
             msg = 'Can not set invalid name "{}".'.format(name)
             raise NameError(msg)
-        self.__setName(name)
+        self.__set_name(name)
         self.__values = match.groupdict()
 
-    def __setRegex(self):
-        self.__regex = re.compile('^{}$'.format(self._getJoinedPattern()))
+    def __set_regex(self):
+        self.__regex = re.compile('^{}$'.format(self._get_joined_pattern()))
 
-    def _getJoinedPattern(self):
-        return self._separator.join(self._getValuesPattern())
+    def _get_joined_pattern(self):
+        return self._separator.join(self._get_values_pattern())
 
-    def getValues(self):
+    def get_values(self):
         if not self._values:
             return
-        return {k: v for k, v in self._values.iteritems() if not self._filterKV(k, v)}
+        return {k: v for k, v in self._values.iteritems() if not self._filter_kv(k, v)}
 
-    def _filterKV(self, k, v):
-        if self._filterK(k) or self._filterV(v):
+    def _filter_kv(self, k, v):
+        if self._filter_k(k) or self._filter_v(v):
             return True
 
-    def _filterK(self, k):
+    def _filter_k(self, k):
         return
 
-    def _filterV(self, v):
+    def _filter_v(self, v):
         return
 
     @property
@@ -99,21 +99,21 @@ class AbstractBase(object):
 
     @property
     def nice_name(self):
-        return self._getNiceName()
+        return self._get_nice_name()
 
     @abc.abstractmethod
-    def _setPatterns(self):
+    def _set_patterns(self):
         return
 
-    def getName(self, **values):
+    def get_name(self, **values):
         if not values and self.name:
             return self.name
-        return self._getNiceName(**values)
+        return self._get_nice_name(**values)
 
-    def _getNiceName(self, **values):
-        return self._separator.join(self._getTranslatedPatternList('_getPatternList', **values))
+    def _get_nice_name(self, **values):
+        return self._separator.join(self._get_translated_pattern_list('_get_pattern_list', **values))
 
-    def _getTranslatedPatternList(self, pattern, **values):
+    def _get_translated_pattern_list(self, pattern, **values):
         self_values = self._values
         _values = []
         for p in getattr(self, pattern)():
@@ -130,7 +130,7 @@ class AbstractBase(object):
                 _values.append('[{}]'.format(nice_name))
         return _values
 
-    def _setPattern(self, *patterns):
+    def _set_pattern(self, *patterns):
         for p in patterns:
             string = "self.__class__._{0} = property(**__regex_pattern('{0}'))".format(p)  # please fix this hack
             exec string
@@ -144,12 +144,12 @@ class AbstractBase(object):
 
 class Name(AbstractBase):
     """docstring for Name"""
-    def _setValues(self):
+    def _set_values(self):
         self._base = '[a-zA-Z0-9]+'
 
-    def _setPatterns(self):
-        super(Name, self)._setPatterns()
-        self._setPattern('base')
+    def _set_patterns(self):
+        super(Name, self)._set_patterns()
+        self._set_pattern('base')
 
-    def _getPatternList(self):
+    def _get_pattern_list(self):
         return ['_base']

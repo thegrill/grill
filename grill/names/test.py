@@ -8,7 +8,7 @@ import unittest
 from . import model
 
 
-def _getEnvironmentKwargs():
+def _get_environment_kwargs():
     pipe = '_base'
     project = 'flmabc'
     workarea = 'first'
@@ -16,79 +16,79 @@ def _getEnvironmentKwargs():
     return locals()
 
 
-def _getAudiovisualKwargs():
-    values = _getEnvironmentKwargs()
+def _get_audiovisual_kwargs():
+    values = _get_environment_kwargs()
     values.update(alias='boy', stage='concept')
     return values
 
 
-def _getFilmKwargs():
-    values = _getAudiovisualKwargs()
+def _get_film_kwargs():
+    values = _get_audiovisual_kwargs()
     values.update(workarea='achrgeo', variant='original', partition='master', layer='default')
     return values
 
 
 class TestNames(unittest.TestCase):
 
-    def testBaseName(self):
+    def test_base_name(self):
         name = model.base.Name()
-        name.getName()
-        self.assertFalse(name.getValues())
+        name.get_name()
+        self.assertFalse(name.get_values())
         name_str = 'basename'
-        name.setName(name_str)
-        values = name.getValues()
+        name.set_name(name_str)
+        values = name.get_values()
         self.assertTrue(values['base'] == name_str == name.nice_name == name.name)
 
-    def testPipe(self):
+    def test_pipe(self):
         name = model.pipe.Pipe()
-        name.getName()
-        self.assertFalse(name.getValues())
+        name.get_name()
+        self.assertFalse(name.get_values())
         name_str = 'basename_data'
-        name.setName(name_str)
-        values = name.getValues()
+        name.set_name(name_str)
+        values = name.get_values()
         self.assertEqual(values['base'], name.nice_name)
         self.assertEqual(values['output'], 'data')
         self.assertEqual(name_str, name.name)
-        self.assertEqual(name.getName(pipe='_geo'), 'basename_geo')
-        self.assertEqual(name.getName(version=17), 'basename.17')
-        name.setName(name.getName(output='cache', frame=101))
+        self.assertEqual(name.get_name(pipe='_geo'), 'basename_geo')
+        self.assertEqual(name.get_name(version=17), 'basename.17')
+        name.set_name(name.get_name(output='cache', frame=101))
         self.assertEqual(name.output, 'cache')
         self.assertEqual(name.frame, '101')
 
-    def testFile(self):
+    def test_file(self):
         name = model.file.File()
-        name.getName()
-        self.assertFalse(name.getValues())
+        name.get_name()
+        self.assertFalse(name.get_values())
         name_str = 'basename_data.ext'
-        name.setName(name_str)
-        values = name.getValues()
+        name.set_name(name_str)
+        values = name.get_values()
         self.assertEqual(values['extension'], 'ext')
         self.assertEqual(name_str, name.name)
         self.assertEqual('basename', name.nice_name)
         self.assertEqual('basename_data', name.pipe_name)
-        name.setName(name.getName(base='face', output='cache', frame=101, extension='png'))
+        name.set_name(name.get_name(base='face', output='cache', frame=101, extension='png'))
         self.assertEqual(name.extension, 'png')
         self.assertEqual(name.output, 'cache')
         self.assertEqual(name.frame, '101')
         self.assertEqual(name.base, 'face')
 
-    def testEnvironment(self):
+    def test_environment(self):
         name = model.environment.Environment()
-        name.setName(name.getName(**_getEnvironmentKwargs()))
+        name.set_name(name.get_name(**_get_environment_kwargs()))
         self.assertEqual(name.environment, 'flm')
-        name.setName(name.getName(environment='gme'))
+        name.set_name(name.get_name(environment='gme'))
         self.assertEqual(name.environment, 'gme')
         self.assertEqual(name.code, 'abc')
 
-    def testAudiovisual(self):
+    def test_audiovisual(self):
         name = model.Audiovisual()
-        self.assertEqual(name.getValues(), None)
-        name.setName(name.getName(**_getAudiovisualKwargs()))
-        for k, v in name.getValues().iteritems():
+        self.assertEqual(name.get_values(), None)
+        name.set_name(name.get_name(**_get_audiovisual_kwargs()))
+        for k, v in name.get_values().iteritems():
             self.assertIsInstance(v, str)
 
-    def testFilm(self):
+    def test_film(self):
         name = model.Film()
-        name.setName(name.getName(**_getFilmKwargs()))
-        name.setName(name.getName(area='model'))
+        name.set_name(name.get_name(**_get_film_kwargs()))
+        name.set_name(name.get_name(area='model'))
         self.assertEqual(name.workarea, 'achrmodel')
