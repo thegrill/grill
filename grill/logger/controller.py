@@ -7,7 +7,7 @@ import os
 import logging
 # grill
 from grill import utils
-from grill.core import io
+from grill import io
 # package
 from . import model
 
@@ -24,7 +24,7 @@ def _create_logger(name):
         handler.addFilter(log_filter)
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-    log_file = io.getLogFile(name)
+    log_file = io.get_log_file(name)
     log_file.set_filter('stderr')
     add_handler(log_file.path, model.ErrorFilter())
     log_file.set_filter('stdout')

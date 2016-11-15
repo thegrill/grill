@@ -3,7 +3,7 @@
 Grill logging module.
 """
 # grill
-from grill.core.logger import LOGGER
+from grill.logger import LOGGER
 # package
 from . import model
 
