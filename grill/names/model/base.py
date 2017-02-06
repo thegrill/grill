@@ -81,7 +81,7 @@ class AbstractBase(object):
     def get_values(self):
         if not self._values:
             return
-        return {k: v for k, v in self._values.iteritems() if not self._filter_kv(k, v)}
+        return {k: v for k, v in self._values.items() if not self._filter_kv(k, v)}
 
     def _filter_kv(self, k, v):
         if self._filter_k(k) or self._filter_v(v):
@@ -133,7 +133,7 @@ class AbstractBase(object):
     def _set_pattern(self, *patterns):
         for p in patterns:
             string = "self.__class__._{0} = property(**__regex_pattern('{0}'))".format(p)  # please fix this hack
-            exec string
+            exec(string)
 
     def __getattr__(self, attr):
         try:

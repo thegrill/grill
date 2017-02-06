@@ -84,7 +84,7 @@ class TestNames(unittest.TestCase):
         name = model.Audiovisual()
         self.assertEqual(name.get_values(), None)
         name.set_name(name.get_name(**_get_audiovisual_kwargs()))
-        for k, v in name.get_values().iteritems():
+        for k, v in name.get_values().items():
             self.assertIsInstance(v, str)
 
     def test_film(self):
