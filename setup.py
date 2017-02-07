@@ -11,7 +11,5 @@ setup(
     author_email='christianlb.vfx@outlook.com',
     url='https://github.com/thegrill/grill',
     download_url='https://github.com/thegrill/grill/releases/tag/0.6.0.4',
-    classifiers=['Programming Language :: Python :: 2.7',
-    'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.6',]
+    classifiers=['Programming Language :: Python :: 3.6']
 )
