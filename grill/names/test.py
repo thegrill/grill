@@ -3,6 +3,7 @@
 Names testing module.
 """
 # standard
+import os
 import unittest
 # package
 from . import model
@@ -60,6 +61,8 @@ class TestNames(unittest.TestCase):
         name.separator = '-'
         self.assertEqual(name.separator, '-')
         self.assertEqual(name.get_name(), 'basename-cache.101')
+        with self.assertRaises(NameError):
+            name.set_name('basename_geo.17')
         name.separator = '.'
         self.assertEqual(name.separator, '.')
         self.assertEqual(name.get_name(), 'basename.cache.101')
@@ -72,6 +75,7 @@ class TestNames(unittest.TestCase):
         name.set_name(name_str)
         values = name.get_values()
         self.assertEqual(values['extension'], 'ext')
+        self.assertEqual(name._get_path_pattern_list(), [])
         self.assertEqual(name_str, name.name)
         self.assertEqual('basename', name.nice_name)
         self.assertEqual('basename_data', name.pipe_name)
@@ -88,6 +92,7 @@ class TestNames(unittest.TestCase):
         name.set_name(name.get_name(environment='gme'))
         self.assertEqual(name.environment, 'gme')
         self.assertEqual(name.code, 'abc')
+        self.assertEqual(name.path, os.path.join('abc', 'gme', 'first', 'gmeabc_first_base.abc'))
 
     def test_audiovisual(self):
         name = model.Audiovisual()
