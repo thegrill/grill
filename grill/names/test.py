@@ -38,6 +38,9 @@ class TestNames(unittest.TestCase):
         name.set_name(name_str)
         values = name.get_values()
         self.assertTrue(values['base'] == name_str == name.nice_name == name.name)
+        name = model.base.Name('basicname')
+        self.assertEqual(name.get_name(), 'basicname')
+        self.assertEqual(name.separator, '_')
 
     def test_pipe(self):
         name = model.pipe.Pipe()
@@ -54,6 +57,12 @@ class TestNames(unittest.TestCase):
         name.set_name(name.get_name(output='cache', frame=101))
         self.assertEqual(name.output, 'cache')
         self.assertEqual(name.frame, '101')
+        name.separator = '-'
+        self.assertEqual(name.separator, '-')
+        self.assertEqual(name.get_name(), 'basename-cache.101')
+        name.separator = '.'
+        self.assertEqual(name.separator, '.')
+        self.assertEqual(name.get_name(), 'basename.cache.101')
 
     def test_file(self):
         name = model.file.File()
@@ -82,7 +91,7 @@ class TestNames(unittest.TestCase):
 
     def test_audiovisual(self):
         name = model.Audiovisual()
-        self.assertEqual(name.get_values(), None)
+        self.assertFalse(name.get_values())
         name.set_name(name.get_name(**_get_audiovisual_kwargs()))
         for k, v in name.get_values().items():
             self.assertIsInstance(v, str)
@@ -92,3 +101,18 @@ class TestNames(unittest.TestCase):
         name.set_name(name.get_name(**_get_film_kwargs()))
         name.set_name(name.get_name(area='model'))
         self.assertEqual(name.workarea, 'achrmodel')
+        name.separator = '-'
+        self.assertEqual(name.separator, '-')
+        self.assertEqual(name.get_name(), 'flmabc-achrmodel-boy-concept-original-master-default-base.abc')
+        name.separator = '.'
+        self.assertEqual(name.separator, '.')
+        self.assertEqual(name.get_name(), 'flmabc.achrmodel.boy.concept.original.master.default.base.abc')
+        name.separator = ' '
+        name.set_name(name.get_name(area='rig'))
+        self.assertEqual(name.workarea, 'achrrig')
+        self.assertEqual(name.separator, ' ')
+        self.assertEqual(name.get_name(), 'flmabc achrrig boy concept original master default base.abc')
+        name.separator = r'/ '
+        self.assertEqual(name.separator, r'/ ')
+        self.assertEqual(name.get_name(), r'flmabc/ achrrig/ boy/ concept/ original/ master/ default/ base.abc')
+

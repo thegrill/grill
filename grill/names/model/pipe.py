@@ -14,21 +14,21 @@ class Pipe(Name):
         self._version = '\d+'
         self._output = '[a-zA-Z0-9]+'
         self._frame = '\d+'
-        self._pipe = '([.]{}|_{}([.]{})?)'.format(self._version, self._output, self._frame)
+        self._pipe = rf'([.]{self._version}|{self._separator_pattern}{self._output}([.]{self._frame})?)'
 
     def _set_patterns(self):
         super(Pipe, self)._set_patterns()
         self._set_pattern('pipe', 'version', 'output', 'frame')
 
     def _get_joined_pattern(self):
-        return '{}{}'.format(super(Pipe, self)._get_joined_pattern(), self._pipe)
+        return rf'{super(Pipe, self)._get_joined_pattern()}{self._pipe}'
 
     @property
     def pipe_name(self):
         try:
-            return '{}{}'.format(self.nice_name, self.pipe)
+            return rf'{self.nice_name}{self.pipe}'
         except AttributeError:
-            return '{}_[pipe]'.format(self.nice_name)
+            return rf'{self.nice_name}{self.separator}[pipe]'
 
     def _filter_v(self, v):
         return v is None
@@ -43,19 +43,18 @@ class Pipe(Name):
             pipe = values['pipe']
         else:
             if 'version' in values:
-                pipe = '.{}'.format(values['version'])
+                pipe = rf'.{values["version"]}'
             elif 'output' in values or 'frame' in values:
                 try:
                     output = values.get('output') or self.output or '[output]'
                 except AttributeError:
                     output = '[output]'
-                pipe = '_{}'.format(output)
+                pipe = rf'{self.separator}{output}'
                 try:
-                    pipe = '{}.{}'.format(pipe, values['frame'])
+                    pipe = rf'{pipe}.{values["frame"]}'
                 except KeyError:
                     pass
             else:
-                pipe = self.pipe or '_[pipe]' if self.name else '_[pipe]'
-
-        name = '{}{}'.format(super(Pipe, self).get_name(**values), pipe)
-        return name
+                suffix = rf'{self.separator}[pipe]'
+                pipe = self.pipe or suffix if self.name else suffix
+        return rf'{super(Pipe, self).get_name(**values)}{pipe}'

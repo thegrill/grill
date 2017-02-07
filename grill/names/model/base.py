@@ -8,41 +8,39 @@ Todo:
 # standard
 import re
 import abc
+import typing
 
 
-def __regex_pattern(pattern_name):
+def __regex_pattern(pattern_name: str) -> typing.Dict[str, typing.Callable]:
     def getter(self):
-        return '(?P<{}>{})'.format(pattern_name, getattr(self, '__{}'.format(pattern_name)))
+        pattern = getattr(self, rf'__{pattern_name}')
+        return rf'(?P<{pattern_name}>{pattern})'
 
     def setter(self, value):
-        setattr(self, '__{}'.format(pattern_name), value)
+        setattr(self, rf'__{pattern_name}', value)
     return {'fget': getter, 'fset': setter}
 
 
 class AbstractBase(object):
     __metaclass__ = abc.ABCMeta
-    """This is the base abstract class for Name objects. All subclasses should inherit from Name and not
-    from this one."""
-    def __init__(self, name=None):
+    """This is the base abstract class for Name objects. All subclasses are recommended to inherit
+    from Name instead of this one."""
+    def __init__(self, name=None, separator='_'):
         super(AbstractBase, self).__init__()
-        self.__values = None
-        self._set_separator()
-        self.__set_name(name)
+        self.__values = {}
+        self._set_separator(separator)
         self._set_patterns()
+        self._init_name_core(name)
+
+    def _init_name_core(self, name: str):
+        self.__set_name(name)
         self._set_values()
         self.__set_regex()
         self.__validate()
 
-    def __validate(self):
-        if not self.name:
-            return
-        self.set_name(self.name)
-
-    def __set_name(self, name):
-        self.name = name
-
-    def _set_separator(self):
-        self._separator = '_'
+    def _set_separator(self, separator: str):
+        self._separator = separator
+        self._separator_pattern = rf'\{separator}'
 
     @property
     def separator(self):
@@ -50,70 +48,83 @@ class AbstractBase(object):
         return self._separator
 
     @separator.setter
-    def separator(self, value):
-        self._separator = value
+    def separator(self, value: str):
+        self._set_separator(value)
+        name = self.get_name(**self.get_values())
+        self._init_name_core(name)
+
+    @abc.abstractmethod
+    def _set_patterns(self):
+        return
+
+    def _set_pattern(self, *patterns):
+        for p in patterns:
+            string = rf"self.__class__._{p} = property(**__regex_pattern('{p}'))"  # please fix this hack
+            exec(string)
+
+    def __set_name(self, name: str):
+        self.name = name
 
     @abc.abstractmethod
     def _set_values(self):
         return
 
-    @abc.abstractmethod
-    def _get_pattern_list(self):
-        return
+    def __set_regex(self):
+        self.__regex = re.compile(r'^{}$'.format(self._get_joined_pattern()))
 
-    def _get_values_pattern(self):
-        return [getattr(self, p) for p in self._get_pattern_list()]
+    def __validate(self):
+        if not self.name:
+            return
+        self.set_name(self.name)
 
-    def set_name(self, name):
+    def set_name(self, name: str):
         match = self.__regex.match(name)
         if not match:
-            msg = 'Can not set invalid name "{}".'.format(name)
+            msg = rf'Can not set invalid name "{name}".'
             raise NameError(msg)
         self.__set_name(name)
-        self.__values = match.groupdict()
+        self.__values.update(match.groupdict())
 
-    def __set_regex(self):
-        self.__regex = re.compile('^{}$'.format(self._get_joined_pattern()))
+    @property
+    def _values(self) -> typing.Dict[str, str]:
+        return self.__values
 
-    def _get_joined_pattern(self):
-        return self._separator.join(self._get_values_pattern())
+    @abc.abstractmethod
+    def _get_pattern_list(self) -> typing.List[str]:
+        return []
 
-    def get_values(self):
-        if not self._values:
-            return
+    def _get_values_pattern(self) -> typing.List[str]:
+        return [getattr(self, p) for p in self._get_pattern_list()]
+
+    def _get_joined_pattern(self) -> str:
+        return self._separator_pattern.join(self._get_values_pattern())
+
+    def get_values(self) -> typing.Dict[str, str]:
         return {k: v for k, v in self._values.items() if not self._filter_kv(k, v)}
 
-    def _filter_kv(self, k, v):
+    def _filter_kv(self, k: str, v) -> bool:
         if self._filter_k(k) or self._filter_v(v):
             return True
 
-    def _filter_k(self, k):
+    def _filter_k(self, k: str):
         return
 
     def _filter_v(self, v):
         return
 
     @property
-    def _values(self):
-        return self.__values
-
-    @property
-    def nice_name(self):
+    def nice_name(self) -> str:
         return self._get_nice_name()
 
-    @abc.abstractmethod
-    def _set_patterns(self):
-        return
+    def _get_nice_name(self, **values) -> str:
+        return self._separator.join(self._get_translated_pattern_list('_get_pattern_list', **values))
 
-    def get_name(self, **values):
+    def get_name(self, **values) -> str:
         if not values and self.name:
             return self.name
         return self._get_nice_name(**values)
 
-    def _get_nice_name(self, **values):
-        return self._separator.join(self._get_translated_pattern_list('_get_pattern_list', **values))
-
-    def _get_translated_pattern_list(self, pattern, **values):
+    def _get_translated_pattern_list(self, pattern: str, **values) -> typing.List[str]:
         self_values = self._values
         _values = []
         for p in getattr(self, pattern)():
@@ -127,13 +138,8 @@ class AbstractBase(object):
                     value = getattr(self, p)  # must be a valid property
                 _values.append(value)
             else:
-                _values.append('[{}]'.format(nice_name))
+                _values.append(rf'[{nice_name}]')
         return _values
-
-    def _set_pattern(self, *patterns):
-        for p in patterns:
-            string = "self.__class__._{0} = property(**__regex_pattern('{0}'))".format(p)  # please fix this hack
-            exec(string)
 
     def __getattr__(self, attr):
         try:
@@ -145,6 +151,7 @@ class AbstractBase(object):
 class Name(AbstractBase):
     """docstring for Name"""
     def _set_values(self):
+        super(Name, self)._set_values()
         self._base = '[a-zA-Z0-9]+'
 
     def _set_patterns(self):
@@ -152,4 +159,5 @@ class Name(AbstractBase):
         self._set_pattern('base')
 
     def _get_pattern_list(self):
+        super(Name, self)._get_pattern_list()
         return ['_base']
