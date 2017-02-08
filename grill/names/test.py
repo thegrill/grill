@@ -115,6 +115,7 @@ class TestNames(unittest.TestCase):
 
     def test_film(self):
         name = model.Film()
+        self.assertEqual(name.get_name(kind='set'), name.get_name())
         name.set_name(name.get_name(**_get_film_kwargs()))
         name.set_name(name.get_name(area='model'))
         self.assertEqual(name.workarea, 'achrmodel')
