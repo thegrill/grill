@@ -3,3 +3,5 @@
 dist/
 grill.egg-info/
 docs/build/
+docs/Makefile
+docs/make.bat
