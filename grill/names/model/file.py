@@ -6,6 +6,9 @@ The file module.
 import os
 # package
 from .pipe import Pipe
+from pathlib import Path
+
+CWD = None
 
 
 class File(Pipe):
@@ -33,4 +36,9 @@ class File(Pipe):
     def path(self):
         args = self._get_translated_pattern_list('_get_path_pattern_list')
         args.append(self.get_name())
-        return os.path.join(*args)
+        return Path(os.path.join(*args))
+
+    @property
+    def full_path(self):
+        cwd = Path.home() if not CWD else CWD
+        return Path.joinpath(cwd, self.path)
