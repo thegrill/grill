@@ -2,21 +2,16 @@
 """
 Grill logging module.
 """
-# standard
 import os
 import logging
-# grill
-from grill import utils
-from grill import io
-# package
-from . import model
+from functools import lru_cache
 
-_LOGGERS = {}
+from . import model
 
 
 def _create_logger(name):
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     formatter = logging.Formatter(fmt='%(asctime)s %(name)s - %(levelname)s: %(message)s')
 
     def add_handler(path, log_filter):
@@ -24,17 +19,14 @@ def _create_logger(name):
         handler.addFilter(log_filter)
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-    log_file = io.get_log_file(name)
-    log_file.set_filter('stderr')
+    log_file = model.LogFile.get_default(log_filter=logging.ERROR)
+    os.makedirs(log_file.path.parent, exist_ok=True)
     add_handler(log_file.path, model.ErrorFilter())
-    log_file.set_filter('stdout')
+    log_file.log_filter = logging.INFO
     add_handler(log_file.path, model.OutFilter())
     return logger
 
 
+@lru_cache(maxsize=None)
 def get_logger(name='grill'):
-    if name is not 'grill':
-        name = 'grill.{}'.format(utils.toCamelCase(name))
-    if name not in _LOGGERS:
-        _LOGGERS[name] = _create_logger(name)
-    return _LOGGERS[name]
+    return _create_logger(name)

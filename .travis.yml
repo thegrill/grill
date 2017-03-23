@@ -1,9 +1,13 @@
 language: python
 python:
-  - "3.6"
+  - 3.7
+before_install:
+  - pip install -U pytest
+  - pip install codecov
+  - pip install pytest pytest-cov
 install:
-  - pip install python-coveralls
+  - pip install ".[test]" . # install package + test dependencies
 script:
-  - coverage run -m unittest discover $TRAVIS_BUILD_DIR -v
+  - pytest --rootdir $TRAVIS_BUILD_DIR --cov=./ # run tests
 after_success:
-  - coveralls
+  - codecov # submit coverage

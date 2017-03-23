@@ -1,2 +1,2 @@
 from .controller import get_logger
-LOGGER = get_logger()
+LOG = get_logger()
