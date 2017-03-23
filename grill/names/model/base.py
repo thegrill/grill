@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-This module holds the base name model for grill data.
+Object-oriented names.
+
+This module offers the base classes that represent a name in an object oriented way.
+New name objects can be created with minimum effort in a flexible way.
 
 Todo:
     * Write appropriate documentation.
@@ -43,8 +46,8 @@ class AbstractBase(object):
         self._separator_pattern = rf'\{separator}'
 
     @property
-    def separator(self):
-        """str: The string that acts as a separator of all the fields in the name."""
+    def separator(self) -> str:
+        """The string that acts as a separator of all the fields in the name."""
         return self._separator
 
     @separator.setter
@@ -67,6 +70,7 @@ class AbstractBase(object):
 
     @abc.abstractmethod
     def _set_values(self):
+        """"This is the set values method"""
         return
 
     def __set_regex(self):
@@ -78,6 +82,7 @@ class AbstractBase(object):
         self.set_name(self.name)
 
     def set_name(self, name: str):
+        """"This is the set name method"""
         match = self.__regex.match(name)
         if not match:
             msg = rf'Can not set invalid name "{name}".'
@@ -161,3 +166,32 @@ class Name(AbstractBase):
     def _get_pattern_list(self):
         super(Name, self)._get_pattern_list()
         return ['_base']
+
+
+class EasyName(Name):
+    config = None
+
+    def __init__(self, *args, **kwargs):
+        if self.config is None:
+            self.config = {}
+        self.__keys = self.config.keys()
+        self.__items = self.config.items()
+        super(EasyName, self).__init__(*args, **kwargs)
+
+    def _set_values(self):
+        super(EasyName, self)._set_values()
+        for k, v in self.__items:
+            setattr(self, rf'_{k}', v)
+
+    def _set_patterns(self):
+        super(EasyName, self)._set_patterns()
+        for k in self.__keys:
+            self._set_pattern(k)
+
+    def _get_pattern_list(self):
+        result = super(EasyName, self)._get_pattern_list()
+        result.extend([rf'_{k}' for k in self.__keys])
+        return result
+
+RandomName = type('RandomName', (Name,), dict(name='basename', separator='.'))
+RandomEasyName = type('RandomEasyName', (EasyName,), dict(config=dict(extra='[a-zA-Z]')))

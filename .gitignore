@@ -2,3 +2,4 @@
 *.pyc
 dist/
 grill.egg-info/
+docs/build/

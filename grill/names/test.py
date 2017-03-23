@@ -89,7 +89,7 @@ class TestNames(unittest.TestCase):
         name = model.project.Project()
         name.set_name(name.get_name(**_get_environment_kwargs()))
         self.assertEqual(name.nice_name, 'flmabc_first')
-        self.assertEqual(name.path, os.path.join('flmabc', 'first', 'flmabc_first_base.abc'))
+        self.assertEqual(str(name.path), os.path.join('flmabc', 'first', 'flmabc_first_base.abc'))
 
     def test_environment(self):
         name = model.environment.Environment()
@@ -98,7 +98,7 @@ class TestNames(unittest.TestCase):
         name.set_name(name.get_name(environment='gme'))
         self.assertEqual(name.environment, 'gme')
         self.assertEqual(name.code, 'abc')
-        self.assertEqual(name.path, os.path.join('abc', 'gme', 'first', 'gmeabc_first_base.abc'))
+        self.assertEqual(str(name.path), os.path.join('abc', 'gme', 'first', 'gmeabc_first_base.abc'))
         name = model.environment.Environment()
         self.assertEqual(name.get_name(frame=5), '[project]_[workarea]_[output].5.[extension]')
         self.assertEqual(name.pipe_name, '[project]_[workarea]_[pipe]')
@@ -110,7 +110,7 @@ class TestNames(unittest.TestCase):
         name.set_name(name.get_name(**_get_audiovisual_kwargs()))
         for k, v in name.get_values().items():
             self.assertIsInstance(v, str)
-        self.assertEqual(name.path, os.path.join('abc', 'flm', 'first', 'boy', 'concept',
+        self.assertEqual(str(name.path), os.path.join('abc', 'flm', 'first', 'boy', 'concept',
                                                  'flmabc_first_boy_concept_base.abc'))
 
     def test_film(self):
@@ -119,7 +119,7 @@ class TestNames(unittest.TestCase):
         name.set_name(name.get_name(**_get_film_kwargs()))
         name.set_name(name.get_name(area='model'))
         self.assertEqual(name.workarea, 'achrmodel')
-        self.assertEqual(name.path, os.path.join('abc', 'flm', 'pro', 'a', 'chr',
+        self.assertEqual(str(name.path), os.path.join('abc', 'flm', 'pro', 'a', 'chr',
                                                  'boy', 'model', 'concept', 'original',
                                                  'flmabc_achrmodel_boy_concept_original_master_default_base.abc'))
         name.separator = '-'
@@ -136,4 +136,4 @@ class TestNames(unittest.TestCase):
         name.separator = r'/ '
         self.assertEqual(name.separator, r'/ ')
         self.assertEqual(name.get_name(), r'flmabc/ achrrig/ boy/ concept/ original/ master/ default/ base.abc')
-
+        print(name.full_path)
