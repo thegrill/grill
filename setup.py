@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 
-VERSION = '0.7.0'
+VERSION = '0.7.2'
 
 setup(
     name='grill',
     version=VERSION,
-    packages=find_packages(),
+    packages=find_namespace_packages(
+        exclude=("*.tests", "*.tests.*", "tests.*", "tests", "*.docs", "*.docs.*", "docs.*", "docs")),
     description='Pipeline and data flow tools for (but not limited to) audiovisual projects, with DCC support.',
     author='Christian Lopez Barron',
     author_email='christianlb.vfx@outlook.com',
