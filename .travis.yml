@@ -3,7 +3,6 @@ python:
   - 3.7
 before_install:
   - pip install -U pytest
-  - pip install -U grill-names
   - pip install codecov
 install:
   - pip install ".[test]" . # install package + test dependencies
