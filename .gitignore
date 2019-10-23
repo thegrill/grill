@@ -1,6 +1,7 @@
 .idea/
 *.pyc
 dist/
+build/
 grill.egg-info/
 docs/build/
 docs/Makefile
