@@ -14,5 +14,6 @@ setup(
     url='https://github.com/thegrill/grill',
     download_url=f'https://github.com/thegrill/grill/releases/tag/{VERSION}',
     classifiers=['Programming Language :: Python :: 3.7'],
+    install_requires=['grill-names'],
     extras_require={'docs': ['sphinx_autodoc_typehints']}
 )

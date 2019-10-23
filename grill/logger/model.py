@@ -43,7 +43,7 @@ class LogFile(File):
         clock=r'([01]?[0-9]|2[0-4])-[0-5]?[0-9]-[0-5]?[0-9]',
         micosecond=r'\d{1,6}',
         log_name=r'[\w\.]+',
-        log_filter='\d+',
+        log_filter=r'\d+',
     )
     file_config = NameConfig(dict(suffix=_LOG_FILE_SUFFIX))
 
