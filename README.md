@@ -1,6 +1,6 @@
 # grill
 [![Build Status](https://travis-ci.org/thegrill/grill.svg?branch=master)](https://travis-ci.org/thegrill/grill)
-[![Coverage Status](https://coveralls.io/repos/github/thegrill/grill/badge.svg?branch=master)](https://coveralls.io/github/thegrill/grill)
+[![codecov](https://codecov.io/gh/thegrill/grill/branch/master/graph/badge.svg)](https://codecov.io/gh/thegrill/grill)
 [![Documentation Status](https://readthedocs.org/projects/grill/badge/?version=latest)](https://grill.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/grill.svg)](https://badge.fury.io/py/grill)
 [![PyPI](https://img.shields.io/pypi/pyversions/grill.svg)](https://pypi.python.org/pypi/grill)
