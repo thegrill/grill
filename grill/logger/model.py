@@ -41,7 +41,7 @@ class LogFile(File):
     config = dict(
         date=r'\d{4}-(0?[1-9]|1[0-2])-([0-2]?[1-9]|3[01])',
         clock=r'([01]?[0-9]|2[0-4])-[0-5]?[0-9]-[0-5]?[0-9]',
-        micosecond=r'\d{1,6}',
+        microsecond=r'\d{1,6}',
         log_name=r'[\w\.]+',
         log_filter=r'\d+',
     )
@@ -59,7 +59,7 @@ class LogFile(File):
         defaults = dict(
             date=f'{now.year}-{now.month}-{now.day}',
             clock=f'{now.hour}-{now.minute}-{now.second}',
-            micosecond=now.microsecond,
+            microsecond=now.microsecond,
             log_name='grill',
             log_filter=logging.INFO,
             suffix=_LOG_FILE_SUFFIX,
