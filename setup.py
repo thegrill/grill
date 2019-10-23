@@ -8,7 +8,8 @@ setup(
     name='grill',
     version=VERSION,
     packages=find_namespace_packages(
-        exclude=("*.tests", "*.tests.*", "tests.*", "tests", "*.docs", "*.docs.*", "docs.*", "docs")),
+        # exclude=("*.tests", "*.tests.*", "tests.*", "tests", "*.docs", "*.docs.*", "docs.*", "docs")
+    ),
     description='Pipeline and data flow tools for (but not limited to) audiovisual projects, with DCC support.',
     author='Christian Lopez Barron',
     author_email='christianlb.vfx@outlook.com',
