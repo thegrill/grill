@@ -4,9 +4,10 @@ python:
 before_install:
   - pip install -U pytest
   - pip install codecov
+  - pip install pytest pytest-cov
 install:
   - pip install ".[test]" . # install package + test dependencies
 script:
-  - pytest --rootdir $TRAVIS_BUILD_DIR  # run tests
+  - pytest --rootdir $TRAVIS_BUILD_DIR --cov=./ # run tests
 after_success:
   - codecov # submit coverage
