@@ -39,7 +39,7 @@ class OutFilter(logging.Filter):
 class LogFile(File):
     """docstring for LogFile"""
     config = dict(
-        date=r'\d{4}-(0[1-9]|1[0-2])-([0-2][1-9]|3[01])',
+        date=r'\d{4}-(0?[1-9]|1[0-2])-([0-2]?[1-9]|3[01])',
         clock=r'([01]?[0-9]|2[0-4])-[0-5]?[0-9]-[0-5]?[0-9]',
         micosecond=r'\d{1,6}',
         log_name=r'[\w\.]+',
