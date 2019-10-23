@@ -8,6 +8,6 @@ before_install:
 install:
   - pip install ".[test]" . # install package + test dependencies
 script:
-  - pytest --pyargs grill.test.test  # run tests
+  - pytest --pyargs grill.test  # run tests
 after_success:
   - codecov # submit coverage
