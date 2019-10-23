@@ -7,6 +7,6 @@ before_install:
 install:
   - pip install ".[test]" . # install package + test dependencies
 script:
-  - pytest --log-level=DEBUG --rootdir $TRAVIS_BUILD_DIR  # run tests
+  - pytest --pyargs grill.logger.tests.test  # run tests
 after_success:
   - codecov # submit coverage
