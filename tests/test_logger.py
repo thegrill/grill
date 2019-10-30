@@ -1,6 +1,7 @@
 import unittest
 from grill.logger import model
 
+
 class TestLogger(unittest.TestCase):
 
     def test_root_logger(self):
@@ -13,7 +14,7 @@ class TestLogger(unittest.TestCase):
         logger.info("Testing inner module")
 
     def test_default(self):
-        l = model.LogFile.get_default(year=1999)
+        l = model.LogFile.get_default(year=1999, day=1)
         self.assertEqual(l.year, '1999')
 
         with self.assertRaises(ValueError):
@@ -34,18 +35,3 @@ class TestLogger(unittest.TestCase):
 
         for m in range(1,13):
             l.month = m
-
-        with self.assertRaises(ValueError):
-            # invalid month 0
-            l.month = 0
-
-        with self.assertRaises(ValueError):
-            # invalid month 13
-            l.day = 0
-
-        for m in range(1,32):
-            l.day = m
-
-        with self.assertRaises(ValueError):
-            # invalid day 32
-            l.day = 32

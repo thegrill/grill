@@ -19,6 +19,6 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
     ],
-    install_requires=['naming'],
+    install_requires=['grill-names'],
     extras_require={'docs': ['sphinx_autodoc_typehints']}
 )
