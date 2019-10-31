@@ -18,8 +18,7 @@ class TestLogger(unittest.TestCase):
         self.assertEqual(l.year, '1999')
 
         with self.assertRaises(ValueError):
-            # invalid month 13
-            l.month = 13
+            l.month = 13  # invalid month 13
 
-        for m in range(1,13):
+        for m in range(1, 13):
             l.month = m
