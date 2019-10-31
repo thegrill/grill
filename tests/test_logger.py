@@ -18,18 +18,6 @@ class TestLogger(unittest.TestCase):
         self.assertEqual(l.year, '1999')
 
         with self.assertRaises(ValueError):
-            # invalid year 0
-            l.month = 0
-
-        with self.assertRaises(ValueError):
-            # max year 9999
-            l.month = 12345
-
-        for y in range(1, 1000):
-            l.year = y
-            self.assertEqual(l.year, str(y))
-
-        with self.assertRaises(ValueError):
             # invalid month 13
             l.month = 13
 

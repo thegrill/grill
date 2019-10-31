@@ -45,9 +45,6 @@ class LogFile(DateTimeFile):
     )
     file_config = NameConfig(dict(suffix=_LOG_FILE_SUFFIX))
 
-    def get_pattern_list(self) -> typing.List[str]:
-        return super().get_pattern_list() + list(self.config.keys())
-
     @property
     def path(self):
         return Path(r'~/grill').expanduser() / super().name
