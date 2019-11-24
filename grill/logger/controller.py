@@ -9,7 +9,8 @@ from functools import lru_cache
 from . import model
 
 
-def _create_logger(name):
+@lru_cache(maxsize=None)
+def get_logger(name='grill'):
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
     formatter = logging.Formatter(fmt='%(asctime)s %(name)s - %(levelname)s: %(message)s')
@@ -25,8 +26,3 @@ def _create_logger(name):
     log_file.log_filter = logging.INFO
     add_handler(log_file.path, model.OutFilter())
     return logger
-
-
-@lru_cache(maxsize=None)
-def get_logger(name='grill'):
-    return _create_logger(name)
