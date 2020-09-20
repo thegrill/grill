@@ -1,4 +1,4 @@
-digraph G {
+digraph flowchart_symbols {
     bgcolor=invis
     node [style=filled fillcolor=snow]
     edge [style=invis]
@@ -11,9 +11,10 @@ digraph G {
     storage [shape=folder label="Storage" height=0.7 width=1.2]
     db [shape=cylinder label="Database" height=0.7 width=1.2]
     document [shape=note label="Document" height=0.7 width=1.2]
-    merge [shape=invtriangle label="Merge" fixedsize="True", height="1.2", width="1.2"]
+    merge [shape=invtriangle label="Merge" fixedsize="True", height="1", width="1.2"]
     display [shape=cds label="Display" height=0.7 width=1.2]
-    manual_op -> io -> decision -> process
-    terminator -> connector -> storage -> db
-    document -> merge -> display
+    manual_op -> io -> decision
+    process -> terminator -> connector
+    document -> storage -> db
+    merge -> display
 }

@@ -1,22 +1,22 @@
 graph model {
     bgcolor=invis
     asset [shape=circle fillcolor=pink style=filled color=violetred3]
-    asset_description [shape=record style="rounded,filled" fillcolor=snow label="Meaningful piece of\ldata that can be:\l
-        - Identified\l
-        - Versioned\l
-        - Tracked\l
-        \lMight contain metadata.\l"]
+    asset_description [shape=record style="rounded,filled" fillcolor=snow label="Meaningful piece of\ldata that can be:\l\l
+        • Identified\l
+        • Versioned\l
+        • Tracked\l
+        \lMight contain metadata.\l\l"]
     asset -- asset_description [style=dashed]
 
     step [shape=triangle height=1 fillcolor=lightyellow style=filled color=khaki4]
     step_description [shape=record style="rounded,filled" fillcolor=snow label="Process in the pipeline\lthat outputs new assets.\l
-        \lWhen growing in complexity,\lcan be promoted to area.\l
-        \lMight receive assets as inputs.\l"]
+        \lWhen growing in\lcomplexity, can be\lpromoted to area.\l
+        \lMight receive assets as\linputs.\l"]
     step -- step_description [style=dashed]
 
     area [shape=box height=.75 fillcolor=lightskyblue1 color=dodgerblue4 style="filled,rounded"]
     area_description [shape=record style="rounded,filled" fillcolor=snow label="Contains steps that relate\lto each other.\l
-        \lCan spawn multiple instances\lof the same steps.\l
-        \lManages assets I/O.\l"]
+        \lCan spawn multiple\linstances of the same\lsteps.\l
+        \lManages assets I/O.\l\l"]
     area -- area_description [style=dashed]
 }

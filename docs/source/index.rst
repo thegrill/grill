@@ -29,7 +29,7 @@ Pipeline
 Flowchart Legend
 ----------------
 
-``the grill`` flow charts will be based on the following legend.
+``the grill`` flow charts will use the following symbol legend:
 
 .. graphviz:: flowchart_legend.dot
 
