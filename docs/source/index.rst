@@ -12,6 +12,7 @@ Welcome to grill's documentation!
 
    data_model
 
+
 Indices and tables
 ==================
 
