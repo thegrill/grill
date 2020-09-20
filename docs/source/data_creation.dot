@@ -1,32 +1,12 @@
 digraph data_creation {
     rankdir=LR
     {
-        node [shape=record style="rounded,filled" fillcolor=snow]
+        node [shape=box style="rounded,filled" fillcolor=snow]
         context_description stage_description opinion_description persistency_description
-        context_description [label="
-            Provides contextual\l
-            information for the\l
-            processes about to\l
-            manipulate asset data.\l\l
-            The minimum required\l
-            context is a pipeline\l
-            area.\l"]
-        stage_description [label="
-            A corresponding USD\l
-            stage for the context\l
-            is opened.\l\l
-            If none exists but the\l
-            context is valid, one\l
-            will be created.\l"]
-        opinion_description [label="
-            USD opinions are\l
-            authored by targeted\l
-            pipeline steps.\l"]
-        persistency_description [label="
-            Created asset data\l
-            is commited in order\l
-            for it to persist in\l
-            the pipeline.\l"]
+        context_description [label="Provides contextual\ninformation for the\nprocesses about to\nmanipulate assets.\n\nThe minimum\nrequired context\nis a pipeline area.\n"]
+        stage_description [label="A corresponding\nUSD stage for the\ncontext is opened.\n\nIf none exists\nbut the context is\nvalid, one will\nbe created.\n"]
+        opinion_description [label="USD opinions are\nauthored by\ntargeted pipeline\nsteps.\n"]
+        persistency_description [label="Created asset data\nis commited in\norder for it to\npersist in the\npipeline.\n"]
     }
     node [colorscheme=pastel19 style=filled]
     context [shape=invtrapezium fillcolor=3 label="Context\nSelection" height=1]

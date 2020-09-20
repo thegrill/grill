@@ -38,7 +38,7 @@ Flowchart Legend
 Data Creation
 -------------
 
-At the highest level, data creation
+At the highest level, all asset data, from creation to finish, goes through the same life cycle:
 
 .. graphviz:: data_creation.dot
 
