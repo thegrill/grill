@@ -7,7 +7,7 @@
 
 Cook digital.
 
-`grill` namespace, meta-package with guidelines on work philosophy.
+`grill` namespace, meta-package with core tools and philosophy guidelines.
 
 We write code keeping in mind future readers and users. These are 5 principles we aim to stick to:
 
