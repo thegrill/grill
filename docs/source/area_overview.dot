@@ -1,0 +1,36 @@
+digraph area_overview {
+    bgcolor=invis
+    newrank=true
+    subgraph cluster_inputs {
+        label=inputs
+        color=invis
+        node [shape=circle label="" fillcolor=pink style=filled color=violetred3] input_asset1 input_asset2 input_asset3
+        input_asset1 -> input_asset2 -> input_asset3 [style=invis]
+    }
+    subgraph cluster_area {
+        style="filled,rounded"
+        label=area
+        fillcolor=lightskyblue1 color=dodgerblue4
+        sentinel [style=invis label=""]
+        node [shape=triangle label="" fillcolor=lightyellow style=filled color=khaki4 height=.8] step2 step3
+        sentinel -> step2 -> step3 [style=invis]
+    }
+    subgraph cluster_outputs {
+        label=outputs
+        color=invis
+        node [shape=circle label="" fillcolor=pink style=filled color=violetred3] output_asset1 output_asset2 output_asset3
+        output_asset1 -> output_asset2 -> output_asset3 [style=invis]
+    }
+    {input_asset1 input_asset2 input_asset3} -> step2
+    input_asset3 -> step3
+    step2 -> output_asset1
+    step3 -> {output_asset2 output_asset3}
+    {rank=same input_asset1 sentinel output_asset1}
+    {rank=same input_asset2 step2 output_asset2}
+    {rank=same input_asset3 step3 output_asset3}
+    description [shape=record style="rounded,filled" fillcolor=snow label="
+        Assets and steps don't know about\lothers of the same type.\l
+        \lAssets can plug to as many steps as necessary.\l
+        \lAreas handle assets I/O while running steps.\l"]
+    {rank=same input_asset2 step2 output_asset2 description}
+}

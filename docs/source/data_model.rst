@@ -6,21 +6,18 @@
 Data Model
 ==========
 
-Atomic Entities
-===============
-.. raw:: html
+----
 
-    <img src="https://docs.google.com/drawings/d/1CVovGxXeQSTeOogRDctjdVbILUqwFTv20TzcPZywhCM/pub?w=648&amp;h=200">
+Core Concepts
+-------------
 
-.. note:: This is a note admonition.
-   This is the second line of the first paragraph.
+.. graphviz:: core_concepts.dot
 
-   - The note contains all indented body elements
-     following.
-   - It includes this bullet list.
+----
 
-Flow
-====
-.. raw:: html
+Pipeline
+--------
 
-    <img src="https://docs.google.com/drawings/d/1PbwR4wpo8wascFWBcmE9KmqQ-2STbfcIsBge490dCY8/pub?w=647&amp;h=384">
+.. graphviz:: area_overview.dot
+
+.. graphviz:: pipeline_overview.dot
