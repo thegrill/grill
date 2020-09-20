@@ -1,0 +1,9 @@
+digraph data_creation {
+    rankdir=LR
+    node [colorscheme=pastel19 style=filled]
+    context [shape=invtrapezium fillcolor=3 label="Context\nSelection" height=1]
+    stage [shape=parallelogram label="Stage\nOpen" height=1 fillcolor=5]
+    opinion [shape=box label="Opinion\nAuthoring" height=0.7 width=1.2 fillcolor=2]
+    export [shape=cylinder label=Persistency height=0.7 width=1.2 fillcolor=8]
+    context -> stage -> opinion -> export
+}

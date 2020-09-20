@@ -29,8 +29,20 @@ Pipeline
 Flowchart Legend
 ----------------
 
+`the grill` flow charts will be based on the following legend.
+
 .. graphviz:: flowchart_legend.dot
 
+----
+
+Data Creation
+-------------
+
+At the highest level, data creation
+
+.. graphviz:: data_creation.dot
+
+----
 
 Indices and tables
 ------------------
