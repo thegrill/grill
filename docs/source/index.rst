@@ -26,6 +26,12 @@ Pipeline
 
 ----
 
+Flowchart Legend
+----------------
+
+.. graphviz:: flowchart_legend.dot
+
+
 Indices and tables
 ------------------
 
