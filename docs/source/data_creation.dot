@@ -1,0 +1,25 @@
+digraph data_creation {
+    bgcolor=invis
+    {
+        node [shape=box style="rounded,filled" fillcolor=snow]
+        context_description stage_description opinion_description persistency_description
+        context_description [label="Provides contextual information for the\lprocesses about to manipulate assets.\l\lMinimum required context is a pipeline area.\n"]
+        stage_description [label="A corresponding USD stage for the selected\lcontext is opened. If none exists but the context\lis valid, one will be created.\l"]
+        opinion_description [label="USD opinions are authored by pipeline steps\ltargeted by the context area.\l"]
+        persistency_description [label="Created asset data is commited in order for it to\lpersist in the pipeline.\l"]
+    }
+    node [colorscheme=pastel19 style=filled]
+    context [shape=invtrapezium fillcolor=3 label="1. Context\nSelection" height=1]
+    stage [shape=parallelogram label="2. Stage\nOpen" height=1 fillcolor=5]
+    opinion [shape=box label="3. Opinion\nAuthoring" height=0.7 width=1.2 fillcolor=2]
+    persistency [shape=cylinder label="4. Persistency" height=0.7 width=1.2 fillcolor=8]
+    context -> stage -> opinion -> persistency
+    context -> context_description [style=invis]
+    {rank=same context context_description}
+    stage -> stage_description [style=invis]
+    {rank=same stage stage_description}
+    opinion -> opinion_description [style=invis]
+    {rank=same opinion opinion_description}
+    persistency -> persistency_description [style=invis]
+    {rank=same persistency persistency_description}
+}

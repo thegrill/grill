@@ -26,6 +26,24 @@ Pipeline
 
 ----
 
+Flowchart Legend
+----------------
+
+``the grill`` flow charts will use the following symbol legend:
+
+.. graphviz:: flowchart_legend.dot
+
+----
+
+Data Creation
+-------------
+
+At the highest level, all asset data, from creation to finish, goes through the same life cycle:
+
+.. graphviz:: data_creation.dot
+
+----
+
 Indices and tables
 ------------------
 
