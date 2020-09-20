@@ -1,0 +1,17 @@
+digraph pipeline_overview {
+    bgcolor=invis
+    rankdir=LR
+    node [shape=box label="" style="filled,rounded" fillcolor=lightskyblue1 color=dodgerblue4] a1 a2 a3 a4 a5 a6 a7
+    a1 -> a1 [dir=back]
+    a1 -> {a2 a3 a4}
+    a2 -> a5
+    a3 -> {a4 a6 a7}
+    a4 -> {a1 a6}
+    a5 -> a3
+    {rank=same a2 a4}
+    {rank=same a5 a3}
+    pipeline_d [shape=record color=black style="rounded,filled" fillcolor=snow label="
+    Areas act as nodes of a\lgraph.\l\l
+    They don't care where their\linputs come from, allowing\lto have cyclic connections.\l"]
+    a7 -> pipeline_d [style=invis]
+}
