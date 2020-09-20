@@ -1,2 +1,7 @@
 [run]
 source=grill
+[report]
+omit =
+    */site-packages/*
+    setup.py
+    *tests/
