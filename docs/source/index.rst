@@ -6,6 +6,8 @@
 Welcome to grill's documentation!
 =================================
 
+.. mdinclude:: ../../README.md
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
