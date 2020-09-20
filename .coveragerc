@@ -3,4 +3,3 @@ source=grill
 [report]
 omit =
     setup.py
-    *tests/*
