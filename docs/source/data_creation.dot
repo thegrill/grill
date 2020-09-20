@@ -1,9 +1,45 @@
 digraph data_creation {
     rankdir=LR
+    {
+        node [shape=record style="rounded,filled" fillcolor=snow]
+        context_description stage_description opinion_description persistency_description
+        context_description [label="
+            Provides contextual\l
+            information for the\l
+            processes about to\l
+            manipulate asset data.\l\l
+            The minimum required\l
+            context is a pipeline\l
+            area.\l"]
+        stage_description [label="
+            A corresponding USD\l
+            stage for the context\l
+            is opened.\l\l
+            If none exists but the\l
+            context is valid, one\l
+            will be created.\l"]
+        opinion_description [label="
+            USD opinions are\l
+            authored by targeted\l
+            pipeline steps.\l"]
+        persistency_description [label="
+            Created asset data\l
+            is commited in order\l
+            for it to persist in\l
+            the pipeline.\l"]
+    }
     node [colorscheme=pastel19 style=filled]
     context [shape=invtrapezium fillcolor=3 label="Context\nSelection" height=1]
     stage [shape=parallelogram label="Stage\nOpen" height=1 fillcolor=5]
     opinion [shape=box label="Opinion\nAuthoring" height=0.7 width=1.2 fillcolor=2]
-    export [shape=cylinder label=Persistency height=0.7 width=1.2 fillcolor=8]
-    context -> stage -> opinion -> export
+    persistency [shape=cylinder label=Persistency height=0.7 width=1.2 fillcolor=8]
+    context -> stage -> opinion -> persistency
+    context -> context_description [style=invis]
+    {rank=same context context_description}
+    stage -> stage_description [style=invis]
+    {rank=same stage stage_description}
+    opinion -> opinion_description [style=invis]
+    {rank=same opinion opinion_description}
+    persistency -> persistency_description [style=invis]
+    {rank=same persistency persistency_description}
 }
