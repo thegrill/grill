@@ -10,8 +10,8 @@ digraph pipeline_overview {
     area5 -> area3
     {rank=same area2 area4}
     {rank=same area5 area3}
-    descriptionn [shape=record color=black style="rounded,filled" fillcolor=snow label="
+    description [shape=record color=black style="rounded,filled" fillcolor=snow label="
     Areas act as nodes of a\lgraph.\l\l
     They don't care where their\linputs come from, allowing\lto have cyclic connections.\l"]
-    area7 -> descriptionn [style=invis]
+    area7 -> description [style=invis]
 }
