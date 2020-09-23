@@ -193,7 +193,9 @@ epub_copyright = copyright
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
 
-
+import sphinx_py3doc_enhanced_theme
+html_theme = "sphinx_py3doc_enhanced_theme"
+html_theme_path = [sphinx_py3doc_enhanced_theme.get_html_theme_path()]
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'https://docs.python.org/': None,
