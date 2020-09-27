@@ -21,20 +21,19 @@ digraph area_overview {
         node [shape=circle label="" fillcolor=pink style=filled color=violetred3] output_asset1 output_asset2 output_asset3
         output_asset1 -> output_asset2 -> output_asset3 [style=invis]
     }
+    subgraph cluster_descriptions {
+        style="rounded,filled"
+        fillcolor=snow
+        node [shape=none]
+        asset_d [label="Assets are composed via USD\l& can plug to as many steps\las necessary.\l"]
+        step_d [label="Steps don't know about others\lof the same type.\l"]
+        area_d [label="Areas handle assets I/O while\lrunning steps.\l"]
+    }
     {input_asset1 input_asset2 input_asset3} -> step2
     input_asset3 -> step3
     step2 -> output_asset1
     step3 -> {output_asset2 output_asset3}
-    {rank=same input_asset1 sentinel output_asset1}
-    {rank=same input_asset2 step2 output_asset2}
-    {rank=same input_asset3 step3 output_asset3}
-    description [shape=record style="rounded,filled" fillcolor=snow label="
-        Assets are composed via USD\l
-        & can plug to as many steps\l
-        as necessary.\l\l
-        Steps don't know about others\l
-        of the same type.\l\l
-        Areas handle assets I/O while\l
-        running steps.\l"]
-    {rank=same input_asset2 step2 output_asset2 description}
+    {rank=same input_asset1 sentinel output_asset1 asset_d}
+    {rank=same input_asset2 step2 output_asset2 step_d}
+    {rank=same input_asset3 step3 output_asset3 area_d}
 }
