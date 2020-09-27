@@ -10,24 +10,25 @@
 
 ----
 
+Pipeline
+========
+
 Core Concepts
 -------------
+.. graphviz:: pipeline_concepts.dot
 
-.. graphviz:: core_concepts.dot
+Relationships
+-------------
+.. graphviz:: pipeline_relationships.dot
 
-----
-
-Pipeline
---------
-
-.. graphviz:: area_overview.dot
-
-.. graphviz:: pipeline_overview.dot
+Data Flow
+---------
+.. graphviz:: pipeline_flow.dot
 
 ----
 
-Flowchart Legend
-----------------
+Workflow Charts Legend
+----------------------
 
 ``the grill`` flow charts will use the following symbol legend:
 

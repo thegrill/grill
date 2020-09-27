@@ -22,12 +22,13 @@ digraph area_overview {
         output_asset1 -> output_asset2 -> output_asset3 [style=invis]
     }
     subgraph cluster_descriptions {
+        margin=1
         style="rounded,filled"
         fillcolor=snow
         node [shape=none]
-        asset_d [label="Assets are composed via USD\l& can plug to as many steps\las necessary.\l"]
-        step_d [label="Steps don't know about others\lof the same type.\l"]
-        area_d [label="Areas handle assets I/O while\lrunning steps.\l"]
+        asset_d [label="Assets are composed via\lUSD & can plug to as\lmany steps as required.\l"]
+        step_d [label="Steps don't know about\lothers of the same type.\l"]
+        area_d [label="Areas handle assets I/O\lwhile running steps.\l"]
     }
     {input_asset1 input_asset2 input_asset3} -> step2
     input_asset3 -> step3
