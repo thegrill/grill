@@ -29,9 +29,9 @@ digraph area_overview {
     {rank=same input_asset2 step2 output_asset2}
     {rank=same input_asset3 step3 output_asset3}
     description [shape=record style="rounded,filled" fillcolor=snow label="
-        Assets are composed via USD.\l
+        Assets are composed via USD &\l
+        can plug to as many steps as\lnecessary.\l
         \lSteps don't know about others\lof the same type.\l
-        \lAssets can plug to as many\lsteps as necessary.\l
         \lAreas handle assets I/O while\lrunning steps.\l"]
     {rank=same input_asset2 step2 output_asset2 description}
 }
