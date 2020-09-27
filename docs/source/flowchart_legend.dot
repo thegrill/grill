@@ -2,17 +2,17 @@ digraph flowchart_symbols {
     bgcolor=invis
     node [style=filled fillcolor=snow]
     edge [style=invis]
-    manual_op [shape=invtrapezium label="Manual\nOperation" height="1"]
-    io [shape=parallelogram label="Input\nOutput" height="1"]
-    decision [shape=diamond label="Decision" fixedsize="True", height="1.2", width="1.2"]
-    process [shape=box label="Process" height=0.7 width=1.2]
-    terminator [shape=ellipse label="Terminator" height=".8" width="1.6"]
-    connector [shape=circle label="Connector" height=".8"]
-    storage [shape=folder label="Storage" height=0.7 width=1.2]
-    db [shape=cylinder label="Database" height=0.7 width=1.2]
-    document [shape=note label="Document" height=0.7 width=1.2]
-    merge [shape=invtriangle label="Merge" fixedsize="True", height="1", width="1.2"]
-    display [shape=cds label="Display" height=0.7 width=1.2]
+    manual_op [shape=invtrapezium label="Manual\nOperation" height=.8 width=1.4 fixedsize=true]
+    io [shape=parallelogram label="Input\nOutput" height=.8 width=1.2 fixedsize=true]
+    decision [shape=diamond label=Decision fixedsize=true, height=1.2, width=1.2]
+    process [shape=box label=Process height=0.7 width=1.2]
+    terminator [shape=ellipse label=Terminator height=.8 width=1.6]
+    connector [shape=circle label=Connector height=.8]
+    storage [shape=folder label=Storage height=0.7 width=1.2]
+    db [shape=cylinder label=Database height=0.7 width=1.2]
+    document [shape=note label=Document height=0.7 width=1.2]
+    merge [shape=invtriangle label=Merge fixedsize=true, height=1, width=1.2]
+    display [shape=cds label=Display height=0.7 width=1.2]
     manual_op -> io -> decision
     process -> terminator -> connector
     document -> storage -> db
