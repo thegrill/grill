@@ -26,15 +26,15 @@ digraph area_overview {
         style="rounded,filled"
         fillcolor=snow
         node [shape=none]
-        asset_d [label="Assets are composed via\lUSD & can plug to as\lmany steps as required.\l"]
-        step_d [label="Steps don't know about\lothers of the same type.\l"]
-        area_d [label="Areas handle assets I/O\lwhile running steps.\l"]
+        assets_description [label="Assets are composed via\lUSD & can plug to as\lmany steps as required.\l"]
+        steps_description [label="Steps don't know about\lothers of the same type.\l"]
+        areas_description [label="Areas handle assets I/O\lwhile running steps.\l"]
     }
     {input_asset1 input_asset2 input_asset3} -> step2
     input_asset3 -> step3
     step2 -> output_asset1
     step3 -> {output_asset2 output_asset3}
-    {rank=same input_asset1 sentinel output_asset1 asset_d}
-    {rank=same input_asset2 step2 output_asset2 step_d}
-    {rank=same input_asset3 step3 output_asset3 area_d}
+    {rank=same input_asset1 sentinel output_asset1 assets_description}
+    {rank=same input_asset2 step2 output_asset2 steps_description}
+    {rank=same input_asset3 step3 output_asset3 areas_description}
 }
