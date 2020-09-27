@@ -25,16 +25,12 @@ Data Flow
 ---------
 .. graphviz:: pipeline_flow.dot
 
-----
-
 Workflow Charts Legend
 ----------------------
 
 ``the grill`` flow charts will use the following symbol legend:
 
 .. graphviz:: flowchart_legend.dot
-
-----
 
 Data Creation
 -------------
@@ -44,6 +40,12 @@ At the highest level, all asset data, from creation to finish, goes through the 
 .. graphviz:: data_creation.dot
 
 ----
+
+Authoring
+=========
+
+To start authoring the ``production`` area is the one that defines everything
+that exists in a given project. From other areas to code names to organizational groups for assets.
 
 Indices and tables
 ------------------
