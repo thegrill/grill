@@ -11,7 +11,9 @@ digraph pipeline_overview {
     {rank=same area2 area4}
     {rank=same area5 area3}
     description [shape=record color=black style="rounded,filled" fillcolor=snow label="
-    Areas act as nodes of a\lgraph.\l\l
-    They don't care where their\linputs come from, allowing\lto have cyclic connections.\l"]
+        Areas act as nodes of\la graph.\l\l
+        They don't care where\l
+        their inputs come from,\l
+        allowing to have cyclic\lconnections.\l"]
     area7 -> description [style=invis]
 }
