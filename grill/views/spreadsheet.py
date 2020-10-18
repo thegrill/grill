@@ -3,15 +3,15 @@ import csv
 import inspect
 import itertools
 
-from pxr import Usd, UsdGeom
 from typing import NamedTuple
-from PySide2 import QtCore, QtWidgets, QtGui
+from datetime import datetime
 from functools import partial
+
+from pxr import Usd, UsdGeom
+from PySide2 import QtCore, QtWidgets, QtGui
 
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
-
-headers = ["Name", "Type", "Documentation", "Rating"]
 
 
 class Column(NamedTuple):
@@ -22,16 +22,17 @@ class Column(NamedTuple):
 
 
 _COLUMNS = (
-    Column("Name", lambda x: x.GetName(), lambda x, y: x, True),
-    Column("Path", lambda x: str(x.GetPath()), lambda x, y: x, True),
-    Column("Type", lambda x: x.GetTypeName(), lambda x, y: x.SetTypeName(y)),
-    Column("Documentation", lambda x: x.GetDocumentation(), lambda x, y: x.SetDocumentation(y)),
-    Column("Hidden", lambda x: x.IsHidden(), lambda x, y: x.SetHidden(y)),
+    Column("Name", Usd.Prim.GetName, lambda x, y: x, True),
+    Column("Path", lambda prim: str(prim.GetPath()), lambda x, y: x, True),
+    Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
+    Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
+    Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
 )
 columns_ids = {column.name: i for i, column in enumerate(_COLUMNS)}
 
 
-class ColumnOptions(QtWidgets.QWidget):
+class _ColumnOptions(QtWidgets.QWidget):
+    """A widget to be used within a header for columns on a USD spreadsheet."""
     def __init__(self, name, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
@@ -42,135 +43,144 @@ class ColumnOptions(QtWidgets.QWidget):
         line_filter = QtWidgets.QLineEdit()
         line_filter.setPlaceholderText("Filter")
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
-        self.line_filter = line_filter
+
         # Visibility
-        vis_button = QtWidgets.QPushButton("👀")
+        self._vis_button = vis_button = QtWidgets.QPushButton("👀")
         vis_button.setCheckable(True)
         vis_button.setChecked(True)
         vis_button.setFlat(True)
-        self.vis_button = vis_button
 
         # Lock
-        lock_button = QtWidgets.QPushButton()
+        self._lock_button = lock_button = QtWidgets.QPushButton()
         lock_button.setCheckable(True)
         lock_button.setFlat(True)
-        self.lock_button = lock_button
 
         # allow for a bit of extra space with option buttons
         label = QtWidgets.QLabel(f"{name} ")
-        self.label = label
         label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
         options_layout.addWidget(label)
         options_layout.addWidget(vis_button)
         options_layout.addWidget(lock_button)
         options_layout.addStretch()
         layout.addLayout(options_layout)
-        self.filter_layout = filter_layout = QtWidgets.QFormLayout()
+        self._filter_layout = filter_layout = QtWidgets.QFormLayout()
         filter_layout.addRow("🔎", line_filter)
         layout.addLayout(filter_layout)
 
         self._decorateLockButton(lock_button, lock_button.isChecked())
         lock_button.toggled.connect(partial(self._decorateLockButton, lock_button))
 
+        # public members exposure
+        self.label = label
+        self.locked = self._lock_button.toggled
+        self.toggled = self._vis_button.toggled
+        self.filterChanged = line_filter.textChanged
+
     def resizeEvent(self, event:QtGui.QResizeEvent):
+        """Update the widget mask after resize to bypass clicks to the parent widget."""
         value = super().resizeEvent(event)
         self._updateMask()
         return value
 
     def _updateMask(self):
+        """We want nothing but the filter and buttons to be clickable on this widget."""
         self.setMask(
-            QtGui.QRegion(self.filter_layout.geometry()) +
+            QtGui.QRegion(self._filter_layout.geometry()) +
             # when button are flat, geometry has a small render offset on x
-            QtGui.QRegion(self.lock_button.geometry().adjusted(-2, 0, 2, 0)) +
-            QtGui.QRegion(self.vis_button.geometry().adjusted(-2, 0, 2, 0))
+            QtGui.QRegion(self._lock_button.geometry().adjusted(-2, 0, 2, 0)) +
+            QtGui.QRegion(self._vis_button.geometry().adjusted(-2, 0, 2, 0))
         )
 
     def _decorateLockButton(self, button, locked):
         if locked:
             text = "🔐"
-            tip = "Non-editable (locked).\nClick to allow edits."
+            tip = "Column is non-editable (locked).\nClick to allow edits."
         else:
             text = "🔓"
-            tip = "Edits are allowed (unlocked).\nClick to block edits."
+            tip = "Edits are allowed on this column (unlocked).\nClick to block edits."
         button.setText(text)
         button.setToolTip(tip)
 
 
-class CustomFilter(QtCore.QSortFilterProxyModel):
-    def headerData(self, section: int, orientation: QtCore.Qt.Orientation,
-                   role: int = ..., ):
+class _ProxyModel(QtCore.QSortFilterProxyModel):
+    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
+        """For a vertical header, display a sequential visual index instead of the logical from the model."""
         # https://www.walletfox.com/course/qsortfilterproxymodelexample.php
         if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Vertical:
-            if orientation == QtCore.Qt.Vertical:
-                return section + 1
+            return section + 1
         return super().headerData(section, orientation, role)
 
 
-# https://www.qt.io/blog/2014/04/11/qt-weekly-5-widgets-on-a-qheaderview
-# https://www.qt.io/blog/2012/09/28/qt-support-weekly-27-widgets-on-a-header
-# https://www.learnpyqt.com/courses/model-views/qtableview-modelviews-numpy-pandas/
-class CustomHeader(QtWidgets.QHeaderView):
+class _Header(QtWidgets.QHeaderView):
+    """A header that allows to display the column options for a USD spreadsheet.
 
+    See also:
+        https://www.qt.io/blog/2014/04/11/qt-weekly-5-widgets-on-a-qheaderview
+        https://www.qt.io/blog/2012/09/28/qt-support-weekly-27-widgets-on-a-header
+        https://www.learnpyqt.com/courses/model-views/qtableview-modelviews-numpy-pandas/
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.sectionResized.connect(self._handleSectionResized)
-        self.sectionMoved.connect(self._handleSectionMoved)
-        self.setSectionsMovable(True)
-        self._options_frames = dict()
+        self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
 
         for index, columndata in enumerate(_COLUMNS):
-            column_options = ColumnOptions(columndata.name, parent=self)
+            column_options = _ColumnOptions(columndata.name, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
-            self._options_frames[index] = column_options
+            self.section_options[index] = column_options
+            self.setMinimumHeight(column_options.sizeHint().height() + 20)
+
+            # we keep track of the column options label but our proxy will bypass clicks
+            # allowing for UX when clicking on column headers
             proxy_label = QtWidgets.QLabel(parent=self)
             proxy_label.setText(column_options.label.text())
             proxy_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             self._proxy_labels[column_options.label] = proxy_label
-            size_hint = column_options.sizeHint()
-            self.setMinimumHeight(size_hint.height() + 20)
+
+        self.setSectionsMovable(True)
+        self.sectionResized.connect(self._handleSectionResized)
+        self.sectionMoved.connect(self._handleSectionMoved)
+
+    def _updateOptionsGeometry(self, logical_index: int):
+        """Updates the options geometry for the column at the logical index"""
+        widget = self.section_options[logical_index]
+        geometry = self._geometryForWidget(logical_index)
+        widget.setGeometry(*geometry)
+        label_geo = widget.label.geometry()
+        label_geo.moveTo(widget.pos())
+        self._proxy_labels[widget.label].setGeometry(label_geo)
+
+    def _updateVisualSections(self, start_index):
+        """Updates all of the sections starting at the given index."""
+        for index in range(start_index, self.count()):
+            self._updateOptionsGeometry(self.logicalIndex(index))
 
     def showEvent(self, event:QtGui.QShowEvent):
-        for index, widget in self._options_frames.items():
-            widget.setGeometry(*self._geometryForWidget(index))
+        for index, widget in self.section_options.items():
+            self._updateOptionsGeometry(index)
             widget.show()
+            # ensure we have readable columns upon show
             self.resizeSection(index, widget.sizeHint().width() + 20)
-            label_geo = widget.label.geometry()
-            label_geo.moveTo(widget.pos())
-            self._proxy_labels[widget.label].setGeometry(label_geo)
         super().showEvent(event)
 
     def _handleSectionResized(self, index):
-        for visual_index in range(self.visualIndex(index), self.count()):
-            logical_index = self.logicalIndex(visual_index)
-            widget = self._options_frames[logical_index]
-            geometry = self._geometryForWidget(logical_index)
-            widget.setGeometry(*geometry)
-            label_geo = widget.label.geometry()
-            label_geo.moveTo(widget.pos())
-            self._proxy_labels[widget.label].setGeometry(label_geo)
+        self._updateVisualSections(self.visualIndex(index))
 
-        for index, widget in self._options_frames.items():
-            vis = (widget.minimumSizeHint().width() / 2.0) < self.sectionSize(index)
+        for index, widget in self.section_options.items():
+            # if new size is smaller than the width hint half, make options invisible
+            vis = widget.minimumSizeHint().width() / 2.0 < self.sectionSize(index)
             widget.setVisible(vis)
             self._proxy_labels[widget.label].setVisible(vis)
 
-    def _handleSectionMoved(self, logical_index, old_visual_index, new_visual_index):
-        for visual_index in range(min(old_visual_index, new_visual_index), self.count()):
-            logical_index = self.logicalIndex(visual_index)
-            widget = self._options_frames[logical_index]
-            geometry = self._geometryForWidget(logical_index)
-            widget.setGeometry(*geometry)
-            label_geo = widget.label.geometry()
-            label_geo.moveTo(widget.pos())
-            self._proxy_labels[widget.label].setGeometry(label_geo)
+    def _handleSectionMoved(self, __, old_visual_index, new_visual_index):
+        self._updateVisualSections(min(old_visual_index, new_visual_index))
 
     def _geometryForWidget(self, index):
         """Main geometry for the widget to show at the given index"""
         return self.sectionViewportPosition(index) + 10, 10, self.sectionSize(index) - 20, self.height() - 20
 
 
-class Table(QtWidgets.QTableView):
+class _Table(QtWidgets.QTableView):
     def scrollContentsBy(self, dx:int, dy:int):
         super().scrollContentsBy(dx, dy)
         if dx:
@@ -178,66 +188,66 @@ class Table(QtWidgets.QTableView):
 
     def _fixPositions(self):
         header = self.horizontalHeader()
-        for index, widget in header._options_frames.items():
+        for index, widget in header.section_options.items():
             widget.setGeometry(*header._geometryForWidget(index))
 
 
 class Spreadsheet(QtWidgets.QDialog):
-    def __init__(self, parent=None, **kwargs):
+    def _toggleColumnVisibility(self, index: int, visible: bool):
+        self.table.setColumnHidden(index, not visible)
+
+    def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        model = QtGui.QStandardItemModel(0, len(headers))
-        self.model = model
-        self._stage = Usd.Stage.CreateInMemory()
-        self.model.setHorizontalHeaderLabels(['']* len(columns_ids))
+        self.model = model = QtGui.QStandardItemModel(0, len(_COLUMNS))
+        header = _Header(QtCore.Qt.Horizontal)
+        self.table = table = _Table()
+
         # for every column, create a proxy model and chain it to the next one
         proxy_model = source_model = model
-        filters_layout = QtWidgets.QHBoxLayout()
-        table = Table()
-        def _toggleColumnVis(index, value):
-            table.setColumnHidden(index, not value)
-
-        header = CustomHeader(QtCore.Qt.Horizontal)
         for column_index, columndata in enumerate(_COLUMNS):
-            proxy_model = CustomFilter()
+            proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
             proxy_model.setFilterKeyColumn(column_index)
-            source_model = proxy_model
-            column_options = header._options_frames[column_index]
-            column_options.line_filter.textChanged.connect(proxy_model.setFilterRegExp)
-            column_options.vis_button.toggled.connect(partial(_toggleColumnVis, column_index))
-            column_options.lock_button.toggled.connect(partial(self._setColumnLocked, column_index))
+            source_model = proxy_model  # chain so next proxy model takes this one
 
-        table.setModel(proxy_model)
+            column_options = header.section_options[column_index]
+            column_options.filterChanged.connect(proxy_model.setFilterRegExp)
+            column_options.toggled.connect(partial(self._toggleColumnVisibility, column_index))
+            column_options.locked.connect(partial(self._setColumnLocked, column_index))
 
+            if columndata.name == "Type":
+                table.setItemDelegateForColumn(column_index, ComboBoxItemDelegate())
+            # self.proxy_model = proxy_model
         header.setModel(proxy_model)
         header.setSectionsClickable(True)
+
+        table.setModel(proxy_model)
         table.setHorizontalHeader(header)
         table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.SelectedClicked)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
 
+        # table options
         sorting_enabled = QtWidgets.QCheckBox("Sorting Enabled")
         sorting_enabled.setChecked(True)
-        sorting_enabled.toggled.connect(table.setSortingEnabled)
-
-        self.sorting_enabled = sorting_enabled
-
-        self.table = table
-        all_layout = QtWidgets.QHBoxLayout()
-        all_layout.addWidget(sorting_enabled)
         lock_all = QtWidgets.QPushButton("🔐 Lock All")
         hide_all = QtWidgets.QPushButton("👀 Hide All")
-        all_layout.addWidget(lock_all)
-        all_layout.addWidget(hide_all)
-        all_layout.addStretch()
+        options_layout = QtWidgets.QHBoxLayout()
+        options_layout.addWidget(sorting_enabled)
+        options_layout.addWidget(lock_all)
+        options_layout.addWidget(hide_all)
+        options_layout.addStretch()
+        sorting_enabled.toggled.connect(table.setSortingEnabled)
+        self.sorting_enabled = sorting_enabled
+
         layout = QtWidgets.QVBoxLayout()
-        layout.addLayout(all_layout)
-        layout.addLayout(filters_layout)
-        layout.addWidget(self.table)
-        btn = QtWidgets.QPushButton("Add Row")
-        btn.clicked.connect(lambda: self.table.insertRow(self.table.rowCount()))
-        layout.addWidget(btn)
+        layout.addLayout(options_layout)
+        layout.addWidget(table)
+        insert_row = QtWidgets.QPushButton("Add Row")
+        # btn.clicked.connect(lambda: table.insertRow(table.rowCount()))
+        layout.addWidget(insert_row)
         self.setLayout(layout)
         self.installEventFilter(self)
+        self.setStage(stage or Usd.Stage.CreateInMemory())
 
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
@@ -252,7 +262,12 @@ class Spreadsheet(QtWidgets.QDialog):
         if not text:
             print("Nothing to do!")
             return
-        selection = self.table.selectedIndexes()
+        selection_model = self.table.selectionModel()
+        selection = selection_model.selectedIndexes()
+        print(f"Selection model indexes: {selection}")
+        # selection_model.index
+
+        # self.table.sele
         selected_rows = [i.row() for i in selection]
         selected_columns = [i.column() for i in selection]
         # if selection is not continuous, alert the user and abort instead of
@@ -263,40 +278,76 @@ class Spreadsheet(QtWidgets.QDialog):
                    "to paste with multiple selection.")
             QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
             return
-        model = self.model
+
+        model = self.table.model()
+        # mapped = model.mapSelectionToSource(selection_model.selection())
+        print(f"Selected Rows: {selected_rows}")
+        print(f"Selected Columns: {selected_columns}")
         current_count = model.rowCount()
+        print(f"Current count: {current_count}")
+        # selection_model.
         selected_row = min(selected_rows, default=current_count)
         selected_column = min(selected_columns, default=0)
-        # print(f"{selected_row=}")
-        # print(f"{selected_column=}")
+        print(f"selected_row, {selected_row}")
+        print(f"selected_column, {selected_column}")
         data = tuple(csv.reader(io.StringIO(text), delimiter=csv.excel_tab.delimiter))
-        # print(f"{data=}")
+        print(f"data, {data}")
         self.table.setSortingEnabled(False)  # prevent auto sort while adding rows
 
         maxrow = max(selected_row + len(data) - 1,  # either the amount of rows to paste
                      max(selected_rows, default=current_count))  # or the current row count
-        # print(f"{maxrow=}")
+        print(f"maxrow, {maxrow}")
         stage = self._stage
         # cycle the data in case that selection to paste on is bigger than source
-        for row_index, rowdata in enumerate(itertools.cycle(data), start=selected_row):
-            if row_index == model.rowCount():
-                # print(f"inserting a row at {row_index=}")
-                model.insertRow(row_index)
-                from datetime import datetime
-                time_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                prim = stage.DefinePrim(f"/root/test_{row_index}_{time_str}")
-                print(prim)
-                self._addPrimToRow(row_index, prim)
+        table_model = self.table.model()
+        def _sourceIndex(index):
+            source_model = index.model()
+            if isinstance(source_model, _ProxyModel):
+                return _sourceIndex(source_model.mapToSource(index))
             else:
-                prim = model.index(row_index, 0).data(QtCore.Qt.UserRole)
+                return index
+
+        # this is a bit broken. When pasting a single row on N non-sequential selected items,
+        # we are pasting the same value on all the inbetween non selected rows. please fix
+        for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
+            # model.ind
+            # table.sele
+            # model.data()
+
+
+            # row_index = visual_row
+            if visual_row == current_count:
+                # If we are in a filtered place, alert the user if they want to paste rest
+                print(f"inserting a row at row_index {visual_row}???")
+                # model.insertRow(row_index)
+                # time_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                # prim = stage.DefinePrim(f"/root/test_{row_index}_{time_str}")
+                # print(prim)
+                # self._addPrimToRow(row_index, prim)
+            else:
+
+                source_index = _sourceIndex(model.index(visual_row, 0))
+                source_item = self.model.itemFromIndex(source_index)
+                # model.index
+                # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
+                prim = source_item.data(QtCore.Qt.UserRole)
+                print("Source model:")
                 print(prim)
+                # print("Table proxy model:")
+                # print(self.table.model().index(row_index, 0).data(QtCore.Qt.UserRole))
 
-            for column_index, column_data in enumerate(rowdata, start=selected_column):
-                item = model.item(row_index, column_index)
-                _COLUMNS[column_index].setter(prim, column_data)
-                item.setData(column_data, QtCore.Qt.DisplayRole)
+                for column_index, column_data in enumerate(rowdata, start=selected_column):
+                    # item = model.map
+                    # mapped = table_model.mapToSource(table_model.index(row_index, column_index))
+                    # _sourceIndex(model.index(visual_row, column_index))
+                    # item = model.item(row_index, column_index)
+                    s_index = _sourceIndex(model.index(visual_row, column_index))
+                    s_item = self.model.itemFromIndex(s_index)
+                    assert s_item.data(QtCore.Qt.UserRole) is prim
+                    _COLUMNS[column_index].setter(prim, column_data)
+                    s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
-            if row_index == maxrow:
+            if visual_row == maxrow:
                 print("Bye!")
                 break
 
@@ -326,11 +377,8 @@ class Spreadsheet(QtWidgets.QDialog):
         table = self.table
         model = self.model
         model.clear()
-        model.setHorizontalHeaderLabels([''] * len(columns_ids))
+        model.setHorizontalHeaderLabels([''] * len(_COLUMNS))
         table.setSortingEnabled(False)
-        combobox_delegate = ComboBoxItemDelegate()
-        self.combobox_delegate = combobox_delegate
-        table.setItemDelegateForColumn(columns_ids["Type"], combobox_delegate)
         index = -1
         for index, prim in enumerate(stage.TraverseAll()):
             model.insertRow(index)
@@ -371,31 +419,20 @@ class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
         return combobox
 
     def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
-        #     QComboBox *cb = qobject_cast<QComboBox *>(editor);
-        #     Q_ASSERT(cb);
-        #     // get the index of the text in the combobox that matches the current value of the item
-        #     const QString currentText = index.data(Qt::EditRole).toString();
-        #     const int cbIndex = cb->findText(currentText);
-        #     // if it is valid, adjust the combobox
-        #     if (cbIndex >= 0)
-        #        cb->setCurrentIndex(cbIndex);
-        currentText = index.data(QtCore.Qt.EditRole)
-        # print(f"{currentText=}")
-        cbox_index = editor.findText(currentText)
-        # print(f"{cbox_index=}")
-        if cbox_index:
+        # get the index of the text in the combobox that matches the current value of the item
+        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
+        if cbox_index:  # if we know about this value, set it already
             editor.setCurrentIndex(cbox_index)
 
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel,
-                     index: QtCore.QModelIndex):
+    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
         prim = index.data(QtCore.Qt.UserRole)
         prim.SetTypeName(editor.currentText())
         model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
 
+    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
+    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
     # def commitAndCloseEditor(self):
-    #     """ Erm... commits the data and closes the editor. :) """
     #     editor = self.sender()
-    #
     #     # The commitData signal must be emitted when we've finished editing
     #     # and need to write our changed back to the model.
     #     self.commitData.emit(editor)
