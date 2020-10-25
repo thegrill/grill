@@ -57,7 +57,6 @@ class _ColumnOptions(QtWidgets.QWidget):
 
         # allow for a bit of extra space with option buttons
         label = QtWidgets.QLabel(f"{name} ")
-        label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
         options_layout.addWidget(label)
         options_layout.addWidget(vis_button)
         options_layout.addWidget(lock_button)
@@ -188,8 +187,7 @@ class _Table(QtWidgets.QTableView):
 
     def _fixPositions(self):
         header = self.horizontalHeader()
-        for index, widget in header.section_options.items():
-            widget.setGeometry(*header._geometryForWidget(index))
+        header._updateVisualSections(min(header.section_options))
 
 
 class Spreadsheet(QtWidgets.QDialog):
@@ -217,7 +215,8 @@ class Spreadsheet(QtWidgets.QDialog):
 
             if columndata.name == "Type":
                 table.setItemDelegateForColumn(column_index, ComboBoxItemDelegate())
-            # self.proxy_model = proxy_model
+
+
         header.setModel(proxy_model)
         header.setSectionsClickable(True)
 
@@ -265,9 +264,7 @@ class Spreadsheet(QtWidgets.QDialog):
         selection_model = self.table.selectionModel()
         selection = selection_model.selectedIndexes()
         print(f"Selection model indexes: {selection}")
-        # selection_model.index
 
-        # self.table.sele
         selected_rows = [i.row() for i in selection]
         selected_columns = [i.column() for i in selection]
         # if selection is not continuous, alert the user and abort instead of
@@ -280,7 +277,6 @@ class Spreadsheet(QtWidgets.QDialog):
             return
 
         model = self.table.model()
-        # mapped = model.mapSelectionToSource(selection_model.selection())
         print(f"Selected Rows: {selected_rows}")
         print(f"Selected Columns: {selected_columns}")
         current_count = model.rowCount()
@@ -380,6 +376,7 @@ class Spreadsheet(QtWidgets.QDialog):
         model.setHorizontalHeaderLabels([''] * len(_COLUMNS))
         table.setSortingEnabled(False)
         index = -1
+
         for index, prim in enumerate(stage.TraverseAll()):
             model.insertRow(index)
             self._addPrimToRow(index, prim)
@@ -389,12 +386,14 @@ class Spreadsheet(QtWidgets.QDialog):
 
     def _addPrimToRow(self, row_index, prim):
         model = self.model
+        model.blockSignals(True)  # prevent unneeded events from computing
         for column_index, column_data in enumerate(_COLUMNS):
             attribute = column_data.getter(prim)
             item = QtGui.QStandardItem()
             item.setData(attribute, QtCore.Qt.DisplayRole)
             item.setData(prim, QtCore.Qt.UserRole)
             model.setItem(row_index, column_index, item)
+        model.blockSignals(False)
 
     def _setColumnLocked(self, column_index, value):
         model = self.model
