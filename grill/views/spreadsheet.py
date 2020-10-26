@@ -414,7 +414,7 @@ class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
         combobox = QtWidgets.QComboBox(parent=parent)
-        combobox.addItems(options)
+        combobox.addItems(list(options.keys()))
         return combobox
 
     def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
