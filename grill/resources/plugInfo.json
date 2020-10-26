@@ -1,0 +1,16 @@
+{
+    "Plugins": [
+        {
+            "Type": "python",
+            "Name": "grill.views.usdview",
+            "Info": {
+                "Types": {
+                    "grill.views.usdview.GrillPluginContainer": {
+                        "bases": ["pxr.Usdviewq.plugin.PluginContainer"],
+                        "displayName": "Spreadsheet Editor"
+                    }
+                }
+            }
+        }
+    ]
+}
