@@ -1,4 +1,5 @@
 """Views related to USD scene description"""
+
 import os
 import tempfile
 from pxr import Usd
@@ -18,8 +19,13 @@ _COLUMNS = {
 
 
 class PrimDescription(QtWidgets.QDialog):
-
     def __init__(self, *args, **kwargs):
+        """For inspection and debug purposes, this widget makes primary use of:
+
+            - Usd.PrimCompositionQuery  (similar to USDView's composition tab)
+            - Pcp.PrimIndex.DumpToString
+            - Pcp.PrimIndex.DumpToDotGraph  (when dot is available)
+        """
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)

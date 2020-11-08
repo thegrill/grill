@@ -14,6 +14,16 @@ from PySide2 import QtCore, QtWidgets, QtGui
 options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
 
 
+from contextlib import contextmanager
+@contextmanager
+def wait():
+    try:
+        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
+        yield
+    finally:
+        QtWidgets.QApplication.restoreOverrideCursor()
+
+
 class Column(NamedTuple):
     name: str
     getter: callable
@@ -101,6 +111,16 @@ class _ColumnOptions(QtWidgets.QWidget):
         button.setToolTip(tip)
 
 
+def _sourceIndex(index):
+    """Recursively get the source index of a proxy model index"""
+    source_model = index.model()
+    if isinstance(source_model, _ProxyModel):
+        return _sourceIndex(source_model.mapToSource(index))
+    else:
+        return index
+
+
+from pprint import pprint
 class _ProxyModel(QtCore.QSortFilterProxyModel):
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
         """For a vertical header, display a sequential visual index instead of the logical from the model."""
@@ -108,6 +128,28 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Vertical:
             return section + 1
         return super().headerData(section, orientation, role)
+
+    def _extraFilters(self, source_row, source_parent):
+        source_column = self.filterKeyColumn()
+        source_model = self.sourceModel()
+        index = source_model.index(source_row, source_column, source_parent)
+        if not index.isValid():
+            print("WARNINGS-----------")
+            pprint(locals())
+        prim = index.data(QtCore.Qt.UserRole)
+        if not prim:
+            # row may have been just inserted as a result of a model.insertRow or
+            # model.appendRow call, so no prim yet. Mmmm see how to prevent this?
+            # blocking signals before adding row on setStage does not work around this.
+            return True
+        return prim.IsModel()
+        # return True
+
+    def filterAcceptsRow(self, source_row:int, source_parent:QtCore.QModelIndex) -> bool:
+        result = super().filterAcceptsRow(source_row, source_parent)
+        if result:
+            result = self._extraFilters(source_row, source_parent)
+        return result
 
 
 class _Header(QtWidgets.QHeaderView):
@@ -202,6 +244,7 @@ class Spreadsheet(QtWidgets.QDialog):
 
         # for every column, create a proxy model and chain it to the next one
         proxy_model = source_model = model
+        insert_row = QtWidgets.QPushButton("Add Row")
         for column_index, columndata in enumerate(_COLUMNS):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
@@ -215,7 +258,8 @@ class Spreadsheet(QtWidgets.QDialog):
 
             if columndata.name == "Type":
                 table.setItemDelegateForColumn(column_index, ComboBoxItemDelegate())
-
+            # quick thing to test filter changes
+            insert_row.clicked.connect(proxy_model.invalidateFilter)
 
         header.setModel(proxy_model)
         header.setSectionsClickable(True)
@@ -230,10 +274,12 @@ class Spreadsheet(QtWidgets.QDialog):
         sorting_enabled.setChecked(True)
         lock_all = QtWidgets.QPushButton("🔐 Lock All")
         hide_all = QtWidgets.QPushButton("👀 Hide All")
+        model_hierarchy = QtWidgets.QPushButton("🏡 Model Hierarchy")
         options_layout = QtWidgets.QHBoxLayout()
         options_layout.addWidget(sorting_enabled)
         options_layout.addWidget(lock_all)
         options_layout.addWidget(hide_all)
+        options_layout.addWidget(model_hierarchy)
         options_layout.addStretch()
         sorting_enabled.toggled.connect(table.setSortingEnabled)
         self.sorting_enabled = sorting_enabled
@@ -241,7 +287,11 @@ class Spreadsheet(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(options_layout)
         layout.addWidget(table)
-        insert_row = QtWidgets.QPushButton("Add Row")
+        # insert_row = QtWidgets.QPushButton("Add Row")
+        def _printLines():
+            for i in range(10):
+                print('-----------------------------------')
+        insert_row.clicked.connect(_printLines)
         # btn.clicked.connect(lambda: table.insertRow(table.rowCount()))
         layout.addWidget(insert_row)
         self.setLayout(layout)
@@ -270,9 +320,9 @@ class Spreadsheet(QtWidgets.QDialog):
         # if selection is not continuous, alert the user and abort instead of
         # trying to figure out what to paste where.
         if len(selection) != len(set(selected_rows)) * len(set(selected_columns)):
-            msg = ("Cells need to be selected continuously "
-                   "(no gaps between rows / columns)\n"
-                   "to paste with multiple selection.")
+            msg = ("To paste with multiple selection,"
+                   "cells need to be selected continuously\n"
+                   "(no gaps between rows / columns).")
             QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
             return
 
@@ -296,12 +346,6 @@ class Spreadsheet(QtWidgets.QDialog):
         stage = self._stage
         # cycle the data in case that selection to paste on is bigger than source
         table_model = self.table.model()
-        def _sourceIndex(index):
-            source_model = index.model()
-            if isinstance(source_model, _ProxyModel):
-                return _sourceIndex(source_model.mapToSource(index))
-            else:
-                return index
 
         # this is a bit broken. When pasting a single row on N non-sequential selected items,
         # we are pasting the same value on all the inbetween non selected rows. please fix
@@ -368,32 +412,32 @@ class Spreadsheet(QtWidgets.QDialog):
             print(f"Copied!\n{stream.getvalue()}")
             QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
 
+    @wait()
     def setStage(self, stage):
+        """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
         table = self.table
         model = self.model
         model.clear()
+        # labels are on the header widgets
         model.setHorizontalHeaderLabels([''] * len(_COLUMNS))
         table.setSortingEnabled(False)
-        index = -1
-
+        items = list(enumerate(stage.TraverseAll()))
+        model.setRowCount(len(items))
+        model.blockSignals(True)  # prevent unneeded events from computing
         for index, prim in enumerate(stage.TraverseAll()):
-            model.insertRow(index)
             self._addPrimToRow(index, prim)
-
-        model.setRowCount(index+1)
+        model.blockSignals(False)
         table.setSortingEnabled(self.sorting_enabled.isChecked())
 
     def _addPrimToRow(self, row_index, prim):
         model = self.model
-        model.blockSignals(True)  # prevent unneeded events from computing
         for column_index, column_data in enumerate(_COLUMNS):
             attribute = column_data.getter(prim)
             item = QtGui.QStandardItem()
             item.setData(attribute, QtCore.Qt.DisplayRole)
             item.setData(prim, QtCore.Qt.UserRole)
             model.setItem(row_index, column_index, item)
-        model.blockSignals(False)
 
     def _setColumnLocked(self, column_index, value):
         model = self.model
@@ -452,4 +496,3 @@ if __name__ == "__main__":
     spreadsheet.show()
     # column.show()
     sys.exit(app.exec_())
-
