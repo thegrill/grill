@@ -33,13 +33,13 @@ class PrimDescription(QtWidgets.QDialog):
         tree.setColumnCount(len(_COLUMNS))
         tree.setHeaderLabels(_COLUMNS)
         tree.setAlternatingRowColors(True)
-        horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        index_graph_scroll = QtWidgets.QScrollArea()
         self.index_graph = QtWidgets.QLabel()
+        index_graph_scroll = QtWidgets.QScrollArea()
         index_graph_scroll.setWidget(self.index_graph)
+        vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(tree)
         vertical.addWidget(index_graph_scroll)
+        horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(vertical)
         horizontal.addWidget(self.index_box)
         layout = QtWidgets.QVBoxLayout()
@@ -59,12 +59,11 @@ class PrimDescription(QtWidgets.QDialog):
         query = Usd.PrimCompositionQuery(prim)
         tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
         for arc in query.GetCompositionArcs():
+            strings = [str(getter(arc)) for getter in _COLUMNS.values()]
             intro_layer = arc.GetIntroducingLayer()
             parent = tree_items[intro_layer] if intro_layer else tree
             target_layer = arc.GetTargetNode().layerStack.identifier.rootLayer
-            strings = [str(getter(arc)) for getter in _COLUMNS.values()]
-            item = QtWidgets.QTreeWidgetItem(parent, strings)
-            tree_items[target_layer] = item
+            tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
 
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
