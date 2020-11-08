@@ -31,7 +31,10 @@ def __getattr__(name):
             print("CHANGEDD")
             print(locals())
             new_path = next(iter(new_paths), None)
-            widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path))
+            if not new_path:
+                widget.clear()
+            else:
+                widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path))
         usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
         return widget
     raise AttributeError(f"module {__name__} has no attribute {name}")

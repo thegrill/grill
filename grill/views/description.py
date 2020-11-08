@@ -25,6 +25,8 @@ class PrimDescription(QtWidgets.QDialog):
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
         self.composition_tree = tree = QtWidgets.QTreeWidget()
         tree.setColumnCount(len(_COLUMNS))
+        tree.setHeaderLabels(_COLUMNS)
+        tree.setAlternatingRowColors(True)
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         index_graph_scroll = QtWidgets.QScrollArea()
@@ -38,16 +40,16 @@ class PrimDescription(QtWidgets.QDialog):
         layout.addWidget(horizontal)
         self.setLayout(layout)
 
+    def clear(self):
+        self.composition_tree.clear()
+        self.index_box.clear()
+        self.index_graph.clear()
+
     def setPrim(self, prim):
-        tree = self.composition_tree
-        tree.clear()
-        if not prim:
-            return
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
-
-        tree.setHeaderLabels(_COLUMNS)
-        tree.setAlternatingRowColors(True)
+        tree = self.composition_tree
+        tree.clear()
         query = Usd.PrimCompositionQuery(prim)
         tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
         for arc in query.GetCompositionArcs():
