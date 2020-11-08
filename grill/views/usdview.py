@@ -30,11 +30,9 @@ def __getattr__(name):
         def primChanged(new_paths, old_paths):
             print("CHANGEDD")
             print(locals())
-            new_path = next(iter(new_paths))
+            new_path = next(iter(new_paths), None)
             widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path))
-        # usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(widget.setPrim)
         usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
-        # widget.setPrim(usdviewApi.stage)
         return widget
     raise AttributeError(f"module {__name__} has no attribute {name}")
 
@@ -60,6 +58,8 @@ def prim_description(usdviewApi):
         return __getattr__(_USDVIEW_PRIM_DESCRIPTION_KEY)
 
     editor = ctx.run(getEditor)
+    if usdviewApi.prim:
+        editor.setPrim(usdviewApi.prim)
     editor.show()
 
 

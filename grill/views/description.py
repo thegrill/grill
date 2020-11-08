@@ -2,9 +2,19 @@
 import os
 import tempfile
 from pxr import Usd
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide2 import QtWidgets, QtGui, QtCore
 
-composition_query_headers = ("Arc Type", "Introducing Layer")
+
+_COLUMNS = {
+    "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
+    "Target Path": lambda arc: arc.GetTargetNode().path,
+    "Arc": lambda arc: arc.GetArcType().displayName,
+    "Has Specs": Usd.CompositionArc.HasSpecs,
+    "Is Ancestral": Usd.CompositionArc.IsAncestral,
+    "Is Implicit": Usd.CompositionArc.IsImplicit,
+    "From Root Layer Prim Spec": Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
+    "From Root Layer Stack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
+}
 
 
 class PrimDescription(QtWidgets.QDialog):
@@ -13,32 +23,40 @@ class PrimDescription(QtWidgets.QDialog):
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
-        self.query_table = query_table = QtWidgets.QTableWidget(len(composition_query_headers), 2)
+        self.composition_tree = tree = QtWidgets.QTreeWidget()
+        tree.setColumnCount(len(_COLUMNS))
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        horizontal.addWidget(query_table)
-        horizontal.addWidget(self.index_box)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         index_graph_scroll = QtWidgets.QScrollArea()
-        self.index_graph = QtWidgets.QLabel("Graph Index")
+        self.index_graph = QtWidgets.QLabel()
         index_graph_scroll.setWidget(self.index_graph)
-        vertical.addWidget(horizontal)
+        vertical.addWidget(tree)
         vertical.addWidget(index_graph_scroll)
+        horizontal.addWidget(vertical)
+        horizontal.addWidget(self.index_box)
         layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(vertical)
+        layout.addWidget(horizontal)
         self.setLayout(layout)
 
     def setPrim(self, prim):
-        query = Usd.PrimCompositionQuery(prim)
+        tree = self.composition_tree
+        tree.clear()
+        if not prim:
+            return
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
-        query_table = self.query_table
-        query_table.clear()
-        query_table.setHorizontalHeaderLabels(composition_query_headers)
-        arcs = list(enumerate(query.GetCompositionArcs()))
-        query_table.setRowCount(len(arcs))
-        for row, arc in arcs:
-            query_table.setItem(row, 0, QtWidgets.QTableWidgetItem(arc.GetArcType().name))
-            query_table.setItem(row, 1, QtWidgets.QTableWidgetItem(arc.GetIntroducingLayer().identifier if arc.GetIntroducingLayer() else ""))
+
+        tree.setHeaderLabels(_COLUMNS)
+        tree.setAlternatingRowColors(True)
+        query = Usd.PrimCompositionQuery(prim)
+        tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
+        for arc in query.GetCompositionArcs():
+            intro_layer = arc.GetIntroducingLayer()
+            parent = tree_items[intro_layer] if intro_layer else tree
+            target_layer = arc.GetTargetNode().layerStack.identifier.rootLayer
+            strings = [str(getter(arc)) for getter in _COLUMNS.values()]
+            item = QtWidgets.QTreeWidgetItem(parent, strings)
+            tree_items[target_layer] = item
 
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
@@ -51,15 +69,11 @@ class PrimDescription(QtWidgets.QDialog):
 
 
 if __name__ == "__main__":
-    # stage = Usd.Stage.CreateInMemory()
-    # sphere = UsdGeom.Sphere.Define(stage, "/hi/sphere")
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     import sys
-
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     app = QtWidgets.QApplication(sys.argv)
     description = PrimDescription()
     prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
     description.setPrim(prim.GetChildren()[0])
-    # description.setPrim(stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp"))
     description.show()
     sys.exit(app.exec_())
