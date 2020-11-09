@@ -22,8 +22,40 @@ _COLUMNS = {
 
 
 @lru_cache(maxsize=None)
-def _dot_available():
+def _dot_exe():
     return shutil.which("dot")
+
+
+class _Dot2SvgSignals(QtCore.QObject):
+    error = QtCore.Signal(str)
+    result = QtCore.Signal(str)
+
+
+class _Dot2Svg(QtCore.QRunnable):
+    def __init__(self, source_fp, target_fp):
+        super().__init__()
+        self.signals = _Dot2SvgSignals()
+        self.source_fp = source_fp
+        self.target_fp = target_fp
+
+    @QtCore.Slot()
+    def run(self):
+        """Initialise the runner function with passed args, kwargs."""
+        dot_exe = _dot_exe()
+        if not dot_exe:
+            self.signals.error.emit(
+                "In order to display composition arcs in a graph,\n"
+                "the 'dot' command must be available on the current environment.\n\n"
+                "Please make sure graphviz is installed and 'dot' available \n"
+                "on the system's PATH environment variable."
+            )
+        else:
+            dotargs = [dot_exe, self.source_fp, "-Tsvg", "-o", self.target_fp]
+            result = subprocess.run(dotargs, capture_output=True)
+            if result.returncode:  # something went wrong
+                self.signals.error.emit(result.stderr.decode())
+            else:
+                self.signals.result.emit(self.target_fp)
 
 
 class PrimDescription(QtWidgets.QDialog):
@@ -42,6 +74,8 @@ class PrimDescription(QtWidgets.QDialog):
         tree.setHeaderLabels([k for k in _COLUMNS])
         tree.setAlternatingRowColors(True)
         self.index_graph = QtWidgets.QLabel()
+        self._threadpool = QtCore.QThreadPool()
+        self._dot2svg = None
         index_graph_scroll = QtWidgets.QScrollArea()
         index_graph_scroll.setWidget(self.index_graph)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
@@ -75,28 +109,25 @@ class PrimDescription(QtWidgets.QDialog):
             tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
 
         self.index_graph.setAutoFillBackground(False)
-        if not _dot_available():
-            self.index_graph.setText(
-                "In order to display composition arcs in a graph,\n"
-                "the 'dot' command must be available on the current environment.\n\n"
-                "Please make sure graphviz is installed and 'dot' available \n"
-                "on the system's PATH environment variable."
-            )
-            self.index_graph.resize(self.index_graph.minimumSizeHint())
-            return
-        # move this to a thread next.
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
         svg = f"{fp}.svg"
-        dotargs = ["dot", fp, "-Tsvg", "-o", svg]
-        result = subprocess.run(dotargs, capture_output=True, shell=True)
-        if result.returncode:  # something went wrong
-            self.index_graph.setText(result.stderr.decode())
-            self.index_graph.resize(self.index_graph.minimumSizeHint())
-        else:
-            index_graph = QtGui.QPixmap(svg)
-            self.index_graph.setPixmap(index_graph)
-            self.index_graph.resize(index_graph.size())
+        if self._dot2svg:  # forget about previous, unfinished runners
+            self._dot2svg.signals.error.disconnect()
+            self._dot2svg.signals.result.disconnect()
+        self._dot2svg = dot2svg = _Dot2Svg(fp, svg)
+        dot2svg.signals.error.connect(self._on_dot_error)
+        dot2svg.signals.result.connect(self._on_dot_result)
+        self._threadpool.start(dot2svg)
+
+    def _on_dot_error(self, message):
+        self.index_graph.setText(message)
+        self.index_graph.resize(self.index_graph.minimumSizeHint())
+
+    def _on_dot_result(self, filepath):
+        index_graph = QtGui.QPixmap(filepath)
+        self.index_graph.setPixmap(index_graph)
+        self.index_graph.resize(index_graph.size())
 
 
 if __name__ == "__main__":
