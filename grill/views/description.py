@@ -1,7 +1,10 @@
 """Views related to USD scene description"""
 
-import os
+import shutil
 import tempfile
+import subprocess
+from functools import lru_cache
+
 from pxr import Usd
 from PySide2 import QtWidgets, QtGui, QtCore
 
@@ -18,6 +21,11 @@ _COLUMNS = {
 }
 
 
+@lru_cache(maxsize=None)
+def _dot_available():
+    return shutil.which("dot")
+
+
 class PrimDescription(QtWidgets.QDialog):
     def __init__(self, *args, **kwargs):
         """For inspection and debug purposes, this widget makes primary use of:
@@ -31,7 +39,7 @@ class PrimDescription(QtWidgets.QDialog):
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
         self.composition_tree = tree = QtWidgets.QTreeWidget()
         tree.setColumnCount(len(_COLUMNS))
-        tree.setHeaderLabels(_COLUMNS)
+        tree.setHeaderLabels([k for k in _COLUMNS])
         tree.setAlternatingRowColors(True)
         self.index_graph = QtWidgets.QLabel()
         index_graph_scroll = QtWidgets.QScrollArea()
@@ -65,14 +73,26 @@ class PrimDescription(QtWidgets.QDialog):
             target_layer = arc.GetTargetNode().layerStack.identifier.rootLayer
             tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
 
+        if not _dot_available():
+            self.index_graph.setText(
+                "In order to display composition arcs in a graph,\n"
+                "'dot' must be available on the current environment."
+            )
+            self.index_graph.resize(self.index_graph.minimumSizeHint())
+            return
+        # move this to a thread next.
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
         svg = f"{fp}.svg"
-        # move this to a thread next
-        os.system(f"dot {fp} -Tsvg -o {svg}")
-        index_graph = QtGui.QPixmap(svg)
-        self.index_graph.setPixmap(index_graph)
-        self.index_graph.resize(index_graph.size())
+        dotargs = ["dot", fp, "-Tsvg", "-o", svg]
+        result = subprocess.run(dotargs, capture_output=True, shell=True)
+        if result.returncode:  # something went wrong
+            self.index_graph.setText(result.stderr.decode())
+            self.index_graph.resize(self.index_graph.minimumSizeHint())
+        else:
+            index_graph = QtGui.QPixmap(svg)
+            self.index_graph.setPixmap(index_graph)
+            self.index_graph.resize(index_graph.size())
 
 
 if __name__ == "__main__":
