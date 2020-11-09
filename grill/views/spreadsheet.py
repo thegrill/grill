@@ -28,12 +28,11 @@ class Column(NamedTuple):
     name: str
     getter: callable
     setter: callable
-    readonly: bool = False
 
 
 _COLUMNS = (
-    Column("Name", Usd.Prim.GetName, lambda x, y: x, True),
-    Column("Path", lambda prim: str(prim.GetPath()), lambda x, y: x, True),
+    Column("Name", Usd.Prim.GetName, lambda x, y: x),
+    Column("Path", lambda prim: str(prim.GetPath()), lambda x, y: x),
     Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
     Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
     Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
@@ -120,8 +119,11 @@ def _sourceIndex(index):
         return index
 
 
-from pprint import pprint
 class _ProxyModel(QtCore.QSortFilterProxyModel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._useModelHierarchy = False
+
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
         """For a vertical header, display a sequential visual index instead of the logical from the model."""
         # https://www.walletfox.com/course/qsortfilterproxymodelexample.php
@@ -134,22 +136,26 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         source_model = self.sourceModel()
         index = source_model.index(source_row, source_column, source_parent)
         if not index.isValid():
-            print("WARNINGS-----------")
-            pprint(locals())
+            raise ValueError(f"Invalid index from source_row={source_row}, source_column={source_column}, source_parent={source_parent}")
+
         prim = index.data(QtCore.Qt.UserRole)
         if not prim:
             # row may have been just inserted as a result of a model.insertRow or
             # model.appendRow call, so no prim yet. Mmmm see how to prevent this?
             # blocking signals before adding row on setStage does not work around this.
             return True
-        return prim.IsModel()
-        # return True
+        if self._useModelHierarchy:
+            return prim.IsModel()
+        return True
 
     def filterAcceptsRow(self, source_row:int, source_parent:QtCore.QModelIndex) -> bool:
         result = super().filterAcceptsRow(source_row, source_parent)
         if result:
             result = self._extraFilters(source_row, source_parent)
         return result
+
+    def _setModelHierarchyEnabled(self, value):
+        self._useModelHierarchy = value
 
 
 class _Header(QtWidgets.QHeaderView):
@@ -199,7 +205,6 @@ class _Header(QtWidgets.QHeaderView):
     def showEvent(self, event:QtGui.QShowEvent):
         for index, widget in self.section_options.items():
             self._updateOptionsGeometry(index)
-            widget.show()
             # ensure we have readable columns upon show
             self.resizeSection(index, widget.sizeHint().width() + 20)
         super().showEvent(event)
@@ -244,7 +249,7 @@ class Spreadsheet(QtWidgets.QDialog):
 
         # for every column, create a proxy model and chain it to the next one
         proxy_model = source_model = model
-        insert_row = QtWidgets.QPushButton("Add Row")
+        model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
         for column_index, columndata in enumerate(_COLUMNS):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
@@ -258,8 +263,9 @@ class Spreadsheet(QtWidgets.QDialog):
 
             if columndata.name == "Type":
                 table.setItemDelegateForColumn(column_index, ComboBoxItemDelegate())
-            # quick thing to test filter changes
-            insert_row.clicked.connect(proxy_model.invalidateFilter)
+
+            model_hierarchy.toggled.connect(proxy_model._setModelHierarchyEnabled)
+            model_hierarchy.clicked.connect(proxy_model.invalidateFilter)
 
         header.setModel(proxy_model)
         header.setSectionsClickable(True)
@@ -274,12 +280,12 @@ class Spreadsheet(QtWidgets.QDialog):
         sorting_enabled.setChecked(True)
         lock_all = QtWidgets.QPushButton("🔐 Lock All")
         hide_all = QtWidgets.QPushButton("👀 Hide All")
-        model_hierarchy = QtWidgets.QPushButton("🏡 Model Hierarchy")
+
         options_layout = QtWidgets.QHBoxLayout()
         options_layout.addWidget(sorting_enabled)
+        options_layout.addWidget(model_hierarchy)
         options_layout.addWidget(lock_all)
         options_layout.addWidget(hide_all)
-        options_layout.addWidget(model_hierarchy)
         options_layout.addStretch()
         sorting_enabled.toggled.connect(table.setSortingEnabled)
         self.sorting_enabled = sorting_enabled
@@ -287,12 +293,7 @@ class Spreadsheet(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(options_layout)
         layout.addWidget(table)
-        # insert_row = QtWidgets.QPushButton("Add Row")
-        def _printLines():
-            for i in range(10):
-                print('-----------------------------------')
-        insert_row.clicked.connect(_printLines)
-        # btn.clicked.connect(lambda: table.insertRow(table.rowCount()))
+        insert_row = QtWidgets.QPushButton("Add Row")
         layout.addWidget(insert_row)
         self.setLayout(layout)
         self.installEventFilter(self)
