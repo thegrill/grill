@@ -40,9 +40,8 @@ class _Dot2Svg(QtCore.QRunnable):
 
     @QtCore.Slot()
     def run(self):
-        """Initialise the runner function with passed args, kwargs."""
-        dot_exe = _dot_exe()
-        if not dot_exe:
+        dot = _dot_exe()
+        if not dot:
             self.signals.error.emit(
                 "In order to display composition arcs in a graph,\n"
                 "the 'dot' command must be available on the current environment.\n\n"
@@ -50,7 +49,7 @@ class _Dot2Svg(QtCore.QRunnable):
                 "on the system's PATH environment variable."
             )
         else:
-            dotargs = [dot_exe, self.source_fp, "-Tsvg", "-o", self.target_fp]
+            dotargs = [dot, self.source_fp, "-Tsvg", "-o", self.target_fp]
             result = subprocess.run(dotargs, capture_output=True)
             if result.returncode:  # something went wrong
                 self.signals.error.emit(result.stderr.decode())
