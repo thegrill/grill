@@ -53,6 +53,7 @@ class PrimDescription(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(horizontal)
         self.setLayout(layout)
+        self.setWindowTitle("Prim Composition")
 
     def clear(self):
         self.composition_tree.clear()
@@ -73,10 +74,13 @@ class PrimDescription(QtWidgets.QDialog):
             target_layer = arc.GetTargetNode().layerStack.identifier.rootLayer
             tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
 
+        self.index_graph.setAutoFillBackground(False)
         if not _dot_available():
             self.index_graph.setText(
                 "In order to display composition arcs in a graph,\n"
-                "'dot' must be available on the current environment."
+                "the 'dot' command must be available on the current environment.\n\n"
+                "Please make sure graphviz is installed and 'dot' available \n"
+                "on the system's PATH environment variable."
             )
             self.index_graph.resize(self.index_graph.minimumSizeHint())
             return
