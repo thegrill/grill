@@ -44,8 +44,7 @@ At the highest level, all asset data, from creation to finish, goes through the 
 Authoring
 =========
 
-To start authoring the ``production`` area is the one that defines everything
-that exists in a given project. From other areas to code names to organizational groups for assets.
+The ``production`` area is the one that defines everything that exists, from shows to areas, code names and organizational groups for assets.
 
 Indices and tables
 ------------------
