@@ -1,9 +1,8 @@
-from pprint import pprint
-
 import hou
 import toolutils
 
 from . import spreadsheet as _spreadsheet
+from . import description as _description
 
 
 def spreadsheet():
@@ -14,9 +13,6 @@ def spreadsheet():
     print("Launching Spreadsheet Editor!")
     viewer = toolutils.sceneViewer()
     stage = viewer.stage()
-    pprint(dir(viewer))
-    pprint([x for x in dir(viewer) if 'stage' in x.lower()])
-    pprint(locals())
     import importlib
     importlib.reload(_spreadsheet)
     editor = _spreadsheet.Spreadsheet(parent=hou.qt.mainWindow())
@@ -33,4 +29,15 @@ def spreadsheet():
     #refresh.clicked.connect(hou.ui.triggerUpdate)
     #refresh.clicked.connect(viewer.deleteAllMemories)
     #editor.layout().addWidget(refresh)
+    editor.show()
+
+
+def description():
+    print("Launching Spreadsheet Editor!")
+    viewer = toolutils.sceneViewer()
+    stage = viewer.stage()
+    import importlib
+    importlib.reload(_description)
+    editor = _description.PrimDescription(parent=hou.qt.mainWindow())
+    editor.setPrim(stage.GetDefaultPrim())
     editor.show()
