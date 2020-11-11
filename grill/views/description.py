@@ -107,6 +107,7 @@ class PrimDescription(QtWidgets.QDialog):
             target_layer = arc.GetTargetNode().layerStack.identifier.rootLayer
             tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
 
+        tree.expandAll()
         self.index_graph.setAutoFillBackground(False)
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
