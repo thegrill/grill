@@ -4,8 +4,8 @@ import inspect
 import itertools
 
 from typing import NamedTuple
-from datetime import datetime
 from functools import partial
+from collections import Counter
 
 from pxr import Usd, UsdGeom
 from PySide2 import QtCore, QtWidgets, QtGui
@@ -37,7 +37,6 @@ _COLUMNS = (
     Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
     Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
 )
-columns_ids = {column.name: i for i, column in enumerate(_COLUMNS)}
 
 
 class _ColumnOptions(QtWidgets.QWidget):
@@ -82,6 +81,7 @@ class _ColumnOptions(QtWidgets.QWidget):
         self.label = label
         self.locked = self._lock_button.toggled
         self.toggled = self._vis_button.toggled
+        # self.toggle = self._vis_button.toggle
         self.filterChanged = line_filter.textChanged
 
     def resizeEvent(self, event:QtGui.QResizeEvent):
@@ -108,6 +108,9 @@ class _ColumnOptions(QtWidgets.QWidget):
             tip = "Edits are allowed on this column (unlocked).\nClick to block edits."
         button.setText(text)
         button.setToolTip(tip)
+
+    def _setHidden(self, value):
+        self._vis_button.setChecked(not value)
 
 
 def _sourceIndex(index):
@@ -207,16 +210,12 @@ class _Header(QtWidgets.QHeaderView):
             self._updateOptionsGeometry(index)
             # ensure we have readable columns upon show
             self.resizeSection(index, widget.sizeHint().width() + 20)
+        self._handleSectionsVisibility()
         super().showEvent(event)
 
     def _handleSectionResized(self, index):
         self._updateVisualSections(self.visualIndex(index))
-
-        for index, widget in self.section_options.items():
-            # if new size is smaller than the width hint half, make options invisible
-            vis = widget.minimumSizeHint().width() / 2.0 < self.sectionSize(index)
-            widget.setVisible(vis)
-            self._proxy_labels[widget.label].setVisible(vis)
+        self._handleSectionsVisibility()
 
     def _handleSectionMoved(self, __, old_visual_index, new_visual_index):
         self._updateVisualSections(min(old_visual_index, new_visual_index))
@@ -225,6 +224,13 @@ class _Header(QtWidgets.QHeaderView):
         """Main geometry for the widget to show at the given index"""
         return self.sectionViewportPosition(index) + 10, 10, self.sectionSize(index) - 20, self.height() - 20
 
+    def _handleSectionsVisibility(self):
+        for index, widget in self.section_options.items():
+            # if new size is smaller than the width hint half, make options invisible
+            vis = widget.minimumSizeHint().width() / 2.0 < self.sectionSize(index)
+            print(f"Setting vis on {index} to {vis}")
+            widget.setVisible(vis)
+            self._proxy_labels[widget.label].setVisible(vis)
 
 class _Table(QtWidgets.QTableView):
     def scrollContentsBy(self, dx:int, dy:int):
@@ -241,6 +247,21 @@ class Spreadsheet(QtWidgets.QDialog):
     def _toggleColumnVisibility(self, index: int, visible: bool):
         self.table.setColumnHidden(index, not visible)
 
+    def _conformVisibilitySwitch(self):
+        """Make vis option offer inverse depending on how much is currently hidden"""
+        counter = Counter(self.table.isColumnHidden(i) for i in self._column_options)
+        current, count = next(iter(counter.most_common(1)))
+        self._vis_all.setText(self._vis_key_by_value[current])
+
+    def _conformVisibility(self):
+        value = self._vis_states[self._vis_all.text()]
+        for index, options in self._column_options.items():
+            self.table.setColumnHidden(index, not value)
+            options._setHidden(not value)
+
+        self._vis_all.setText(self._vis_key_by_value[not value])
+        self.table.horizontalHeader()._handleSectionsVisibility()
+
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(_COLUMNS))
@@ -250,6 +271,13 @@ class Spreadsheet(QtWidgets.QDialog):
         # for every column, create a proxy model and chain it to the next one
         proxy_model = source_model = model
         model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
+        hide_key = "👀 Hide All"
+        self._vis_states = {"👀 Show All": True, hide_key: False}
+        self._vis_key_by_value = {v:k for k, v in self._vis_states.items()}  # True: Show All
+        # lock_all = QtWidgets.QPushButton("🔐 Lock All")
+        self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
+        vis_all.clicked.connect(self._conformVisibility)
+        self._column_options = dict()
         for column_index, columndata in enumerate(_COLUMNS):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
@@ -259,13 +287,18 @@ class Spreadsheet(QtWidgets.QDialog):
             column_options = header.section_options[column_index]
             column_options.filterChanged.connect(proxy_model.setFilterRegExp)
             column_options.toggled.connect(partial(self._toggleColumnVisibility, column_index))
+            column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
             column_options.locked.connect(partial(self._setColumnLocked, column_index))
+            # vis_all.clicked.connect(partial(self._toggleColumnVisibility, column_index, True))
+
+            # lock_all.clicked.connect(partial(self._setColumnLocked, column_index, True))
 
             if columndata.name == "Type":
                 table.setItemDelegateForColumn(column_index, ComboBoxItemDelegate())
 
             model_hierarchy.toggled.connect(proxy_model._setModelHierarchyEnabled)
             model_hierarchy.clicked.connect(proxy_model.invalidateFilter)
+            self._column_options[column_index] = column_options
 
         header.setModel(proxy_model)
         header.setSectionsClickable(True)
@@ -278,14 +311,12 @@ class Spreadsheet(QtWidgets.QDialog):
         # table options
         sorting_enabled = QtWidgets.QCheckBox("Sorting Enabled")
         sorting_enabled.setChecked(True)
-        lock_all = QtWidgets.QPushButton("🔐 Lock All")
-        hide_all = QtWidgets.QPushButton("👀 Hide All")
 
         options_layout = QtWidgets.QHBoxLayout()
         options_layout.addWidget(sorting_enabled)
         options_layout.addWidget(model_hierarchy)
-        options_layout.addWidget(lock_all)
-        options_layout.addWidget(hide_all)
+        # options_layout.addWidget(lock_all)
+        options_layout.addWidget(vis_all)
         options_layout.addStretch()
         sorting_enabled.toggled.connect(table.setSortingEnabled)
         self.sorting_enabled = sorting_enabled
