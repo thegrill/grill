@@ -209,13 +209,17 @@ class _Header(QtWidgets.QHeaderView):
         for index, widget in self.section_options.items():
             self._updateOptionsGeometry(index)
             # ensure we have readable columns upon show
+            widget.show()
             self.resizeSection(index, widget.sizeHint().width() + 20)
-        self._handleSectionsVisibility()
         super().showEvent(event)
 
     def _handleSectionResized(self, index):
         self._updateVisualSections(self.visualIndex(index))
-        self._handleSectionsVisibility()
+        for index, widget in self.section_options.items():
+            # if new size is smaller than the width hint half, make options invisible
+            vis = widget.minimumSizeHint().width() / 2.0 < self.sectionSize(index)
+            widget.setVisible(vis)
+            self._proxy_labels[widget.label].setVisible(vis)
 
     def _handleSectionMoved(self, __, old_visual_index, new_visual_index):
         self._updateVisualSections(min(old_visual_index, new_visual_index))
@@ -224,13 +228,6 @@ class _Header(QtWidgets.QHeaderView):
         """Main geometry for the widget to show at the given index"""
         return self.sectionViewportPosition(index) + 10, 10, self.sectionSize(index) - 20, self.height() - 20
 
-    def _handleSectionsVisibility(self):
-        for index, widget in self.section_options.items():
-            # if new size is smaller than the width hint half, make options invisible
-            vis = widget.minimumSizeHint().width() / 2.0 < self.sectionSize(index)
-            print(f"Setting vis on {index} to {vis}")
-            widget.setVisible(vis)
-            self._proxy_labels[widget.label].setVisible(vis)
 
 class _Table(QtWidgets.QTableView):
     def scrollContentsBy(self, dx:int, dy:int):
@@ -260,7 +257,21 @@ class Spreadsheet(QtWidgets.QDialog):
             options._setHidden(not value)
 
         self._vis_all.setText(self._vis_key_by_value[not value])
-        self.table.horizontalHeader()._handleSectionsVisibility()
+        self.table.horizontalHeader()._handleSectionResized(0)
+
+    def _conformLockSwitch(self):
+        """Make lock option offer inverse depending on how much is currently locked"""
+        counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
+        current, count = next(iter(counter.most_common(1)))
+        self._lock_all.setText(self._lock_key_by_value[not current])
+
+    @wait()
+    def _conformLocked(self):
+        value = self._lock_states[self._lock_all.text()]
+        for index, options in self._column_options.items():
+            options._lock_button.setChecked(value)
+            self._setColumnLocked(index, value)
+        self._lock_all.setText(self._lock_key_by_value[not value])
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
@@ -274,9 +285,13 @@ class Spreadsheet(QtWidgets.QDialog):
         hide_key = "👀 Hide All"
         self._vis_states = {"👀 Show All": True, hide_key: False}
         self._vis_key_by_value = {v:k for k, v in self._vis_states.items()}  # True: Show All
-        # lock_all = QtWidgets.QPushButton("🔐 Lock All")
         self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
         vis_all.clicked.connect(self._conformVisibility)
+        lock_key = "🔐 Lock All"
+        self._lock_states = {lock_key: True, "🔓 Unlock All": False}
+        self._lock_key_by_value = {v: k for k, v in self._lock_states.items()}  # True: Lock All
+        self._lock_all = lock_all = QtWidgets.QPushButton(lock_key)
+        lock_all.clicked.connect(self._conformLocked)
         self._column_options = dict()
         for column_index, columndata in enumerate(_COLUMNS):
             proxy_model = _ProxyModel()
@@ -289,9 +304,7 @@ class Spreadsheet(QtWidgets.QDialog):
             column_options.toggled.connect(partial(self._toggleColumnVisibility, column_index))
             column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
             column_options.locked.connect(partial(self._setColumnLocked, column_index))
-            # vis_all.clicked.connect(partial(self._toggleColumnVisibility, column_index, True))
-
-            # lock_all.clicked.connect(partial(self._setColumnLocked, column_index, True))
+            column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
             if columndata.name == "Type":
                 table.setItemDelegateForColumn(column_index, ComboBoxItemDelegate())
@@ -315,8 +328,8 @@ class Spreadsheet(QtWidgets.QDialog):
         options_layout = QtWidgets.QHBoxLayout()
         options_layout.addWidget(sorting_enabled)
         options_layout.addWidget(model_hierarchy)
-        # options_layout.addWidget(lock_all)
         options_layout.addWidget(vis_all)
+        options_layout.addWidget(lock_all)
         options_layout.addStretch()
         sorting_enabled.toggled.connect(table.setSortingEnabled)
         self.sorting_enabled = sorting_enabled
@@ -332,7 +345,7 @@ class Spreadsheet(QtWidgets.QDialog):
 
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
-            self.copySelection()
+            self._copySelection()
         elif event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Paste):
             self._pasteClipboard()
         return super().eventFilter(source, event)
@@ -375,6 +388,8 @@ class Spreadsheet(QtWidgets.QDialog):
         maxrow = max(selected_row + len(data) - 1,  # either the amount of rows to paste
                      max(selected_rows, default=current_count))  # or the current row count
         print(f"maxrow, {maxrow}")
+        print("Coming soon!")
+        return
         stage = self._stage
         # cycle the data in case that selection to paste on is bigger than source
         table_model = self.table.model()
@@ -425,9 +440,8 @@ class Spreadsheet(QtWidgets.QDialog):
 
         self.table.setSortingEnabled(self.sorting_enabled.isChecked())  # prevent auto sort while adding rows
 
-    def copySelection(self):
+    def _copySelection(self):
         selection = self.table.selectedIndexes()
-        print(selection)
         if selection:
             rows = sorted(index.row() for index in selection)
             columns = sorted(index.column() for index in selection)
@@ -439,9 +453,7 @@ class Spreadsheet(QtWidgets.QDialog):
                 column = index.column() - columns[0]
                 table[row][column] = index.data()
             stream = io.StringIO()
-
             csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(table)
-            print(f"Copied!\n{stream.getvalue()}")
             QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
 
     @wait()
@@ -473,12 +485,9 @@ class Spreadsheet(QtWidgets.QDialog):
 
     def _setColumnLocked(self, column_index, value):
         model = self.model
-        editable = QtCore.Qt.ItemIsEditable
         for row_index in range(model.rowCount()):
             item = model.item(row_index, column_index)
-            current = item.flags()
-            # https://www.programcreek.com/python/example/101641/PyQt5.QtCore.Qt.ItemIsEditable
-            item.setFlags(current ^ editable if value else current | editable)
+            item.setEditable(not value)
 
 
 class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
