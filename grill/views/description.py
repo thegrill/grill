@@ -103,7 +103,10 @@ class PrimDescription(QtWidgets.QDialog):
         for arc in query.GetCompositionArcs():
             strings = [str(getter(arc)) for getter in _COLUMNS.values()]
             intro_layer = arc.GetIntroducingLayer()
-            parent = tree_items[intro_layer] if intro_layer else tree
+            if intro_layer and intro_layer in tree_items:
+                parent = tree_items[intro_layer]
+            else:
+                parent = tree
             target_layer = arc.GetTargetNode().layerStack.identifier.rootLayer
             tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
 

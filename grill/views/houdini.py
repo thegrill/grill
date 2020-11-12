@@ -39,5 +39,25 @@ def description():
     import importlib
     importlib.reload(_description)
     editor = _description.PrimDescription(parent=hou.qt.mainWindow())
-    editor.setPrim(stage.GetDefaultPrim())
+    editor._prim = None
+    def _updatePrim():
+        # find a cheaper way for this?
+        viewer = toolutils.sceneViewer()
+        stage = viewer.stage()
+        if not stage:
+            editor.clear()
+            editor._prim = None
+            return
+        selection = viewer.currentSceneGraphSelection()
+        prims = tuple(stage.GetPrimAtPath(path) for path in selection)
+        prim = next(iter(prims), None)
+        if not prim:
+            if editor._prim:
+                editor.clear()
+                editor._prim = None
+        else:
+            if prim != editor._prim:
+                editor.setPrim(prim)
+                editor._prim = prim
+    hou.ui.addEventLoopCallback(_updatePrim)
     editor.show()
