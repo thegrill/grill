@@ -47,7 +47,7 @@ extensions = ['sphinx.ext.autodoc',
 
 autodoc_member_order = 'groupwise'
 autodoc_default_flags = ['members', 'show-inheritance']
-graphviz_dot = r'B:\__appdata__\graphviz\bin\dot.exe'
+# graphviz_dot = r'B:\__appdata__\graphviz\bin\dot.exe'
 graphviz_output_format = 'svg'
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
