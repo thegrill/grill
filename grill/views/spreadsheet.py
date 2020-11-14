@@ -2,6 +2,7 @@ import io
 import csv
 import inspect
 import itertools
+import contextlib
 
 from typing import NamedTuple
 from functools import partial
@@ -14,8 +15,7 @@ from PySide2 import QtCore, QtWidgets, QtGui
 options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
 
 
-from contextlib import contextmanager
-@contextmanager
+@contextlib.contextmanager
 def wait():
     try:
         QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
@@ -24,18 +24,18 @@ def wait():
         QtWidgets.QApplication.restoreOverrideCursor()
 
 
-class Column(NamedTuple):
+class _Column(NamedTuple):
     name: str
     getter: callable
     setter: callable
 
 
 _COLUMNS = (
-    Column("Name", Usd.Prim.GetName, lambda x, y: x),
-    Column("Path", lambda prim: str(prim.GetPath()), lambda x, y: x),
-    Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
-    Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
-    Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+    _Column("Name", Usd.Prim.GetName, lambda x, y: x),
+    _Column("Path", lambda prim: str(prim.GetPath()), lambda x, y: x),
+    _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
+    _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
+    _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
 )
 
 
@@ -111,15 +111,6 @@ class _ColumnOptions(QtWidgets.QWidget):
 
     def _setHidden(self, value):
         self._vis_button.setChecked(not value)
-
-
-def _sourceIndex(index):
-    """Recursively get the source index of a proxy model index"""
-    source_model = index.model()
-    if isinstance(source_model, _ProxyModel):
-        return _sourceIndex(source_model.mapToSource(index))
-    else:
-        return index
 
 
 class _ProxyModel(QtCore.QSortFilterProxyModel):
@@ -240,39 +231,43 @@ class _Table(QtWidgets.QTableView):
         header._updateVisualSections(min(header.section_options))
 
 
+class _ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
+    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+    """
+    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+        combobox = QtWidgets.QComboBox(parent=parent)
+        combobox.addItems(list(options.keys()))
+        return combobox
+
+    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
+        # get the index of the text in the combobox that matches the current value of the item
+        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
+        if cbox_index:  # if we know about this value, set it already
+            editor.setCurrentIndex(cbox_index)
+
+    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        prim = index.data(QtCore.Qt.UserRole)
+        prim.SetTypeName(editor.currentText())
+        model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
+
+    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
+    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
+    # def commitAndCloseEditor(self):
+    #     editor = self.sender()
+    #     # The commitData signal must be emitted when we've finished editing
+    #     # and need to write our changed back to the model.
+    #     self.commitData.emit(editor)
+    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
+
+
 class Spreadsheet(QtWidgets.QDialog):
-    def _toggleColumnVisibility(self, index: int, visible: bool):
-        self.table.setColumnHidden(index, not visible)
-
-    def _conformVisibilitySwitch(self):
-        """Make vis option offer inverse depending on how much is currently hidden"""
-        counter = Counter(self.table.isColumnHidden(i) for i in self._column_options)
-        current, count = next(iter(counter.most_common(1)))
-        self._vis_all.setText(self._vis_key_by_value[current])
-
-    def _conformVisibility(self):
-        value = self._vis_states[self._vis_all.text()]
-        for index, options in self._column_options.items():
-            self.table.setColumnHidden(index, not value)
-            options._setHidden(not value)
-
-        self._vis_all.setText(self._vis_key_by_value[not value])
-        self.table.horizontalHeader()._handleSectionResized(0)
-
-    def _conformLockSwitch(self):
-        """Make lock option offer inverse depending on how much is currently locked"""
-        counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
-        current, count = next(iter(counter.most_common(1)))
-        self._lock_all.setText(self._lock_key_by_value[not current])
-
-    @wait()
-    def _conformLocked(self):
-        value = self._lock_states[self._lock_all.text()]
-        for index, options in self._column_options.items():
-            options._lock_button.setChecked(value)
-            self._setColumnLocked(index, value)
-        self._lock_all.setText(self._lock_key_by_value[not value])
-
+    """TODO:
+        - Make paste work with filtered items (paste has been disabled)
+        - Per column control on context menu on all vis button
+        - Add row creates an anonymous prim
+    """
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(_COLUMNS))
@@ -307,7 +302,7 @@ class Spreadsheet(QtWidgets.QDialog):
             column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
             if columndata.name == "Type":
-                table.setItemDelegateForColumn(column_index, ComboBoxItemDelegate())
+                table.setItemDelegateForColumn(column_index, _ComboBoxItemDelegate())
 
             model_hierarchy.toggled.connect(proxy_model._setModelHierarchyEnabled)
             model_hierarchy.clicked.connect(proxy_model.invalidateFilter)
@@ -343,6 +338,38 @@ class Spreadsheet(QtWidgets.QDialog):
         self.installEventFilter(self)
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Spreadsheet Editor")
+
+    def _toggleColumnVisibility(self, index: int, visible: bool):
+        self.table.setColumnHidden(index, not visible)
+
+    def _conformVisibilitySwitch(self):
+        """Make vis option offer inverse depending on how much is currently hidden"""
+        counter = Counter(self.table.isColumnHidden(i) for i in self._column_options)
+        current, count = next(iter(counter.most_common(1)))
+        self._vis_all.setText(self._vis_key_by_value[current])
+
+    def _conformVisibility(self):
+        value = self._vis_states[self._vis_all.text()]
+        for index, options in self._column_options.items():
+            self.table.setColumnHidden(index, not value)
+            options._setHidden(not value)
+
+        self._vis_all.setText(self._vis_key_by_value[not value])
+        self.table.horizontalHeader()._handleSectionResized(0)
+
+    def _conformLockSwitch(self):
+        """Make lock option offer inverse depending on how much is currently locked"""
+        counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
+        current, count = next(iter(counter.most_common(1)))
+        self._lock_all.setText(self._lock_key_by_value[not current])
+
+    @wait()
+    def _conformLocked(self):
+        value = self._lock_states[self._lock_all.text()]
+        for index, options in self._column_options.items():
+            options._lock_button.setChecked(value)
+            self._setColumnLocked(index, value)
+        self._lock_all.setText(self._lock_key_by_value[not value])
 
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
@@ -397,6 +424,14 @@ class Spreadsheet(QtWidgets.QDialog):
 
         # this is a bit broken. When pasting a single row on N non-sequential selected items,
         # we are pasting the same value on all the inbetween non selected rows. please fix
+        def _sourceIndex(index):
+            """Recursively get the source index of a proxy model index"""
+            source_model = index.model()
+            if isinstance(source_model, _ProxyModel):
+                return _sourceIndex(source_model.mapToSource(index))
+            else:
+                return index
+
         for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
             # model.ind
             # table.sele
@@ -491,50 +526,15 @@ class Spreadsheet(QtWidgets.QDialog):
             item.setEditable(not value)
 
 
-class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
-    """ A subclass of QStyledItemDelegate that allows us to render our
-        pretty star ratings.
-
-    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
-    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
-    """
-    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        combobox = QtWidgets.QComboBox(parent=parent)
-        combobox.addItems(list(options.keys()))
-        return combobox
-
-    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
-        # get the index of the text in the combobox that matches the current value of the item
-        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
-        if cbox_index:  # if we know about this value, set it already
-            editor.setCurrentIndex(cbox_index)
-
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-        prim = index.data(QtCore.Qt.UserRole)
-        prim.SetTypeName(editor.currentText())
-        model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
-
-    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
-    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
-    # def commitAndCloseEditor(self):
-    #     editor = self.sender()
-    #     # The commitData signal must be emitted when we've finished editing
-    #     # and need to write our changed back to the model.
-    #     self.commitData.emit(editor)
-    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
-
-
 if __name__ == "__main__":
     """ Run the application. """
     import sys
     app = QtWidgets.QApplication(sys.argv)
 
-    # column = ColumnOptions("test uno dos tres ----------------------------")
     stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\UsdSkelExamples\UsdSkelExamples\HumanFemale\HumanFemale.walk.usd")
     # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\PointInstancedMedCity\PointInstancedMedCity.usd")
     spreadsheet = Spreadsheet()
     spreadsheet.setStage(stage)
     spreadsheet.show()
-    # column.show()
     sys.exit(app.exec_())
