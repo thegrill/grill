@@ -13,7 +13,6 @@ digraph data_creation {
     subgraph cluster_descriptions{
         color=invis margin=0
         node [shape=box style="rounded,filled" fillcolor=snow]
-        context_description stage_description opinion_description persistency_description
         context_description [label="Contextual information for the\lprocesses about to manipulate assets.\l\lMinimum required is a pipeline area.\l"]
         stage_description [label="A corresponding USD stage for the\lcontext is opened.\l\lIf none exists but the context is valid,\lone will be created.\l"]
         opinion_description [label="USD opinions are authored by the\lpipeline steps from the context area.\l\l"]

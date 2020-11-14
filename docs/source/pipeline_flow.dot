@@ -14,11 +14,11 @@ digraph pipeline_overview {
         style="rounded,filled"
         fillcolor=snow
         node [shape=none fillcolor=none]
-        node_d [label="Areas act as nodes of\la graph.\l"]
-        io_d [label="Inputs can come from\lanywhere.\l"]
-        cyclic_d [label="Cyclic connections are\lallowed.\l"]
+        node_description [label="Areas act as nodes of\la graph.\l"]
+        io_description [label="Inputs can come from\lanywhere.\l"]
+        cyclic_description [label="Cyclic connections are\lallowed.\l"]
     }
-    {rank=same area1 node_d}
-    {rank=same area2 area4 io_d}
-    {rank=same area5 area3 cyclic_d}
+    {rank=same area1 node_description}
+    {rank=same area2 area4 io_description}
+    {rank=same area5 area3 cyclic_description}
 }
