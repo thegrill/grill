@@ -4,7 +4,7 @@ This namespace contains Qt widgets to author and inspect USD scene graphs.
 
 ## Spreadsheet Editor
 
-Tabular representation of a stage. Ability to quick inspect and edit prims in bulk is the main motivation for this view to exist.
+Tabular representation of a stage. Ability to quickly inspect and edit prims in bulk is the main motivation for this view to exist.
 Copy pasting functionality like in other spreadsheet applications should be possible (via csv clipboards). 
 
 ### USD View

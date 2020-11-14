@@ -41,6 +41,11 @@ At the highest level, all asset data, from creation to finish, goes through the 
 
 ----
 
+Inspecting
+==========
+
+.. mdinclude:: ../../grill/views/README.md
+
 Authoring
 =========
 
