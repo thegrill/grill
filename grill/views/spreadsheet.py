@@ -342,6 +342,7 @@ class Spreadsheet(QtWidgets.QDialog):
         self.setLayout(layout)
         self.installEventFilter(self)
         self.setStage(stage or Usd.Stage.CreateInMemory())
+        self.setWindowTitle("Spreadsheet Editor")
 
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):

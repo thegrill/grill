@@ -17,29 +17,23 @@ def spreadsheet():
     importlib.reload(_spreadsheet)
     editor = _spreadsheet.Spreadsheet(parent=hou.qt.mainWindow())
     editor.setStage(stage)
-    # at the moment, editing the stage from the viewer does not refresh automatically
-    # until I preview back and forth to other nodes.
-    # E.g. changing the type of a Sphere to a Cube successfully completes but does
-    # not update in the viewport until changing view.
-    # I've tried hou.ui.triggerUpdate and viewer.restartRenderer without success :(
-    # investiagte more.
-    #from PySide2 import QtWidgets
-    #refresh = QtWidgets.QPushButton("trigger Update", parent=editor)
-    #refresh.clicked.connect(viewer.restartRenderer)
-    #refresh.clicked.connect(hou.ui.triggerUpdate)
-    #refresh.clicked.connect(viewer.deleteAllMemories)
-    #editor.layout().addWidget(refresh)
+
+    def refresh_ui():
+        viewer = toolutils.sceneViewer()
+        node = viewer.currentNode()
+        node.cook(force=True)
+
+    editor.model.itemChanged.connect(refresh_ui)
     editor.show()
 
 
 def description():
     print("Launching Spreadsheet Editor!")
-    viewer = toolutils.sceneViewer()
-    stage = viewer.stage()
     import importlib
     importlib.reload(_description)
     editor = _description.PrimDescription(parent=hou.qt.mainWindow())
     editor._prim = None
+
     def _updatePrim():
         # find a cheaper way for this?
         viewer = toolutils.sceneViewer()
@@ -59,5 +53,6 @@ def description():
             if prim != editor._prim:
                 editor.setPrim(prim)
                 editor._prim = prim
+
     hou.ui.addEventLoopCallback(_updatePrim)
     editor.show()
