@@ -27,11 +27,11 @@ def spreadsheet():
     editor.show()
 
 
-def prim_description():
-    print("Launching Prim Description!")
+def prim_composition():
+    print("Launching Prim Composition!")
     import importlib
     importlib.reload(_description)
-    editor = _description.PrimDescription(parent=hou.qt.mainWindow())
+    editor = _description.PrimComposition(parent=hou.qt.mainWindow())
     editor._prim = None
 
     def _updatePrim():

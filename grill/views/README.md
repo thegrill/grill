@@ -28,7 +28,7 @@ Same as with USDView, the current active stage is loaded:
 
 ![spreadsheet_editor_houdini_5](https://user-images.githubusercontent.com/8294116/99145748-57e57380-26c5-11eb-847f-ea01f023caf0.gif)
 
-## Prim Description
+## Prim Composition
 
 Uses existing USD Prim utilities to present extended composition arc details than the ones visible by default on USD view.  
 To visualize the composition graph, the `graphviz` library needs to be available on the environment. 
@@ -42,7 +42,7 @@ To visualize the composition graph, the `graphviz` library needs to be available
 Available from the `Grill` shelf or via executing the following python script:
 ```python
 from grill.views import houdini
-houdini.prim_description()
+houdini.prim_composition()
 ``` 
 
 ![prim_description_hou_4](https://user-images.githubusercontent.com/8294116/98945804-1dee6300-2547-11eb-8e9b-3f0211af6f3c.gif)

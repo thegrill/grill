@@ -57,7 +57,7 @@ class _Dot2Svg(QtCore.QRunnable):
                 self.signals.result.emit(self.target_fp)
 
 
-class PrimDescription(QtWidgets.QDialog):
+class PrimComposition(QtWidgets.QDialog):
     def __init__(self, *args, **kwargs):
         """For inspection and debug purposes, this widget makes primary use of:
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     import sys
     stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     app = QtWidgets.QApplication(sys.argv)
-    description = PrimDescription()
+    description = PrimComposition()
     prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
     description.setPrim(prim.GetChildren()[0])
     description.show()

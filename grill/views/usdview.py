@@ -6,7 +6,7 @@ from . import spreadsheet as _spreadsheet
 from . import description as _description
 
 _USDVIEW_SPREADSHEET_EDITOR_KEY = "_usdview_spreadsheet_editor"
-_USDVIEW_PRIM_DESCRIPTION_KEY = "_usdview_prim_description"
+_USDVIEW_PRIM_DESCRIPTION_KEY = "_usdview_prim_composition"
 _USDVIEW_API = contextvars.ContextVar("_usdviewApi")
 
 
@@ -25,7 +25,7 @@ def __getattr__(name):
         usdviewApi = _USDVIEW_API.get()
         import importlib
         importlib.reload(_description)
-        widget = _description.PrimDescription(parent=usdviewApi.qMainWindow)
+        widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
 
         def primChanged(new_paths, old_paths):
             new_path = next(iter(new_paths), None)
@@ -51,8 +51,8 @@ def spreadsheet(usdviewApi):
     editor.show()
 
 
-def prim_description(usdviewApi):
-    print("Launching Prim Description!")
+def prim_composition(usdviewApi):
+    print("Launching Prim Composition!")
     ctx = contextvars.copy_context()
 
     def getEditor():
@@ -73,15 +73,15 @@ class GrillPlugin(PluginContainer):
             "Spreadsheet Editor",
             spreadsheet)
 
-        self._prim_description = plugRegistry.registerCommandPlugin(
-            "Grill.prim_description",
-            "Prim Description",
-            prim_description)
+        self._prim_composition = plugRegistry.registerCommandPlugin(
+            "Grill.prim_composition",
+            "Prim Composition",
+            prim_composition)
 
     def configureView(self, plugRegistry, plugUIBuilder):
         grill_menu = plugUIBuilder.findOrCreateMenu("Grill")
         grill_menu.addItem(self._spreadsheet)
-        grill_menu.addItem(self._prim_description)
+        grill_menu.addItem(self._prim_composition)
 
 
 Tf.Type.Define(GrillPlugin)
