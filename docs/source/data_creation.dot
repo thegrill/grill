@@ -1,19 +1,23 @@
 digraph data_creation {
     bgcolor=invis
-    {
-        node [shape=box style="rounded,filled" fillcolor=snow]
-        context_description stage_description opinion_description persistency_description
-        context_description [label="Provides contextual information for the\lprocesses about to manipulate assets.\l\lMinimum required context is a pipeline area.\n"]
-        stage_description [label="A corresponding USD stage for the selected\lcontext is opened. If none exists but the context\lis valid, one will be created.\l"]
-        opinion_description [label="USD opinions are authored by pipeline steps\ltargeted by the context area.\l"]
-        persistency_description [label="Created asset data is commited in order for it to\lpersist in the pipeline.\l"]
+    newrank=true
+    subgraph cluster_steps {
+        color=invis margin=0
+        node [colorscheme=pastel19 style=filled]
+        context [shape=invtrapezium fillcolor=3 label="1. Context\nSelection" height=.8 width=1.4 fixedsize=true]
+        stage [shape=parallelogram label="2. Stage\nOpen" height=.8 width=1.3 fillcolor=5 fixedsize=true]
+        opinion [shape=box label="3. Opinion\nAuthoring" height=0.7 width=1.3 fillcolor=2]
+        persistency [shape=cylinder label="4. Persistency" height=0.7 width=1.2 fillcolor=8]
+        context -> stage -> opinion -> persistency
     }
-    node [colorscheme=pastel19 style=filled]
-    context [shape=invtrapezium fillcolor=3 label="1. Context\nSelection" height=1]
-    stage [shape=parallelogram label="2. Stage\nOpen" height=1 fillcolor=5]
-    opinion [shape=box label="3. Opinion\nAuthoring" height=0.7 width=1.2 fillcolor=2]
-    persistency [shape=cylinder label="4. Persistency" height=0.7 width=1.2 fillcolor=8]
-    context -> stage -> opinion -> persistency
+    subgraph cluster_descriptions{
+        color=invis margin=0
+        node [shape=box style="rounded,filled" fillcolor=snow]
+        context_description [label="Contextual information for the\lprocesses about to manipulate assets.\l\lMinimum required is a pipeline area.\l"]
+        stage_description [label="A corresponding USD stage for the\lcontext is opened.\l\lIf none exists but the context is valid,\lone will be created.\l"]
+        opinion_description [label="USD opinions are authored by the\lpipeline steps from the context area.\l\l"]
+        persistency_description [label="Created asset data is commited in\lorder for it to persist in the pipeline.\l\l"]
+    }
     context -> context_description [style=invis]
     {rank=same context context_description}
     stage -> stage_description [style=invis]
