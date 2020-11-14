@@ -5,7 +5,7 @@
             "Name": "grill.views.usdview",
             "Info": {
                 "Types": {
-                    "grill.views.usdview.GrillPluginContainer": {
+                    "grill.views.usdview.GrillPlugin": {
                         "bases": ["pxr.Usdviewq.plugin.PluginContainer"],
                         "displayName": "The Grill"
                     }

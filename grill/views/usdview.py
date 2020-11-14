@@ -65,16 +65,16 @@ def prim_description(usdviewApi):
     editor.show()
 
 
-class GrillPluginContainer(PluginContainer):
+class GrillPlugin(PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
         self._spreadsheet = plugRegistry.registerCommandPlugin(
-            "GrillPluginContainer.spreadsheet",
+            "Grill.spreadsheet",
             "Spreadsheet Editor",
             spreadsheet)
 
         self._prim_description = plugRegistry.registerCommandPlugin(
-            "GrillPluginContainer.prim_description",
+            "Grill.prim_description",
             "Prim Description",
             prim_description)
 
@@ -84,4 +84,4 @@ class GrillPluginContainer(PluginContainer):
         grill_menu.addItem(self._prim_description)
 
 
-Tf.Type.Define(GrillPluginContainer)
+Tf.Type.Define(GrillPlugin)
