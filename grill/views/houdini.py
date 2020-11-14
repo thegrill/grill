@@ -27,8 +27,8 @@ def spreadsheet():
     editor.show()
 
 
-def description():
-    print("Launching Spreadsheet Editor!")
+def prim_description():
+    print("Launching Prim Description!")
     import importlib
     importlib.reload(_description)
     editor = _description.PrimDescription(parent=hou.qt.mainWindow())
