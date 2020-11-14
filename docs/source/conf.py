@@ -211,6 +211,7 @@ def patched_m2r2_setup(app):
     except (AttributeError):
         app.add_source_suffix(".md", "markdown")
         app.add_source_parser(m2r2.M2RParser)
+        app.add_directive("mdinclude", m2r2.MdInclude)
     return dict(
         version=m2r2.__version__,
         parallel_read_safe=True,
