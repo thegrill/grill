@@ -47,7 +47,7 @@ extensions = ['sphinx.ext.autodoc',
 
 autodoc_member_order = 'groupwise'
 autodoc_default_flags = ['members', 'show-inheritance']
-# graphviz_dot = r'B:\__appdata__\graphviz\bin\dot.exe'
+graphviz_dot = r'B:\__appdata__\graphviz\bin\dot.exe'
 graphviz_output_format = 'svg'
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -197,3 +197,25 @@ epub_exclude_files = ['search.html']
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'https://docs.python.org/': None,
                        'http://naming.readthedocs.io': None}
+
+
+################## sphinx=<3.3 m2r2 patch start ########################
+# Remove once this is closed: https://github.com/CrossNox/m2r2/issues/15
+import m2r2
+
+current_m2r2_setup = m2r2.setup
+
+def patched_m2r2_setup(app):
+    try:
+        return current_m2r2_setup(app)
+    except (AttributeError):
+        app.add_source_suffix(".md", "markdown")
+        app.add_source_parser(m2r2.M2RParser)
+    return dict(
+        version=m2r2.__version__,
+        parallel_read_safe=True,
+        parallel_write_safe=True,
+    )
+
+m2r2.setup = patched_m2r2_setup
+################## sphinx=<3.3 m2r2 patch end ########################
