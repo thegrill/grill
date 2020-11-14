@@ -26,15 +26,14 @@ def __getattr__(name):
         import importlib
         importlib.reload(_description)
         widget = _description.PrimDescription(parent=usdviewApi.qMainWindow)
-        print(widget)
+
         def primChanged(new_paths, old_paths):
-            print("CHANGEDD")
-            print(locals())
             new_path = next(iter(new_paths), None)
             if not new_path:
                 widget.clear()
             else:
                 widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path))
+
         usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
         return widget
     raise AttributeError(f"module {__name__} has no attribute {name}")

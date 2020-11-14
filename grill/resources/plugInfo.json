@@ -7,7 +7,7 @@
                 "Types": {
                     "grill.views.usdview.GrillPluginContainer": {
                         "bases": ["pxr.Usdviewq.plugin.PluginContainer"],
-                        "displayName": "Spreadsheet Editor"
+                        "displayName": "The Grill"
                     }
                 }
             }
