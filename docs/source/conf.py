@@ -197,3 +197,26 @@ epub_exclude_files = ['search.html']
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'https://docs.python.org/': None,
                        'http://naming.readthedocs.io': None}
+
+
+################## sphinx=<3.3 m2r2 patch start ########################
+# Remove once this is closed: https://github.com/CrossNox/m2r2/issues/15
+import m2r2
+
+current_m2r2_setup = m2r2.setup
+
+def patched_m2r2_setup(app):
+    try:
+        return current_m2r2_setup(app)
+    except (AttributeError):
+        app.add_source_suffix(".md", "markdown")
+        app.add_source_parser(m2r2.M2RParser)
+        app.add_directive("mdinclude", m2r2.MdInclude)
+    return dict(
+        version=m2r2.__version__,
+        parallel_read_safe=True,
+        parallel_write_safe=True,
+    )
+
+m2r2.setup = patched_m2r2_setup
+################## sphinx=<3.3 m2r2 patch end ########################

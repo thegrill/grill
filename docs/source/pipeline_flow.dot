@@ -1,0 +1,24 @@
+digraph pipeline_overview {
+    bgcolor=invis
+    newrank=true
+    rankdir=TB
+    node [shape=box label="" style="filled,rounded" fillcolor=lightskyblue1 color=dodgerblue4] area1 area2 area3 area4 area5 area6 area7
+    area1 -> area1 [dir=back]
+    area1 -> {area2 area3 area4}
+    area2 -> area5
+    area3 -> {area4 area6 area7}
+    area4 -> {area1 area6}
+    area5 -> area3
+    subgraph cluster_descriptions {
+        margin=1
+        style="rounded,filled"
+        fillcolor=snow
+        node [shape=none fillcolor=none]
+        node_description [label="Areas act as nodes of\la graph.\l"]
+        io_description [label="Inputs can come from\lanywhere.\l"]
+        cyclic_description [label="Cyclic connections are\lallowed.\l"]
+    }
+    {rank=same area1 node_description}
+    {rank=same area2 area4 io_description}
+    {rank=same area5 area3 cyclic_description}
+}

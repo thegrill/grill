@@ -5,7 +5,7 @@ graph model {
         • Identified\l
         • Versioned\l
         • Tracked\l
-        \lMight contain metadata.\l\l"]
+        \lContains metadata.\l\l"]
     asset -- asset_description [style=dashed]
 
     step [shape=triangle height=1 fillcolor=lightyellow style=filled color=khaki4]

@@ -10,30 +10,27 @@
 
 ----
 
+Pipeline
+========
+
 Core Concepts
 -------------
+.. graphviz:: pipeline_concepts.dot
 
-.. graphviz:: core_concepts.dot
+Relationships
+-------------
+.. graphviz:: pipeline_relationships.dot
 
-----
+Data Flow
+---------
+.. graphviz:: pipeline_flow.dot
 
-Pipeline
---------
-
-.. graphviz:: area_overview.dot
-
-.. graphviz:: pipeline_overview.dot
-
-----
-
-Flowchart Legend
-----------------
+Workflow Charts Legend
+----------------------
 
 ``the grill`` flow charts will use the following symbol legend:
 
 .. graphviz:: flowchart_legend.dot
-
-----
 
 Data Creation
 -------------
@@ -43,6 +40,16 @@ At the highest level, all asset data, from creation to finish, goes through the 
 .. graphviz:: data_creation.dot
 
 ----
+
+Inspecting
+==========
+
+.. mdinclude:: ../../grill/views/README.md
+
+Authoring
+=========
+
+The ``production`` area is the one that defines everything that exists, from shows to areas, code names and organizational groups for assets.
 
 Indices and tables
 ------------------
