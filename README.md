@@ -5,7 +5,10 @@
 [![PyPI version](https://badge.fury.io/py/grill.svg)](https://badge.fury.io/py/grill)
 [![PyPI](https://img.shields.io/pypi/pyversions/grill.svg)](https://pypi.python.org/pypi/grill)
 
+---
 Cook digital.
+
+---
 
 `grill` namespace, meta-package with core tools and philosophy guidelines.
 
