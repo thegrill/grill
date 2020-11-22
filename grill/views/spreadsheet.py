@@ -92,12 +92,13 @@ class _ColumnOptions(QtWidgets.QWidget):
 
     def _updateMask(self):
         """We want nothing but the filter and buttons to be clickable on this widget."""
-        self.setMask(
-            QtGui.QRegion(self._filter_layout.geometry()) +
-            # when button are flat, geometry has a small render offset on x
-            QtGui.QRegion(self._lock_button.geometry().adjusted(-2, 0, 2, 0)) +
-            QtGui.QRegion(self._vis_button.geometry().adjusted(-2, 0, 2, 0))
-        )
+        region = QtGui.QRegion(self._filter_layout.geometry())
+        # when buttons are flat, geometry has a small render offset on x
+        if self._lock_button.isVisible():
+            region += self._lock_button.geometry().adjusted(-2, 0, 2, 0)
+        if self._vis_button.isVisible():
+            region += self._vis_button.geometry().adjusted(-2, 0, 2, 0)
+        self.setMask(region)
 
     def _decorateLockButton(self, button, locked):
         if locked:
@@ -160,13 +161,13 @@ class _Header(QtWidgets.QHeaderView):
         https://www.qt.io/blog/2012/09/28/qt-support-weekly-27-widgets-on-a-header
         https://www.learnpyqt.com/courses/model-views/qtableview-modelviews-numpy-pandas/
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, columns, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
 
-        for index, columndata in enumerate(_COLUMNS):
-            column_options = _ColumnOptions(columndata.name, parent=self)
+        for index, name in enumerate(columns):
+            column_options = _ColumnOptions(name, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
             self.section_options[index] = column_options
             self.setMinimumHeight(column_options.sizeHint().height() + 20)
@@ -271,7 +272,7 @@ class Spreadsheet(QtWidgets.QDialog):
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(_COLUMNS))
-        header = _Header(QtCore.Qt.Horizontal)
+        header = _Header([c.name for c in _COLUMNS], QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
         # for every column, create a proxy model and chain it to the next one
@@ -279,7 +280,7 @@ class Spreadsheet(QtWidgets.QDialog):
         model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
         hide_key = "👀 Hide All"
         self._vis_states = {"👀 Show All": True, hide_key: False}
-        self._vis_key_by_value = {v:k for k, v in self._vis_states.items()}  # True: Show All
+        self._vis_key_by_value = {v: k for k, v in self._vis_states.items()}  # True: Show All
         self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
         vis_all.clicked.connect(self._conformVisibility)
         lock_key = "🔐 Lock All"
