@@ -32,11 +32,10 @@ class _Dot2SvgSignals(QtCore.QObject):
 
 
 class _Dot2Svg(QtCore.QRunnable):
-    def __init__(self, source_fp, target_fp):
+    def __init__(self, source_fp):
         super().__init__()
         self.signals = _Dot2SvgSignals()
         self.source_fp = source_fp
-        self.target_fp = target_fp
 
     @QtCore.Slot()
     def run(self):
@@ -49,12 +48,18 @@ class _Dot2Svg(QtCore.QRunnable):
                 "on the system's PATH environment variable."
             )
         else:
-            dotargs = [dot, self.source_fp, "-Tsvg", "-o", self.target_fp]
-            result = subprocess.run(dotargs, capture_output=True)
-            if result.returncode:  # something went wrong
-                self.signals.error.emit(result.stderr.decode())
-            else:
-                self.signals.result.emit(self.target_fp)
+            error, targetpath = _dot_2_svg(self.source_fp)
+            self.signals.error.emit(error) if error else self.signals.result.emit(targetpath)
+
+
+@lru_cache(maxsize=None)
+def _dot_2_svg(sourcepath):
+    print(f"Creating svg for: {sourcepath}")
+    targetpath = f"{sourcepath}.svg"
+    dotargs = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
+    result = subprocess.run(dotargs, capture_output=True)
+    error = result.stderr.decode() if result.returncode else None
+    return error, targetpath
 
 
 class PrimComposition(QtWidgets.QDialog):
@@ -150,17 +155,6 @@ class LayersComposition(QtWidgets.QDialog):
         - Add row creates an anonymous prim
     """
 
-    def _graph_url_changed(self, url: QtCore.QUrl, *args, **kwargs):
-        print('!!!!!!!!!!---------')
-        node_uri = url.toString()
-        node_uri_stem = node_uri.split("/")[-1]
-        node_index = node_uri_stem.split("node_id_")[-1]
-        if node_index.isdigit():
-            node_index = int(node_index)
-            self._update_node_graph_view([node_index])
-        print(locals())
-
-
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         options = _tables.ColumnOptions.SEARCH
@@ -171,29 +165,19 @@ class LayersComposition(QtWidgets.QDialog):
             each.layout().setContentsMargins(0,0,0,0)
             each.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        # self.index_graph = QtWidgets.QLabel()
-        # index_graph_scroll = QtWidgets.QScrollArea()
-        # index_graph_scroll.setWidget(self.index_graph)
-
         self.index_graph = QtWebEngineWidgets.QWebEngineView(parent=self)
         self.index_graph.urlChanged.connect(self._graph_url_changed)
-        # self.index_graph.setSizePolicy(QtWidgets.QSizePolicy.GrowFlag, QtWidgets.QSizePolicy.GrowFlag)
         index_graph_scroll = QtWidgets.QFrame()
         frame_layout = QtWidgets.QVBoxLayout()
         frame_layout.addWidget(self.index_graph)
         index_graph_scroll.setLayout(frame_layout)
-        # index_graph_scroll.setWidget(self.index_graph)
 
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(self._layers)
         horizontal.addWidget(self._prims)
 
-
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(horizontal)
-        # vertical.addWidget(self.index_graph)
-        # index_graph_scroll.setSizePolicy()
-        # index_graph_scroll.setLayout()
         vertical.addWidget(index_graph_scroll)
 
         layout = QtWidgets.QVBoxLayout()
@@ -231,46 +215,48 @@ class LayersComposition(QtWidgets.QDialog):
         self._prims.table.horizontalHeader()._updateVisualSections(0)
         self._update_node_graph_view(node_indices)
 
-    def _update_node_graph_view(self, node_indices: list):
-        successors = chain.from_iterable(self._graph.successors(index) for index in node_indices)
-        predecessors = chain.from_iterable(self._graph.predecessors(index) for index in node_indices)
-        # neighbors = (chain(self._graph.successors(n), self._graph.predecessors(n)) for n in node_indices)
-        nodes_of_interest = list(chain(node_indices, successors, predecessors))
-        nodes_of_interest.extend(range(6))
-        subnodes = (self._graph.successors(n) for n in node_indices)
-        subgraph = self._graph.subgraph(nodes_of_interest)
+    def _graph_url_changed(self, url: QtCore.QUrl):
+        node_uri = url.toString()
+        node_uri_stem = node_uri.split("/")[-1]
+        node_index = node_uri_stem.split("node_id_")[-1]
+        if node_index.isdigit():
+            node_index = int(node_index)
+            self._update_node_graph_view([node_index])
 
-        from pprint import pprint
-        pprint(subgraph.nodes)
+    @lru_cache(maxsize=None)
+    def _subgraph_dot_path(self, node_indices: tuple):
+        print(f"Getting subgraph for: {node_indices}")
+        successors = chain.from_iterable(
+            self._graph.successors(index) for index in node_indices)
+        predecessors = chain.from_iterable(
+            self._graph.predecessors(index) for index in node_indices)
+        nodes_of_interest = list(chain(node_indices, successors, predecessors))
+        nodes_of_interest.extend(range(6))  # needs to be label nodes
+        subgraph = self._graph.subgraph(nodes_of_interest)
 
         fd, fp = tempfile.mkstemp()
         nx_pydot.write_dot(subgraph, fp)
 
-        svg = f"{fp}.svg"
+        return fp
+
+    def _update_node_graph_view(self, node_indices: list):
+        dot_path = self._subgraph_dot_path(tuple(node_indices))
+
         if self._dot2svg:  # forget about previous, unfinished runners
             self._dot2svg.signals.error.disconnect()
             self._dot2svg.signals.result.disconnect()
-        self._dot2svg = dot2svg = _Dot2Svg(fp, svg)
+
+        self._dot2svg = dot2svg = _Dot2Svg(dot_path)
         dot2svg.signals.error.connect(self._on_dot_error)
         dot2svg.signals.result.connect(self._on_dot_result)
         self._threadpool.start(dot2svg)
-
-        from pprint import pformat
-        print(pformat(locals()))
 
     def _on_dot_error(self, message):
         self.index_graph.setText(message)
         self.index_graph.resize(self.index_graph.minimumSizeHint())
 
     def _on_dot_result(self, filepath):
-        # index_graph = QtGui.QPixmap(filepath)
-        # print(f"Loading {filepath}")
-        # print(self.index_graph)
-        # print(self.index_graph.size())
-        # self.index_graph.load(QtCore.QUrl("http://www.qt.io"))
         self.index_graph.load(QtCore.QUrl.fromLocalFile(filepath))
-        # self.index_graph.setPixmap(index_graph)
-        # self.index_graph.resize(index_graph.size())
 
     @_tables.wait()
     def setStage(self, stage):
@@ -315,9 +301,7 @@ class LayersComposition(QtWidgets.QDialog):
             label = Path(layer.realPath).stem
 
             graph.add_node(index, style='rounded', shape='rect', label=label, tooltip=layer_id, title='world', href=f"node_id_{index}")
-        # from PySide2 import QtSvg
-        # svgwidget = QtSvg.QSvgWidget()
-        # svgwidget.load(r'C:\Users\CHRIST~1\AppData\Local\Temp\tmpztfej0a5.svg')
+
         from collections import defaultdict
         self._paths = paths = defaultdict(set)  # {layer.identifier: {path1, ..., pathN}}
         for prim in stage.TraverseAll():
@@ -340,13 +324,8 @@ class LayersComposition(QtWidgets.QDialog):
         layers_model = self._layers.model
         layers_model.setRowCount(len(graph))
         layers_model.blockSignals(True)  # prevent unneeded events from computing
-        # for node_id, node in enumerate(graph.nodes, start=6):
-        # legend_nodes = list(range(6))
 
-        # for node_id, node in enumerate(graph.nodes, start=1-len(legend_nodes)):
         for node_id, node in enumerate(sorted(set(graph.nodes) - legend_node_ids)):
-            # if node in legend_nodes:
-            #     continue
             item = QtGui.QStandardItem()
             print(f"Setting {node_id_by_index[node]}")
             item.setData(node_id_by_index[node], QtCore.Qt.DisplayRole)
@@ -366,37 +345,8 @@ from itertools import chain
 if __name__ == "__main__":
     import sys
     stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    # app = QtWidgets.QApplication(sys.argv)
-    # description = PrimComposition()
-    # prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
-    # description.setPrim(prim.GetChildren()[0])
-    # description.show()
-    # sys.exit(app.exec_())
-
-    print("hello")
-    G.add_node(1)
-    G.add_node(1)
-    G.add_node(1)
-    G.add_nodes_from([2, 3])
-    G.add_nodes_from([
-        (4, {"color": "red"}),
-        (5, {"color": "green"}),
-    ])
-
-    H = nx.path_graph(10)
-    G.add_nodes_from(H)
-    # G.add_node(H)
-    G.add_edge(1, 2)
-    e = (2, 3)
-    G.add_edge(*e)  # unpack edge tuple*
-    G.add_edges_from([(1, 2), (1, 3)])
-    print(f"Graph: {G}, {type(G)}, {nx_pydot.write_dot}")
-    fd, fp = tempfile.mkstemp()
-
     app = QtWidgets.QApplication(sys.argv)
-
     lc = LayersComposition()
     lc.setStage(stage)
     lc.show()
-
     sys.exit(app.exec_())
