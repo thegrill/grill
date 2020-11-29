@@ -3,10 +3,16 @@
 import shutil
 import tempfile
 import subprocess
+from itertools import chain
 from functools import lru_cache
+from collections import defaultdict
 
+import networkx
 from pxr import Usd
+from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
+
+from grill.views import spreadsheet as _tables
 
 
 _COLUMNS = {
@@ -138,8 +144,6 @@ class PrimComposition(QtWidgets.QDialog):
         self.index_graph.resize(index_graph.size())
 
 
-from grill.views import spreadsheet as _tables
-
 _LAYERS_COMPOSITION_LAYER_IDS = {
     "Layer Identifier": lambda layer: layer.identifier,
 }
@@ -149,11 +153,6 @@ _LAYERS_COMPOSITION_PRIM_PATHS = {
 
 
 class LayersComposition(QtWidgets.QDialog):
-    """TODO:
-        - Make paste work with filtered items (paste has been disabled)
-        - Per column control on context menu on all vis button
-        - Add row creates an anonymous prim
-    """
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
@@ -230,8 +229,8 @@ class LayersComposition(QtWidgets.QDialog):
             self._graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(
             self._graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = list(chain(node_indices, successors, predecessors))
-        nodes_of_interest.extend(range(6))  # needs to be label nodes
+        nodes_of_interest = list(range(6))  # needs to be label nodes
+        nodes_of_interest.extend(chain(node_indices, successors, predecessors))
         subgraph = self._graph.subgraph(nodes_of_interest)
 
         fd, fp = tempfile.mkstemp()
@@ -270,7 +269,7 @@ class LayersComposition(QtWidgets.QDialog):
         self._layers.model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_LAYER_IDS))
         self._prims.model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_PRIM_PATHS))
 
-        self._graph = graph = nx.DiGraph(tooltip="My label")
+        self._graph = graph = networkx.DiGraph(tooltip="My label")
         from pxr import Pcp
         # legend
         arcs_to_display = {  # should include all?
@@ -302,7 +301,6 @@ class LayersComposition(QtWidgets.QDialog):
 
             graph.add_node(index, style='rounded', shape='rect', label=label, tooltip=layer_id, title='world', href=f"node_id_{index}")
 
-        from collections import defaultdict
         self._paths = paths = defaultdict(set)  # {layer.identifier: {path1, ..., pathN}}
         for prim in stage.TraverseAll():
             query = Usd.PrimCompositionQuery(prim)
@@ -334,12 +332,6 @@ class LayersComposition(QtWidgets.QDialog):
         layers_model.blockSignals(False)
         for table in self._layers, self._prims:
             table.table.setSortingEnabled(True)
-
-
-
-import networkx as nx
-from networkx.drawing import nx_pydot
-from itertools import chain
 
 
 if __name__ == "__main__":

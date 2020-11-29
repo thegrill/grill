@@ -41,7 +41,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.viewcode',
               # 'sphinx.ext.githubpages',
               'sphinx.ext.graphviz',
-                'm2r2',
+              'm2r2',
               'sphinx.ext.inheritance_diagram',
               'sphinx_autodoc_typehints']
 
