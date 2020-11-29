@@ -6,7 +6,7 @@ import subprocess
 from functools import lru_cache
 
 from pxr import Usd
-from PySide2 import QtWidgets, QtGui, QtCore
+from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 
 _COLUMNS = {
@@ -72,9 +72,9 @@ class PrimComposition(QtWidgets.QDialog):
         tree.setColumnCount(len(_COLUMNS))
         tree.setHeaderLabels([k for k in _COLUMNS])
         tree.setAlternatingRowColors(True)
-        self.index_graph = QtWidgets.QLabel()
         self._threadpool = QtCore.QThreadPool()
         self._dot2svg = None
+        self.index_graph = QtWidgets.QLabel()
         index_graph_scroll = QtWidgets.QScrollArea()
         index_graph_scroll.setWidget(self.index_graph)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
@@ -133,12 +133,270 @@ class PrimComposition(QtWidgets.QDialog):
         self.index_graph.resize(index_graph.size())
 
 
+from grill.views import spreadsheet as _tables
+
+_LAYERS_COMPOSITION_LAYER_IDS = {
+    "Layer Identifier": lambda layer: layer.identifier,
+}
+_LAYERS_COMPOSITION_PRIM_PATHS = {
+    "Spec on Prim Path": lambda prim: str(prim.GetPath()),
+}
+
+
+class LayersComposition(QtWidgets.QDialog):
+    """TODO:
+        - Make paste work with filtered items (paste has been disabled)
+        - Per column control on context menu on all vis button
+        - Add row creates an anonymous prim
+    """
+
+    def _graph_url_changed(self, url: QtCore.QUrl, *args, **kwargs):
+        print('!!!!!!!!!!---------')
+        node_uri = url.toString()
+        node_uri_stem = node_uri.split("/")[-1]
+        node_index = node_uri_stem.split("node_id_")[-1]
+        if node_index.isdigit():
+            node_index = int(node_index)
+            self._update_node_graph_view([node_index])
+        print(locals())
+
+
+    def __init__(self, stage=None, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
+        options = _tables.ColumnOptions.SEARCH
+        self._layers = _tables._Spreadsheet(list(_LAYERS_COMPOSITION_LAYER_IDS), options)
+        self._prims = _tables._Spreadsheet(list(_LAYERS_COMPOSITION_PRIM_PATHS), options)
+
+        for each in self._layers, self._prims:
+            each.layout().setContentsMargins(0,0,0,0)
+            each.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        # self.index_graph = QtWidgets.QLabel()
+        # index_graph_scroll = QtWidgets.QScrollArea()
+        # index_graph_scroll.setWidget(self.index_graph)
+
+        self.index_graph = QtWebEngineWidgets.QWebEngineView(parent=self)
+        self.index_graph.urlChanged.connect(self._graph_url_changed)
+        # self.index_graph.setSizePolicy(QtWidgets.QSizePolicy.GrowFlag, QtWidgets.QSizePolicy.GrowFlag)
+        index_graph_scroll = QtWidgets.QFrame()
+        frame_layout = QtWidgets.QVBoxLayout()
+        frame_layout.addWidget(self.index_graph)
+        index_graph_scroll.setLayout(frame_layout)
+        # index_graph_scroll.setWidget(self.index_graph)
+
+        horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        horizontal.addWidget(self._layers)
+        horizontal.addWidget(self._prims)
+
+
+        vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        vertical.addWidget(horizontal)
+        # vertical.addWidget(self.index_graph)
+        # index_graph_scroll.setSizePolicy()
+        # index_graph_scroll.setLayout()
+        vertical.addWidget(index_graph_scroll)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(vertical)
+
+        self.setLayout(layout)
+        self.setStage(stage or Usd.Stage.CreateInMemory())
+        self.setWindowTitle("Layer Stack Composition")
+
+        self._dot2svg = None
+        self._threadpool = QtCore.QThreadPool()
+
+        selectionModel = self._layers.table.selectionModel()
+        selectionModel.selectionChanged.connect(self._selectionChanged)
+        self._paths = dict()
+
+    def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
+        node_ids = [index.data() for index in self._layers.table.selectedIndexes()]
+        node_indices = [self._node_index_by_id[i] for i in node_ids]
+        paths = set(chain.from_iterable(self._paths[i] for i in node_ids))
+
+        prims_model = self._prims.model
+        prims_model.clear()
+        prims_model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_PRIM_PATHS))
+        prims_model.setRowCount(len(paths))
+        prims_model.blockSignals(True)
+        for row_index, path in enumerate(paths):
+            for column_index, getter in enumerate(_LAYERS_COMPOSITION_PRIM_PATHS):
+                item = QtGui.QStandardItem()
+                item.setData(path, QtCore.Qt.DisplayRole)
+                item.setData(path, QtCore.Qt.UserRole)
+                prims_model.setItem(row_index, column_index, item)
+        prims_model.blockSignals(False)
+        self._prims.table.resizeColumnsToContents()
+        self._prims.table.horizontalHeader()._updateVisualSections(0)
+        self._update_node_graph_view(node_indices)
+
+    def _update_node_graph_view(self, node_indices: list):
+        successors = chain.from_iterable(self._graph.successors(index) for index in node_indices)
+        predecessors = chain.from_iterable(self._graph.predecessors(index) for index in node_indices)
+        # neighbors = (chain(self._graph.successors(n), self._graph.predecessors(n)) for n in node_indices)
+        nodes_of_interest = list(chain(node_indices, successors, predecessors))
+        nodes_of_interest.extend(range(6))
+        subnodes = (self._graph.successors(n) for n in node_indices)
+        subgraph = self._graph.subgraph(nodes_of_interest)
+
+        from pprint import pprint
+        pprint(subgraph.nodes)
+
+        fd, fp = tempfile.mkstemp()
+        nx_pydot.write_dot(subgraph, fp)
+
+        svg = f"{fp}.svg"
+        if self._dot2svg:  # forget about previous, unfinished runners
+            self._dot2svg.signals.error.disconnect()
+            self._dot2svg.signals.result.disconnect()
+        self._dot2svg = dot2svg = _Dot2Svg(fp, svg)
+        dot2svg.signals.error.connect(self._on_dot_error)
+        dot2svg.signals.result.connect(self._on_dot_result)
+        self._threadpool.start(dot2svg)
+
+        from pprint import pformat
+        print(pformat(locals()))
+
+    def _on_dot_error(self, message):
+        self.index_graph.setText(message)
+        self.index_graph.resize(self.index_graph.minimumSizeHint())
+
+    def _on_dot_result(self, filepath):
+        # index_graph = QtGui.QPixmap(filepath)
+        # print(f"Loading {filepath}")
+        # print(self.index_graph)
+        # print(self.index_graph.size())
+        # self.index_graph.load(QtCore.QUrl("http://www.qt.io"))
+        self.index_graph.load(QtCore.QUrl.fromLocalFile(filepath))
+        # self.index_graph.setPixmap(index_graph)
+        # self.index_graph.resize(index_graph.size())
+
+    @_tables.wait()
+    def setStage(self, stage):
+        """Sets the USD stage the spreadsheet is looking at."""
+        self._stage = stage
+        for table in self._layers, self._prims:
+            table.model.clear()
+            table.table.setSortingEnabled(False)
+
+        # labels are on the header widgets
+        self._layers.model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_LAYER_IDS))
+        self._prims.model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_PRIM_PATHS))
+
+        self._graph = graph = nx.DiGraph(tooltip="My label")
+        from pxr import Pcp
+        # legend
+        arcs_to_display = {  # should include all?
+            Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),  # purple
+            Pcp.ArcTypeReference: dict(color=6, colorscheme="paired12", fontcolor=6),  # red
+            Pcp.ArcTypeVariant: dict(color=8, colorscheme="paired12", fontcolor=8), # yellow
+        }
+        legend_node_ids = set()
+        for arc_type, edge_attrs in arcs_to_display.items():
+            label = f" {arc_type.displayName}"
+            arc_node_indices = {len(legend_node_ids), len(legend_node_ids)+1}
+            graph.add_nodes_from(arc_node_indices, style='invis')
+            graph.add_edge(*arc_node_indices, label=label, **edge_attrs)
+            legend_node_ids.update(arc_node_indices)
+
+        self._node_id_by_index = node_id_by_index = dict.fromkeys(legend_node_ids)  # {42: layer.identifier}
+        self._node_index_by_id = node_index_by_id = dict.fromkeys(legend_node_ids)  # {layer.identifier: 42}
+
+        from pathlib import Path
+
+        def _add_layer_node(layer):
+            layer_id = layer.identifier
+            if layer_id in node_index_by_id:
+                return
+            index = len(node_id_by_index)
+            node_id_by_index[index] = layer_id
+            node_index_by_id[layer_id] = index
+            label = Path(layer.realPath).stem
+
+            graph.add_node(index, style='rounded', shape='rect', label=label, tooltip=layer_id, title='world', href=f"node_id_{index}")
+        # from PySide2 import QtSvg
+        # svgwidget = QtSvg.QSvgWidget()
+        # svgwidget.load(r'C:\Users\CHRIST~1\AppData\Local\Temp\tmpztfej0a5.svg')
+        from collections import defaultdict
+        self._paths = paths = defaultdict(set)  # {layer.identifier: {path1, ..., pathN}}
+        for prim in stage.TraverseAll():
+            query = Usd.PrimCompositionQuery(prim)
+            for arc in query.GetCompositionArcs():
+                if not arc.HasSpecs():
+                    continue
+                target = arc.GetTargetNode().layerStack.identifier.rootLayer
+                target_id = target.identifier
+                _add_layer_node(target)
+
+                paths[target_id].add(str(prim.GetPath()))
+                intro = arc.GetIntroducingLayer()
+                if intro:
+                    _add_layer_node(intro)
+                    # graph.add_edge(node_index_by_id[intro.identifier], node_index_by_id[target_id], label=f" {arc.GetArcType().displayName}")
+                    edge_attrs = arcs_to_display[arc.GetArcType()]
+                    graph.add_edge(node_index_by_id[intro.identifier], node_index_by_id[target_id], **edge_attrs)
+
+        layers_model = self._layers.model
+        layers_model.setRowCount(len(graph))
+        layers_model.blockSignals(True)  # prevent unneeded events from computing
+        # for node_id, node in enumerate(graph.nodes, start=6):
+        # legend_nodes = list(range(6))
+
+        # for node_id, node in enumerate(graph.nodes, start=1-len(legend_nodes)):
+        for node_id, node in enumerate(sorted(set(graph.nodes) - legend_node_ids)):
+            # if node in legend_nodes:
+            #     continue
+            item = QtGui.QStandardItem()
+            print(f"Setting {node_id_by_index[node]}")
+            item.setData(node_id_by_index[node], QtCore.Qt.DisplayRole)
+            layers_model.setItem(node_id, 0, item)
+
+        layers_model.blockSignals(False)
+        for table in self._layers, self._prims:
+            table.table.setSortingEnabled(True)
+
+
+
+import networkx as nx
+from networkx.drawing import nx_pydot
+from itertools import chain
+
+
 if __name__ == "__main__":
     import sys
     stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
+    # app = QtWidgets.QApplication(sys.argv)
+    # description = PrimComposition()
+    # prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
+    # description.setPrim(prim.GetChildren()[0])
+    # description.show()
+    # sys.exit(app.exec_())
+
+    print("hello")
+    G.add_node(1)
+    G.add_node(1)
+    G.add_node(1)
+    G.add_nodes_from([2, 3])
+    G.add_nodes_from([
+        (4, {"color": "red"}),
+        (5, {"color": "green"}),
+    ])
+
+    H = nx.path_graph(10)
+    G.add_nodes_from(H)
+    # G.add_node(H)
+    G.add_edge(1, 2)
+    e = (2, 3)
+    G.add_edge(*e)  # unpack edge tuple*
+    G.add_edges_from([(1, 2), (1, 3)])
+    print(f"Graph: {G}, {type(G)}, {nx_pydot.write_dot}")
+    fd, fp = tempfile.mkstemp()
+
     app = QtWidgets.QApplication(sys.argv)
-    description = PrimComposition()
-    prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
-    description.setPrim(prim.GetChildren()[0])
-    description.show()
+
+    lc = LayersComposition()
+    lc.setStage(stage)
+    lc.show()
+
     sys.exit(app.exec_())
