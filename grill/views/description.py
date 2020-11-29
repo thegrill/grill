@@ -3,12 +3,13 @@
 import shutil
 import tempfile
 import subprocess
+from pathlib import Path
 from itertools import chain
 from functools import lru_cache
 from collections import defaultdict
 
 import networkx
-from pxr import Usd
+from pxr import Usd, Pcp
 from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
@@ -32,6 +33,16 @@ def _dot_exe():
     return shutil.which("dot")
 
 
+@lru_cache(maxsize=None)
+def _dot_2_svg(sourcepath):
+    print(f"Creating svg for: {sourcepath}")
+    targetpath = f"{sourcepath}.svg"
+    dotargs = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
+    result = subprocess.run(dotargs, capture_output=True)
+    error = result.stderr.decode() if result.returncode else None
+    return error, targetpath
+
+
 class _Dot2SvgSignals(QtCore.QObject):
     error = QtCore.Signal(str)
     result = QtCore.Signal(str)
@@ -45,27 +56,52 @@ class _Dot2Svg(QtCore.QRunnable):
 
     @QtCore.Slot()
     def run(self):
-        dot = _dot_exe()
-        if not dot:
+        if not _dot_exe():
             self.signals.error.emit(
                 "In order to display composition arcs in a graph,\n"
                 "the 'dot' command must be available on the current environment.\n\n"
                 "Please make sure graphviz is installed and 'dot' available \n"
                 "on the system's PATH environment variable."
             )
-        else:
-            error, targetpath = _dot_2_svg(self.source_fp)
-            self.signals.error.emit(error) if error else self.signals.result.emit(targetpath)
+            return
+        error, svg_fp = _dot_2_svg(self.source_fp)
+        self.signals.error.emit(error) if error else self.signals.result.emit(svg_fp)
 
 
-@lru_cache(maxsize=None)
-def _dot_2_svg(sourcepath):
-    print(f"Creating svg for: {sourcepath}")
-    targetpath = f"{sourcepath}.svg"
-    dotargs = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
-    result = subprocess.run(dotargs, capture_output=True)
-    error = result.stderr.decode() if result.returncode else None
-    return error, targetpath
+class _DotViewer(QtWidgets.QFrame):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        layout = QtWidgets.QVBoxLayout()
+        self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
+        self._error_view = QtWidgets.QTextBrowser()
+        layout.addWidget(self._graph_view)
+        layout.addWidget(self._error_view)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._error_view.setVisible(False)
+        self.setLayout(layout)
+        self.urlChanged = self._graph_view.urlChanged
+        self._dot2svg = None
+        self._threadpool = QtCore.QThreadPool()
+
+    def setDotPath(self, path):
+        if self._dot2svg:  # forget about previous, unfinished runners
+            self._dot2svg.signals.error.disconnect()
+            self._dot2svg.signals.result.disconnect()
+
+        self._dot2svg = dot2svg = _Dot2Svg(path)
+        dot2svg.signals.error.connect(self._on_dot_error)
+        dot2svg.signals.result.connect(self._on_dot_result)
+        self._threadpool.start(dot2svg)
+
+    def _on_dot_error(self, message):
+        self._error_view.setVisible(True)
+        self._graph_view.setVisible(False)
+        self._error_view.setText(message)
+
+    def _on_dot_result(self, filepath):
+        self._error_view.setVisible(False)
+        self._graph_view.setVisible(True)
+        self._graph_view.load(QtCore.QUrl.fromLocalFile(filepath))
 
 
 class PrimComposition(QtWidgets.QDialog):
@@ -83,14 +119,10 @@ class PrimComposition(QtWidgets.QDialog):
         tree.setColumnCount(len(_COLUMNS))
         tree.setHeaderLabels([k for k in _COLUMNS])
         tree.setAlternatingRowColors(True)
-        self._threadpool = QtCore.QThreadPool()
-        self._dot2svg = None
-        self.index_graph = QtWidgets.QLabel()
-        index_graph_scroll = QtWidgets.QScrollArea()
-        index_graph_scroll.setWidget(self.index_graph)
+        self._dot_view = _DotViewer()
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(tree)
-        vertical.addWidget(index_graph_scroll)
+        vertical.addWidget(self._dot_view)
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(vertical)
         horizontal.addWidget(self.index_box)
@@ -102,7 +134,6 @@ class PrimComposition(QtWidgets.QDialog):
     def clear(self):
         self.composition_tree.clear()
         self.index_box.clear()
-        self.index_graph.clear()
 
     def setPrim(self, prim):
         prim_index = prim.GetPrimIndex()
@@ -122,26 +153,9 @@ class PrimComposition(QtWidgets.QDialog):
             tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
 
         tree.expandAll()
-        self.index_graph.setAutoFillBackground(False)
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
-        svg = f"{fp}.svg"
-        if self._dot2svg:  # forget about previous, unfinished runners
-            self._dot2svg.signals.error.disconnect()
-            self._dot2svg.signals.result.disconnect()
-        self._dot2svg = dot2svg = _Dot2Svg(fp, svg)
-        dot2svg.signals.error.connect(self._on_dot_error)
-        dot2svg.signals.result.connect(self._on_dot_result)
-        self._threadpool.start(dot2svg)
-
-    def _on_dot_error(self, message):
-        self.index_graph.setText(message)
-        self.index_graph.resize(self.index_graph.minimumSizeHint())
-
-    def _on_dot_result(self, filepath):
-        index_graph = QtGui.QPixmap(filepath)
-        self.index_graph.setPixmap(index_graph)
-        self.index_graph.resize(index_graph.size())
+        self._dot_view.setDotPath(fp)
 
 
 _LAYERS_COMPOSITION_LAYER_IDS = {
@@ -164,12 +178,8 @@ class LayersComposition(QtWidgets.QDialog):
             each.layout().setContentsMargins(0,0,0,0)
             each.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        self.index_graph = QtWebEngineWidgets.QWebEngineView(parent=self)
-        self.index_graph.urlChanged.connect(self._graph_url_changed)
-        index_graph_scroll = QtWidgets.QFrame()
-        frame_layout = QtWidgets.QVBoxLayout()
-        frame_layout.addWidget(self.index_graph)
-        index_graph_scroll.setLayout(frame_layout)
+        self._dot_view = _DotViewer()
+        self._dot_view.urlChanged.connect(self._graph_url_changed)
 
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(self._layers)
@@ -177,7 +187,7 @@ class LayersComposition(QtWidgets.QDialog):
 
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(horizontal)
-        vertical.addWidget(index_graph_scroll)
+        vertical.addWidget(self._dot_view)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(vertical)
@@ -185,9 +195,6 @@ class LayersComposition(QtWidgets.QDialog):
         self.setLayout(layout)
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Layer Stack Composition")
-
-        self._dot2svg = None
-        self._threadpool = QtCore.QThreadPool()
 
         selectionModel = self._layers.table.selectionModel()
         selectionModel.selectionChanged.connect(self._selectionChanged)
@@ -240,22 +247,7 @@ class LayersComposition(QtWidgets.QDialog):
 
     def _update_node_graph_view(self, node_indices: list):
         dot_path = self._subgraph_dot_path(tuple(node_indices))
-
-        if self._dot2svg:  # forget about previous, unfinished runners
-            self._dot2svg.signals.error.disconnect()
-            self._dot2svg.signals.result.disconnect()
-
-        self._dot2svg = dot2svg = _Dot2Svg(dot_path)
-        dot2svg.signals.error.connect(self._on_dot_error)
-        dot2svg.signals.result.connect(self._on_dot_result)
-        self._threadpool.start(dot2svg)
-
-    def _on_dot_error(self, message):
-        self.index_graph.setText(message)
-        self.index_graph.resize(self.index_graph.minimumSizeHint())
-
-    def _on_dot_result(self, filepath):
-        self.index_graph.load(QtCore.QUrl.fromLocalFile(filepath))
+        self._dot_view.setDotPath(dot_path)
 
     @_tables.wait()
     def setStage(self, stage):
@@ -270,7 +262,6 @@ class LayersComposition(QtWidgets.QDialog):
         self._prims.model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_PRIM_PATHS))
 
         self._graph = graph = networkx.DiGraph(tooltip="My label")
-        from pxr import Pcp
         # legend
         arcs_to_display = {  # should include all?
             Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),  # purple
@@ -287,8 +278,6 @@ class LayersComposition(QtWidgets.QDialog):
 
         self._node_id_by_index = node_id_by_index = dict.fromkeys(legend_node_ids)  # {42: layer.identifier}
         self._node_index_by_id = node_index_by_id = dict.fromkeys(legend_node_ids)  # {layer.identifier: 42}
-
-        from pathlib import Path
 
         def _add_layer_node(layer):
             layer_id = layer.identifier
@@ -338,6 +327,10 @@ if __name__ == "__main__":
     import sys
     stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     app = QtWidgets.QApplication(sys.argv)
+    description = PrimComposition()
+    prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
+    description.setPrim(prim.GetChildren()[0])
+    description.show()
     lc = LayersComposition()
     lc.setStage(stage)
     lc.show()
