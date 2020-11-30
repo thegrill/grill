@@ -15,7 +15,7 @@ def spreadsheet():
     stage = viewer.stage()
     import importlib
     importlib.reload(_spreadsheet)
-    editor = _spreadsheet.Spreadsheet(parent=hou.qt.mainWindow())
+    editor = _spreadsheet.SpreadsheetEditor(parent=hou.qt.mainWindow())
     editor.setStage(stage)
 
     def refresh_ui():

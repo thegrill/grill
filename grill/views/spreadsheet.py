@@ -1,5 +1,6 @@
 import io
 import csv
+import enum
 import inspect
 import itertools
 import contextlib
@@ -38,8 +39,6 @@ _COLUMNS = (
     _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
 )
 
-import enum
-
 
 class ColumnOptions(enum.Flag):
     """Options that will be available on the header of a table."""
@@ -49,7 +48,7 @@ class ColumnOptions(enum.Flag):
     ALL = SEARCH | VISIBILITY | LOCK
 
 
-class _ColumnOptions(QtWidgets.QWidget):
+class _ColumnHeaderOptions(QtWidgets.QWidget):
     """A widget to be used within a header for columns on a USD spreadsheet."""
     def __init__(self, name, options: ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -181,7 +180,7 @@ class _Header(QtWidgets.QHeaderView):
         self._proxy_labels = dict()  # I've found no other way around this
 
         for index, name in enumerate(columns):
-            column_options = _ColumnOptions(name, options=options, parent=self)
+            column_options = _ColumnHeaderOptions(name, options=options, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
             self.section_options[index] = column_options
             self.setMinimumHeight(column_options.sizeHint().height() + 20)
@@ -336,7 +335,7 @@ class _Spreadsheet(QtWidgets.QDialog):
             item.setEditable(not value)
 
 
-class Spreadsheet(_Spreadsheet):
+class SpreadsheetEditor(_Spreadsheet):
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
         - Per column control on context menu on all vis button
@@ -573,7 +572,7 @@ if __name__ == "__main__":
     stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\UsdSkelExamples\UsdSkelExamples\HumanFemale\HumanFemale.walk.usd")
     # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\PointInstancedMedCity\PointInstancedMedCity.usd")
-    spreadsheet = Spreadsheet()
+    spreadsheet = SpreadsheetEditor()
     spreadsheet.setStage(stage)
     spreadsheet.show()
     sys.exit(app.exec_())

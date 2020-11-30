@@ -13,7 +13,7 @@ from pxr import Usd, Pcp
 from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
-from grill.views import spreadsheet as _tables
+from grill.views import spreadsheet as _spreadsheet
 
 
 _COLUMNS = {
@@ -170,9 +170,9 @@ class LayersComposition(QtWidgets.QDialog):
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        options = _tables.ColumnOptions.SEARCH
-        self._layers = _tables._Spreadsheet(list(_LAYERS_COMPOSITION_LAYER_IDS), options)
-        self._prims = _tables._Spreadsheet(list(_LAYERS_COMPOSITION_PRIM_PATHS), options)
+        options = _spreadsheet.ColumnOptions.SEARCH
+        self._layers = _spreadsheet._Spreadsheet(list(_LAYERS_COMPOSITION_LAYER_IDS), options)
+        self._prims = _spreadsheet._Spreadsheet(list(_LAYERS_COMPOSITION_PRIM_PATHS), options)
 
         for each in self._layers, self._prims:
             each.layout().setContentsMargins(0,0,0,0)
@@ -249,7 +249,7 @@ class LayersComposition(QtWidgets.QDialog):
         dot_path = self._subgraph_dot_path(tuple(node_indices))
         self._dot_view.setDotPath(dot_path)
 
-    @_tables.wait()
+    @_spreadsheet.wait()
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
