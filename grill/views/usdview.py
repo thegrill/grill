@@ -17,7 +17,7 @@ def __getattr__(name):
         usdviewApi = _USDVIEW_API.get()
         import importlib
         importlib.reload(_spreadsheet)
-        editor = _spreadsheet.Spreadsheet(parent=usdviewApi.qMainWindow)
+        editor = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
         editor.setStage(usdviewApi.stage)
         return editor
     elif name == _USDVIEW_LAYER_STACK_COMPOSITION_KEY:
