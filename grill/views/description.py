@@ -170,7 +170,7 @@ class LayersComposition(QtWidgets.QDialog):
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        options = _spreadsheet.ColumnOptions.SEARCH
+        options = _spreadsheet._ColumnOptions.SEARCH
         self._layers = _spreadsheet._Spreadsheet(list(_LAYERS_COMPOSITION_LAYER_IDS), options)
         self._prims = _spreadsheet._Spreadsheet(list(_LAYERS_COMPOSITION_PRIM_PATHS), options)
 
@@ -291,16 +291,22 @@ class LayersComposition(QtWidgets.QDialog):
             graph.add_node(index, style='rounded', shape='rect', label=label, tooltip=layer_id, title='world', href=f"node_id_{index}")
 
         self._paths = paths = defaultdict(set)  # {layer.identifier: {path1, ..., pathN}}
+
+        # only query composition arcs that have specs on our prims.
+        qFilter = Usd.PrimCompositionQuery.Filter()
+        qFilter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
+
         for prim in stage.TraverseAll():
+            path_str = str(prim.GetPath())
             query = Usd.PrimCompositionQuery(prim)
+            query.filter = qFilter
+
             for arc in query.GetCompositionArcs():
-                if not arc.HasSpecs():
-                    continue
                 target = arc.GetTargetNode().layerStack.identifier.rootLayer
                 target_id = target.identifier
                 _add_layer_node(target)
 
-                paths[target_id].add(str(prim.GetPath()))
+                paths[target_id].add(path_str)
                 intro = arc.GetIntroducingLayer()
                 if intro:
                     _add_layer_node(intro)
@@ -309,12 +315,11 @@ class LayersComposition(QtWidgets.QDialog):
                     graph.add_edge(node_index_by_id[intro.identifier], node_index_by_id[target_id], **edge_attrs)
 
         layers_model = self._layers.model
-        layers_model.setRowCount(len(graph))
+        layers_model.setRowCount(len(graph) - len(legend_node_ids))
         layers_model.blockSignals(True)  # prevent unneeded events from computing
 
         for node_id, node in enumerate(sorted(set(graph.nodes) - legend_node_ids)):
             item = QtGui.QStandardItem()
-            print(f"Setting {node_id_by_index[node]}")
             item.setData(node_id_by_index[node], QtCore.Qt.DisplayRole)
             layers_model.setItem(node_id, 0, item)
 
