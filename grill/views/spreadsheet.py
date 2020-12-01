@@ -40,7 +40,7 @@ _COLUMNS = (
 )
 
 
-class ColumnOptions(enum.Flag):
+class _ColumnOptions(enum.Flag):
     """Options that will be available on the header of a table."""
     SEARCH = enum.auto()
     VISIBILITY = enum.auto()
@@ -50,7 +50,7 @@ class ColumnOptions(enum.Flag):
 
 class _ColumnHeaderOptions(QtWidgets.QWidget):
     """A widget to be used within a header for columns on a USD spreadsheet."""
-    def __init__(self, name, options: ColumnOptions, *args, **kwargs):
+    def __init__(self, name, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
         options_layout = QtWidgets.QHBoxLayout()
@@ -66,13 +66,13 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         vis_button.setCheckable(True)
         vis_button.setChecked(True)
         vis_button.setFlat(True)
-        vis_button.setVisible(ColumnOptions.VISIBILITY in options)
+        vis_button.setVisible(_ColumnOptions.VISIBILITY in options)
 
         # Lock
         self._lock_button = lock_button = QtWidgets.QPushButton(parent=self)
         lock_button.setCheckable(True)
         lock_button.setFlat(True)
-        lock_button.setVisible(ColumnOptions.LOCK in options)
+        lock_button.setVisible(_ColumnOptions.LOCK in options)
 
         # allow for a bit of extra space with option buttons
         label = QtWidgets.QLabel(f"{name} ", parent=self)
@@ -83,9 +83,9 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         layout.addLayout(options_layout)
         self._filter_layout = filter_layout = QtWidgets.QFormLayout()
         filter_layout.addRow("🔎", line_filter)
-        if ColumnOptions.SEARCH in options:
+        if _ColumnOptions.SEARCH in options:
             layout.addLayout(filter_layout)
-
+        self._options = options
         self._decorateLockButton(lock_button, lock_button.isChecked())
         lock_button.toggled.connect(partial(self._decorateLockButton, lock_button))
 
@@ -93,7 +93,6 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         self.label = label
         self.locked = self._lock_button.toggled
         self.toggled = self._vis_button.toggled
-        # self.toggle = self._vis_button.toggle
         self.filterChanged = line_filter.textChanged
 
     def resizeEvent(self, event:QtGui.QResizeEvent):
@@ -106,9 +105,9 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         """We want nothing but the filter and buttons to be clickable on this widget."""
         region = QtGui.QRegion(self._filter_layout.geometry())
         # when buttons are flat, geometry has a small render offset on x
-        if self._lock_button.isVisible():
+        if _ColumnOptions.LOCK in self._options:
             region += self._lock_button.geometry().adjusted(-2, 0, 2, 0)
-        if self._vis_button.isVisible():
+        if _ColumnOptions.VISIBILITY in self._options:
             region += self._vis_button.geometry().adjusted(-2, 0, 2, 0)
         self.setMask(region)
 
@@ -174,7 +173,7 @@ class _Header(QtWidgets.QHeaderView):
         https://www.qt.io/blog/2012/09/28/qt-support-weekly-27-widgets-on-a-header
         https://www.learnpyqt.com/courses/model-views/qtableview-modelviews-numpy-pandas/
     """
-    def __init__(self, columns, options: ColumnOptions, *args, **kwargs):
+    def __init__(self, columns, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
@@ -277,7 +276,7 @@ class _ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class _Spreadsheet(QtWidgets.QDialog):
-    def __init__(self, columns, options: ColumnOptions = ColumnOptions.ALL, *args, **kwargs):
+    def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(columns))
         header = _Header(columns, options, QtCore.Qt.Horizontal)
@@ -294,12 +293,12 @@ class _Spreadsheet(QtWidgets.QDialog):
             source_model = proxy_model  # chain so next proxy model takes this one
 
             column_options = header.section_options[column_index]
-            if ColumnOptions.SEARCH in options:
+            if _ColumnOptions.SEARCH in options:
                 column_options.filterChanged.connect(proxy_model.setFilterRegExp)
-            if ColumnOptions.VISIBILITY in options:
+            if _ColumnOptions.VISIBILITY in options:
                 column_options.toggled.connect(partial(self._setColumnVisibility, column_index))
                 column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
-            if ColumnOptions.LOCK in options:
+            if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
                 column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
@@ -394,7 +393,7 @@ class SpreadsheetEditor(_Spreadsheet):
     def _conformVisibility(self):
         value = self._vis_states[self._vis_all.text()]
         for index, options in self._column_options.items():
-            self.table.setColumnHidden(index, not value)
+            self._setColumnVisibility(index, value)
             options._setHidden(not value)
 
         self._vis_all.setText(self._vis_key_by_value[not value])
@@ -561,7 +560,6 @@ class SpreadsheetEditor(_Spreadsheet):
             item.setData(attribute, QtCore.Qt.DisplayRole)
             item.setData(prim, QtCore.Qt.UserRole)
             model.setItem(row_index, column_index, item)
-
 
 
 if __name__ == "__main__":
