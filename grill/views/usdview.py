@@ -1,90 +1,35 @@
 from functools import lru_cache
-import contextvars
+
 from pxr import Tf
 from pxr.Usdviewq.plugin import PluginContainer
+
 from . import spreadsheet as _spreadsheet
 from . import description as _description
 
-_USDVIEW_SPREADSHEET_EDITOR_KEY = "_usdview_spreadsheet_editor"
-_USDVIEW_PRIM_DESCRIPTION_KEY = "_usdview_prim_composition"
-_USDVIEW_API = contextvars.ContextVar("_usdviewApi")
 
-
-# @lru_cache(maxsize=None)
-def __getattr__(name):
-    if name == _USDVIEW_SPREADSHEET_EDITOR_KEY:
-        print("Initialising spreadsheet editor!")
-        usdviewApi = _USDVIEW_API.get()
-        import importlib
-        importlib.reload(_spreadsheet)
-        editor = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
-        editor.setStage(usdviewApi.stage)
-        return editor
-    elif name == _USDVIEW_LAYER_STACK_COMPOSITION_KEY:
-        print("Initialising layer stack composition!")
-        usdviewApi = _USDVIEW_API.get()
-        import importlib
-        importlib.reload(_description)
-        editor = _description.LayersComposition(parent=usdviewApi.qMainWindow)
-        editor.setStage(usdviewApi.stage)
-        return editor
-    elif name == _USDVIEW_PRIM_DESCRIPTION_KEY:
-        print("Initialising prim description!")
-        usdviewApi = _USDVIEW_API.get()
-        import importlib
-        importlib.reload(_description)
-        widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
-
-        def primChanged(new_paths, old_paths):
-            new_path = next(iter(new_paths), None)
-            if not new_path:
-                widget.clear()
-            else:
-                widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path))
-
-        usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
-        return widget
-    raise AttributeError(f"module {__name__} has no attribute {name}")
-
-
-def spreadsheet(usdviewApi):
-    print("Launching Spreadsheet Editor!")
-    ctx = contextvars.copy_context()
-
-    def getEditor():
-        _USDVIEW_API.set(usdviewApi)
-        return __getattr__(_USDVIEW_SPREADSHEET_EDITOR_KEY)
-
-    editor = ctx.run(getEditor)
+@lru_cache(maxsize=None)
+def spreadsheet_editor(usdviewApi):
+    editor = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
+    editor.setStage(usdviewApi.stage)
     editor.show()
 
 
+@lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
-    print("Launching Prim Composition!")
-    ctx = contextvars.copy_context()
+    editor = _description.PrimComposition(parent=usdviewApi.qMainWindow)
 
-    def getEditor():
-        _USDVIEW_API.set(usdviewApi)
-        return __getattr__(_USDVIEW_PRIM_DESCRIPTION_KEY)
+    def primChanged(new_paths, old_paths):
+        new_path = next(iter(new_paths), None)
+        editor.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else editor.clear()
 
-    editor = ctx.run(getEditor)
-    if usdviewApi.prim:
-        editor.setPrim(usdviewApi.prim)
+    usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
     editor.show()
 
 
-_USDVIEW_LAYER_STACK_COMPOSITION_KEY = "_usdview_layer_stack_composition"
+@lru_cache(maxsize=None)
 def layer_stack_composition(usdviewApi):
-    print("Launching Layer Stack Composition!")
-    ctx = contextvars.copy_context()
-
-    def getEditor():
-        _USDVIEW_API.set(usdviewApi)
-        return __getattr__(_USDVIEW_LAYER_STACK_COMPOSITION_KEY)
-
-    editor = ctx.run(getEditor)
-    # if usdviewApi.prim:
-    #     editor.setPrim(usdviewApi.prim)
+    editor = _description.LayersComposition(parent=usdviewApi.qMainWindow)
+    editor.setStage(usdviewApi.stage)
     editor.show()
 
 
@@ -92,9 +37,9 @@ class GrillPlugin(PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
         self._spreadsheet = plugRegistry.registerCommandPlugin(
-            "Grill.spreadsheet",
+            "Grill.spreadsheet_editor",
             "Spreadsheet Editor",
-            spreadsheet)
+            spreadsheet_editor)
 
         self._prim_composition = plugRegistry.registerCommandPlugin(
             "Grill.prim_composition",
