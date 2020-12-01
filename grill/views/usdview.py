@@ -9,53 +9,48 @@ from . import description as _description
 
 @lru_cache(maxsize=None)
 def spreadsheet_editor(usdviewApi):
-    editor = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
-    editor.setStage(usdviewApi.stage)
-    editor.show()
+    widget = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
+    widget.setStage(usdviewApi.stage)
+    widget.show()
 
 
 @lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
-    editor = _description.PrimComposition(parent=usdviewApi.qMainWindow)
+    widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
 
     def primChanged(new_paths, old_paths):
         new_path = next(iter(new_paths), None)
-        editor.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else editor.clear()
+        widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()
 
     usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
-    editor.show()
+    if usdviewApi.prim:
+        widget.setPrim(usdviewApi.prim)
+    widget.show()
 
 
 @lru_cache(maxsize=None)
 def layer_stack_composition(usdviewApi):
-    editor = _description.LayersComposition(parent=usdviewApi.qMainWindow)
-    editor.setStage(usdviewApi.stage)
-    editor.show()
+    widget = _description.LayersComposition(parent=usdviewApi.qMainWindow)
+    widget.setStage(usdviewApi.stage)
+    widget.show()
 
 
 class GrillPlugin(PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
-        self._spreadsheet = plugRegistry.registerCommandPlugin(
-            "Grill.spreadsheet_editor",
-            "Spreadsheet Editor",
-            spreadsheet_editor)
-
-        self._prim_composition = plugRegistry.registerCommandPlugin(
-            "Grill.prim_composition",
-            "Prim Composition",
-            prim_composition)
-
-        self._layer_stack_composition = plugRegistry.registerCommandPlugin(
-            "Grill.layer_stack_composition",
-            "Layer Stack Composition",
-            layer_stack_composition)
+        self._menu_items = [
+            plugRegistry.registerCommandPlugin(
+                f"Grill.{item.__qualname__}",
+                item.__qualname__.replace("_", " ").title(),  # lazy, naming conventions
+                item
+            )
+            for item in (spreadsheet_editor, prim_composition, layer_stack_composition)
+        ]
 
     def configureView(self, plugRegistry, plugUIBuilder):
         grill_menu = plugUIBuilder.findOrCreateMenu("Grill")
-        grill_menu.addItem(self._spreadsheet)
-        grill_menu.addItem(self._prim_composition)
-        grill_menu.addItem(self._layer_stack_composition)
+        for item in self._menu_items:
+            grill_menu.addItem(item)
 
 
 Tf.Type.Define(GrillPlugin)
