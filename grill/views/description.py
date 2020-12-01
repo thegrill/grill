@@ -286,8 +286,11 @@ class LayersComposition(QtWidgets.QDialog):
             index = len(node_id_by_index)
             node_id_by_index[index] = layer_id
             node_index_by_id[layer_id] = index
-            label = Path(layer.realPath).stem
+            label = Path(layer.realPath).stem or layer_id
 
+            if layer.IsAnonymousLayerIdentifier(layer_id):
+                label = f'"{label}"'  # otherwise graphviz dot does not set as string? (thinks it's a number)
+                layer_id = f'"{layer_id}"'
             graph.add_node(index, style='rounded', shape='rect', label=label, tooltip=layer_id, title='world', href=f"node_id_{index}")
 
         self._paths = paths = defaultdict(set)  # {layer.identifier: {path1, ..., pathN}}

@@ -56,3 +56,14 @@ def prim_composition():
 
     hou.ui.addEventLoopCallback(_updatePrim)
     editor.show()
+
+
+def layer_stack_composition():
+    print("Launching Layer Stack Composition!")
+    import importlib
+    importlib.reload(_description)
+    editor = _description.LayersComposition(parent=hou.qt.mainWindow())
+    viewer = toolutils.sceneViewer()
+    stage = viewer.stage()
+    editor.setStage(stage)
+    editor.show()
