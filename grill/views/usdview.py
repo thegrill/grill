@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import lru_cache, partial
 
 from pxr import Tf
 from pxr.Usdviewq.plugin import PluginContainer
@@ -11,7 +11,7 @@ from . import description as _description
 def spreadsheet_editor(usdviewApi):
     widget = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
     widget.setStage(usdviewApi.stage)
-    widget.show()
+    return widget
 
 
 @lru_cache(maxsize=None)
@@ -25,26 +25,30 @@ def prim_composition(usdviewApi):
     usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
     if usdviewApi.prim:
         widget.setPrim(usdviewApi.prim)
-    widget.show()
+    return widget
 
 
 @lru_cache(maxsize=None)
 def layer_stack_composition(usdviewApi):
     widget = _description.LayersComposition(parent=usdviewApi.qMainWindow)
     widget.setStage(usdviewApi.stage)
-    widget.show()
+    return widget
 
 
 class GrillPlugin(PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
+        def show(_launcher, _usdviewAPI):
+            return _launcher(_usdviewAPI).show()
+
         self._menu_items = [
             plugRegistry.registerCommandPlugin(
-                f"Grill.{item.__qualname__}",
-                item.__qualname__.replace("_", " ").title(),  # lazy, naming conventions
-                item
+                f"Grill.{launcher.__qualname__}",
+                launcher.__qualname__.replace("_", " ").title(),  # lazy, naming conventions
+                partial(show, launcher),
             )
-            for item in (spreadsheet_editor, prim_composition, layer_stack_composition)
+            # contract: every caller here returns a widget to show.
+            for launcher in (spreadsheet_editor, prim_composition, layer_stack_composition)
         ]
 
     def configureView(self, plugRegistry, plugUIBuilder):

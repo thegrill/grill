@@ -66,13 +66,11 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         vis_button.setCheckable(True)
         vis_button.setChecked(True)
         vis_button.setFlat(True)
-        vis_button.setVisible(_ColumnOptions.VISIBILITY in options)
 
         # Lock
         self._lock_button = lock_button = QtWidgets.QPushButton()
         lock_button.setCheckable(True)
         lock_button.setFlat(True)
-        lock_button.setVisible(_ColumnOptions.LOCK in options)
 
         # allow for a bit of extra space with option buttons
         label = QtWidgets.QLabel(f"{name} ")
@@ -88,6 +86,10 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         self._options = options
         self._decorateLockButton(lock_button, lock_button.isChecked())
         lock_button.toggled.connect(partial(self._decorateLockButton, lock_button))
+
+        # set visibility after widgets are added to our layout
+        vis_button.setVisible(_ColumnOptions.VISIBILITY in options)
+        lock_button.setVisible(_ColumnOptions.LOCK in options)
 
         # public members exposure
         self.label = label
@@ -343,7 +345,6 @@ class SpreadsheetEditor(_Spreadsheet):
     def __init__(self, stage=None, parent=None, **kwargs):
         columns = [c.name for c in _COLUMNS]
         self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
-
         super().__init__(columns, parent=parent, **kwargs)
 
         hide_key = "👀 Hide All"
