@@ -62,20 +62,20 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
 
         # Visibility
-        self._vis_button = vis_button = QtWidgets.QPushButton("👀", parent=self)
+        self._vis_button = vis_button = QtWidgets.QPushButton("👀")
         vis_button.setCheckable(True)
         vis_button.setChecked(True)
         vis_button.setFlat(True)
         vis_button.setVisible(_ColumnOptions.VISIBILITY in options)
 
         # Lock
-        self._lock_button = lock_button = QtWidgets.QPushButton(parent=self)
+        self._lock_button = lock_button = QtWidgets.QPushButton()
         lock_button.setCheckable(True)
         lock_button.setFlat(True)
         lock_button.setVisible(_ColumnOptions.LOCK in options)
 
         # allow for a bit of extra space with option buttons
-        label = QtWidgets.QLabel(f"{name} ", parent=self)
+        label = QtWidgets.QLabel(f"{name} ")
         options_layout.addWidget(label)
         options_layout.addWidget(vis_button)
         options_layout.addWidget(lock_button)
