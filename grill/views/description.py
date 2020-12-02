@@ -266,7 +266,7 @@ class LayersComposition(QtWidgets.QDialog):
         arcs_to_display = {  # should include all?
             Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),  # purple
             Pcp.ArcTypeReference: dict(color=6, colorscheme="paired12", fontcolor=6),  # red
-            Pcp.ArcTypeVariant: dict(color=8, colorscheme="paired12", fontcolor=8), # yellow
+            Pcp.ArcTypeVariant: dict(color=8, colorscheme="paired12", fontcolor=8),  # yellow
         }
         legend_node_ids = set()
         for arc_type, edge_attrs in arcs_to_display.items():
@@ -276,55 +276,84 @@ class LayersComposition(QtWidgets.QDialog):
             graph.add_edge(*arc_node_indices, label=label, **edge_attrs)
             legend_node_ids.update(arc_node_indices)
 
-        self._node_id_by_index = node_id_by_index = dict.fromkeys(legend_node_ids)  # {42: layer.identifier}
+        layer_stacks_by_node_idx = dict()
+        stack_id_by_node_idx = dict.fromkeys(legend_node_ids)  # {42: layer.identifier}
         self._node_index_by_id = node_index_by_id = dict.fromkeys(legend_node_ids)  # {layer.identifier: 42}
 
-        def _add_layer_node(layer):
-            layer_id = layer.identifier
-            if layer_id in node_index_by_id:
-                return
-            index = len(node_id_by_index)
-            node_id_by_index[index] = layer_id
-            node_index_by_id[layer_id] = index
-            label = Path(layer.realPath).stem or layer_id
-
-            if layer.IsAnonymousLayerIdentifier(layer_id):
-                label = f'"{label}"'  # otherwise graphviz dot does not set as string? (thinks it's a number)
-                layer_id = f'"{layer_id}"'
-            graph.add_node(index, style='rounded', shape='rect', label=label, tooltip=layer_id, title='world', href=f"node_id_{index}")
-
         self._paths = paths = defaultdict(set)  # {layer.identifier: {path1, ..., pathN}}
+
+        def _layer_label(layer):
+            return Path(layer.realPath).stem or layer.identifier
+
+        def _walk_layer_tree(tree):
+            yield tree.layer
+            for childtree in tree.childTrees:
+                yield from _walk_layer_tree(childtree)
+
+        def _add_node(pcp_node):
+            layer_stack = pcp_node.layerStack
+            root_layer = layer_stack.identifier.rootLayer
+            root_id = root_layer.identifier
+            if root_id in node_index_by_id:
+                return
+            stack_index = len(stack_id_by_node_idx)
+
+            node_index_by_id[root_id] = stack_index
+            stack_id_by_node_idx[stack_index] = root_id
+            label = f"{{{_layer_label(root_layer)}"
+            sublayers = [layer for layer in _walk_layer_tree(layer_stack.layerTree)]
+            layer_stacks_by_node_idx[stack_index] = sublayers
+            for layer in sublayers:
+                if layer == root_layer:
+                    continue
+                node_index_by_id[layer.identifier] = stack_index
+                label += f"|{_layer_label(layer)}"
+            label += "}"
+            ids = '\n'.join(f"{i}: {layer.realPath or layer.identifier}" for i, layer in enumerate(sublayers))
+            tooltip = f"Layer Stack:\n{ids}"
+            # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
+            tooltip = tooltip.replace('\n', '&#10;')
+            graph.add_node(stack_index, style='rounded', shape='record', label=label,
+                       tooltip=tooltip, title='world', href=f"node_id_{stack_index}")
 
         # only query composition arcs that have specs on our prims.
         qFilter = Usd.PrimCompositionQuery.Filter()
         qFilter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
 
         for prim in stage.TraverseAll():
+            print('-----------')
+            print(prim)
             path_str = str(prim.GetPath())
             query = Usd.PrimCompositionQuery(prim)
             query.filter = qFilter
 
             for arc in query.GetCompositionArcs():
+                _add_node(arc.GetTargetNode())
                 target = arc.GetTargetNode().layerStack.identifier.rootLayer
                 target_id = target.identifier
-                _add_layer_node(target)
-
-                paths[target_id].add(path_str)
+                target_stack_idx = node_index_by_id[target_id]
+                for layer in layer_stacks_by_node_idx[node_index_by_id[target_id]]:
+                    paths[layer.identifier].add(path_str)
+                print(target_id)
                 intro = arc.GetIntroducingLayer()
                 if intro:
-                    _add_layer_node(intro)
-                    # graph.add_edge(node_index_by_id[intro.identifier], node_index_by_id[target_id], label=f" {arc.GetArcType().displayName}")
+                    assert intro.identifier in node_index_by_id, f"Expected {intro} to be on {node_index_by_id.keys()}"
                     edge_attrs = arcs_to_display[arc.GetArcType()]
-                    graph.add_edge(node_index_by_id[intro.identifier], node_index_by_id[target_id], **edge_attrs)
+                    source_stack_idx = node_index_by_id[intro.identifier]
+                    graph.add_edge(source_stack_idx, target_stack_idx, **edge_attrs)
 
+        from pprint import pprint
         layers_model = self._layers.model
-        layers_model.setRowCount(len(graph) - len(legend_node_ids))
+        pprint(set(graph.nodes) - legend_node_ids)
+        items_to_add = [
+            QtGui.QStandardItem(layer.identifier)
+            for node_id in sorted(set(graph.nodes) - legend_node_ids)
+            for layer in layer_stacks_by_node_idx[node_id]
+        ]
+        layers_model.setRowCount(len(items_to_add))
         layers_model.blockSignals(True)  # prevent unneeded events from computing
-
-        for node_id, node in enumerate(sorted(set(graph.nodes) - legend_node_ids)):
-            item = QtGui.QStandardItem()
-            item.setData(node_id_by_index[node], QtCore.Qt.DisplayRole)
-            layers_model.setItem(node_id, 0, item)
+        for index, item in enumerate(items_to_add):
+            layers_model.setItem(index, 0, item)
 
         layers_model.blockSignals(False)
         for table in self._layers, self._prims:
@@ -333,12 +362,16 @@ class LayersComposition(QtWidgets.QDialog):
 
 if __name__ == "__main__":
     import sys
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
+    # from PySide2 import QtWebEngine
+    # QtWebEngine.QtWebEngine.initialize()
     app = QtWidgets.QApplication(sys.argv)
-    description = PrimComposition()
-    prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
-    description.setPrim(prim.GetChildren()[0])
-    description.show()
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
+    # description = PrimComposition()
+    # prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
+    # description.setPrim(prim.GetChildren()[0])
+    # description.show()
+    # stage = Usd.Stage.Open(r"B:\write\code\git\grill\master.usda")
+    # stage = Usd.Stage.Open(r"B:\write\code\git\grill\main.usda")
     lc = LayersComposition()
     lc.setStage(stage)
     lc.show()
