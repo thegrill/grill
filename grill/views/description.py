@@ -16,6 +16,7 @@ from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 from grill.views import spreadsheet as _spreadsheet
 
 
+# TODO: All these mapppings... worth it? Consider refactor, defs location.
 _COLUMNS = {
     "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
     "Target Path": lambda arc: arc.GetTargetNode().path,
@@ -27,6 +28,12 @@ _COLUMNS = {
     "From Root Layer Stack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
 }
 
+_LAYERS_COMPOSITION_LAYER_IDS = {
+    "Layer Identifier": lambda layer: layer.identifier,
+}
+_LAYERS_COMPOSITION_PRIM_PATHS = {
+    "Spec on Prim Path": lambda prim: str(prim.GetPath()),
+}
 
 @lru_cache(maxsize=None)
 def _dot_exe():
@@ -49,8 +56,8 @@ class _Dot2SvgSignals(QtCore.QObject):
 
 
 class _Dot2Svg(QtCore.QRunnable):
-    def __init__(self, source_fp):
-        super().__init__()
+    def __init__(self, source_fp, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.signals = _Dot2SvgSignals()
         self.source_fp = source_fp
 
@@ -87,8 +94,10 @@ class _DotViewer(QtWidgets.QFrame):
         if self._dot2svg:  # forget about previous, unfinished runners
             self._dot2svg.signals.error.disconnect()
             self._dot2svg.signals.result.disconnect()
+            self._dot2svg.signals.deleteLater()
+            self._dot2svg.autoDelete()
 
-        self._dot2svg = dot2svg = _Dot2Svg(path)
+        self._dot2svg = dot2svg = _Dot2Svg(path, parent=self)
         dot2svg.signals.error.connect(self._on_dot_error)
         dot2svg.signals.result.connect(self._on_dot_result)
         self._threadpool.start(dot2svg)
@@ -119,7 +128,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree.setColumnCount(len(_COLUMNS))
         tree.setHeaderLabels([k for k in _COLUMNS])
         tree.setAlternatingRowColors(True)
-        self._dot_view = _DotViewer()
+        self._dot_view = _DotViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(tree)
         vertical.addWidget(self._dot_view)
@@ -158,14 +167,6 @@ class PrimComposition(QtWidgets.QDialog):
         self._dot_view.setDotPath(fp)
 
 
-_LAYERS_COMPOSITION_LAYER_IDS = {
-    "Layer Identifier": lambda layer: layer.identifier,
-}
-_LAYERS_COMPOSITION_PRIM_PATHS = {
-    "Spec on Prim Path": lambda prim: str(prim.GetPath()),
-}
-
-
 class LayersComposition(QtWidgets.QDialog):
 
     def __init__(self, stage=None, parent=None, **kwargs):
@@ -178,7 +179,7 @@ class LayersComposition(QtWidgets.QDialog):
             each.layout().setContentsMargins(0,0,0,0)
             each.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        self._dot_view = _DotViewer()
+        self._dot_view = _DotViewer(parent=self)
         self._dot_view.urlChanged.connect(self._graph_url_changed)
 
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -345,8 +346,13 @@ class LayersComposition(QtWidgets.QDialog):
         from pprint import pprint
         layers_model = self._layers.model
         pprint(set(graph.nodes) - legend_node_ids)
+        def _createItem(layer):
+            item = QtGui.QStandardItem(layer.identifier)
+            item.setData(layer, QtCore.Qt.UserRole)
+            return item
         items_to_add = [
-            QtGui.QStandardItem(layer.identifier)
+            # QtGui.QStandardItem(layer.identifier)
+            _createItem(layer)
             for node_id in sorted(set(graph.nodes) - legend_node_ids)
             for layer in layer_stacks_by_node_idx[node_id]
         ]
@@ -370,7 +376,7 @@ if __name__ == "__main__":
     # prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
     # description.setPrim(prim.GetChildren()[0])
     # description.show()
-    # stage = Usd.Stage.Open(r"B:\write\code\git\grill\master.usda")
+    stage = Usd.Stage.Open(r"B:\write\code\git\grill\master.usda")
     # stage = Usd.Stage.Open(r"B:\write\code\git\grill\main.usda")
     lc = LayersComposition()
     lc.setStage(stage)
