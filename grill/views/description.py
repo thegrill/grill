@@ -94,8 +94,6 @@ class _DotViewer(QtWidgets.QFrame):
         if self._dot2svg:  # forget about previous, unfinished runners
             self._dot2svg.signals.error.disconnect()
             self._dot2svg.signals.result.disconnect()
-            self._dot2svg.signals.deleteLater()
-            self._dot2svg.autoDelete()
 
         self._dot2svg = dot2svg = _Dot2Svg(path, parent=self)
         dot2svg.signals.error.connect(self._on_dot_error)
