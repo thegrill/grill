@@ -1,87 +1,60 @@
-from functools import lru_cache
-import contextvars
+from functools import lru_cache, partial
+
 from pxr import Tf
 from pxr.Usdviewq.plugin import PluginContainer
+
 from . import spreadsheet as _spreadsheet
 from . import description as _description
 
-_USDVIEW_SPREADSHEET_EDITOR_KEY = "_usdview_spreadsheet_editor"
-_USDVIEW_PRIM_DESCRIPTION_KEY = "_usdview_prim_composition"
-_USDVIEW_API = contextvars.ContextVar("_usdviewApi")
+
+@lru_cache(maxsize=None)
+def spreadsheet_editor(usdviewApi):
+    widget = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
+    widget.setStage(usdviewApi.stage)
+    return widget
 
 
-# @lru_cache(maxsize=None)
-def __getattr__(name):
-    if name == _USDVIEW_SPREADSHEET_EDITOR_KEY:
-        print("Initialising spreadsheet editor!")
-        usdviewApi = _USDVIEW_API.get()
-        import importlib
-        importlib.reload(_spreadsheet)
-        editor = _spreadsheet.Spreadsheet(parent=usdviewApi.qMainWindow)
-        editor.setStage(usdviewApi.stage)
-        return editor
-    elif name == _USDVIEW_PRIM_DESCRIPTION_KEY:
-        print("Initialising prim description!")
-        usdviewApi = _USDVIEW_API.get()
-        import importlib
-        importlib.reload(_description)
-        widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
-
-        def primChanged(new_paths, old_paths):
-            new_path = next(iter(new_paths), None)
-            if not new_path:
-                widget.clear()
-            else:
-                widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path))
-
-        usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
-        return widget
-    raise AttributeError(f"module {__name__} has no attribute {name}")
-
-
-def spreadsheet(usdviewApi):
-    print("Launching Spreadsheet Editor!")
-    ctx = contextvars.copy_context()
-
-    def getEditor():
-        _USDVIEW_API.set(usdviewApi)
-        return __getattr__(_USDVIEW_SPREADSHEET_EDITOR_KEY)
-
-    editor = ctx.run(getEditor)
-    editor.show()
-
-
+@lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
-    print("Launching Prim Composition!")
-    ctx = contextvars.copy_context()
+    widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
 
-    def getEditor():
-        _USDVIEW_API.set(usdviewApi)
-        return __getattr__(_USDVIEW_PRIM_DESCRIPTION_KEY)
+    def primChanged(new_paths, old_paths):
+        new_path = next(iter(new_paths), None)
+        widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()
 
-    editor = ctx.run(getEditor)
+    usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
     if usdviewApi.prim:
-        editor.setPrim(usdviewApi.prim)
-    editor.show()
+        widget.setPrim(usdviewApi.prim)
+    return widget
+
+
+@lru_cache(maxsize=None)
+def layer_stack_composition(usdviewApi):
+    widget = _description.LayersComposition(parent=usdviewApi.qMainWindow)
+    widget.setStage(usdviewApi.stage)
+    return widget
 
 
 class GrillPlugin(PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
-        self._spreadsheet = plugRegistry.registerCommandPlugin(
-            "Grill.spreadsheet",
-            "Spreadsheet Editor",
-            spreadsheet)
+        def show(_launcher, _usdviewAPI):
+            return _launcher(_usdviewAPI).show()
 
-        self._prim_composition = plugRegistry.registerCommandPlugin(
-            "Grill.prim_composition",
-            "Prim Composition",
-            prim_composition)
+        self._menu_items = [
+            plugRegistry.registerCommandPlugin(
+                f"Grill.{launcher.__qualname__}",
+                launcher.__qualname__.replace("_", " ").title(),  # lazy, naming conventions
+                partial(show, launcher),
+            )
+            # contract: every caller here returns a widget to show.
+            for launcher in (spreadsheet_editor, prim_composition, layer_stack_composition)
+        ]
 
     def configureView(self, plugRegistry, plugUIBuilder):
         grill_menu = plugUIBuilder.findOrCreateMenu("Grill")
-        grill_menu.addItem(self._spreadsheet)
-        grill_menu.addItem(self._prim_composition)
+        for item in self._menu_items:
+            grill_menu.addItem(item)
 
 
 Tf.Type.Define(GrillPlugin)

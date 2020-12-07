@@ -46,3 +46,27 @@ houdini.prim_composition()
 ``` 
 
 ![prim_description_hou_4](https://user-images.githubusercontent.com/8294116/98945804-1dee6300-2547-11eb-8e9b-3f0211af6f3c.gif)
+
+## Layer Stack Composition
+
+Similar to `Prim Composition`, but available for the whole stage.
+This helps answer questions like:
+
+- What prims are being affected by layers X and Y?
+
+On the upper left, all used layers in the current stage are listed.
+On the upper right, all prims that are affected by the selected layers are listed.
+On the bottom, a composition arcs graph is displayed for the selected layers plus the neighbors (predecessors and successors) for each of them.     
+ 
+### USD View
+
+![stack_composition_4](https://user-images.githubusercontent.com/8294116/100603669-8a47cf80-3359-11eb-85fd-ce0e2aa96d60.gif)
+
+### Houdini
+Available from the `Grill` shelf or via executing the following python script:
+```python
+from grill.views import houdini
+houdini.layer_stack_composition()
+```
+
+![stack_composition_houdin_2](https://user-images.githubusercontent.com/8294116/100744825-7cb24880-3432-11eb-8906-9c2c4019678e.gif)
