@@ -561,17 +561,3 @@ class SpreadsheetEditor(_Spreadsheet):
             item.setData(attribute, QtCore.Qt.DisplayRole)
             item.setData(prim, QtCore.Qt.UserRole)
             model.setItem(row_index, column_index, item)
-
-
-if __name__ == "__main__":
-    """ Run the application. """
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\UsdSkelExamples\UsdSkelExamples\HumanFemale\HumanFemale.walk.usd")
-    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\PointInstancedMedCity\PointInstancedMedCity.usd")
-    spreadsheet = SpreadsheetEditor()
-    spreadsheet.setStage(stage)
-    spreadsheet.show()
-    sys.exit(app.exec_())

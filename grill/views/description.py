@@ -359,21 +359,3 @@ class LayersComposition(QtWidgets.QDialog):
         layers_model.blockSignals(False)
         for table in self._layers, self._prims:
             table.table.setSortingEnabled(True)
-
-
-if __name__ == "__main__":
-    import sys
-    # from PySide2 import QtWebEngine
-    # QtWebEngine.QtWebEngine.initialize()
-    app = QtWidgets.QApplication(sys.argv)
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    # description = PrimComposition()
-    # prim = stage.GetPrimAtPath(r"/Kitchen_set/Props_grp/DiningTable_grp/TableTop_grp/CerealBowl_grp/BowlD_1")
-    # description.setPrim(prim.GetChildren()[0])
-    # description.show()
-    stage = Usd.Stage.Open(r"B:\write\code\git\grill\master.usda")
-    # stage = Usd.Stage.Open(r"B:\write\code\git\grill\main.usda")
-    lc = LayersComposition()
-    lc.setStage(stage)
-    lc.show()
-    sys.exit(app.exec_())

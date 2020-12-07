@@ -73,6 +73,8 @@ class TestViews(unittest.TestCase):
         # single child for this prim.
         self.assertEqual(topLevel.childCount(), 1)
 
+        widget.clear()
+
     def test_spreadsheet_editor(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -87,6 +89,7 @@ class TestViews(unittest.TestCase):
 
         widget.table.clearSelection()
         widget._column_options[0]._line_filter.setText("chi")
+        widget._column_options[0]._updateMask()
         widget.table.resizeColumnToContents(0)
 
         widget.table.selectAll()
@@ -111,4 +114,9 @@ class TestViews(unittest.TestCase):
         widget.table.clearSelection()
 
         widget._lock_all.click()
+        widget._conformLockSwitch()
         widget._vis_all.click()
+        widget._conformVisibilitySwitch()
+
+        widget._column_options[0]._line_filter.setText("")
+        widget._pasteClipboard()
