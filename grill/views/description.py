@@ -89,6 +89,8 @@ class _DotViewer(QtWidgets.QFrame):
         self.urlChanged = self._graph_view.urlChanged
         self._dot2svg = None
         self._threadpool = QtCore.QThreadPool()
+        # otherwise it seems invisible
+        self.resize(QtCore.QSize(self.height() + 100, self.width()))
 
     def setDotPath(self, path):
         if self._dot2svg:  # forget about previous, unfinished runners
@@ -320,8 +322,6 @@ class LayersComposition(QtWidgets.QDialog):
         qFilter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
 
         for prim in stage.TraverseAll():
-            print('-----------')
-            print(prim)
             path_str = str(prim.GetPath())
             query = Usd.PrimCompositionQuery(prim)
             query.filter = qFilter
@@ -333,7 +333,6 @@ class LayersComposition(QtWidgets.QDialog):
                 target_stack_idx = node_index_by_id[target_id]
                 for layer in layer_stacks_by_node_idx[node_index_by_id[target_id]]:
                     paths[layer.identifier].add(path_str)
-                print(target_id)
                 intro = arc.GetIntroducingLayer()
                 if intro:
                     assert intro.identifier in node_index_by_id, f"Expected {intro} to be on {node_index_by_id.keys()}"
@@ -341,9 +340,7 @@ class LayersComposition(QtWidgets.QDialog):
                     source_stack_idx = node_index_by_id[intro.identifier]
                     graph.add_edge(source_stack_idx, target_stack_idx, **edge_attrs)
 
-        from pprint import pprint
         layers_model = self._layers.model
-        pprint(set(graph.nodes) - legend_node_ids)
         def _createItem(layer):
             item = QtGui.QStandardItem(layer.identifier)
             item.setData(layer, QtCore.Qt.UserRole)

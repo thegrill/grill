@@ -57,7 +57,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         self.setLayout(layout)
 
         # Search filter
-        line_filter = QtWidgets.QLineEdit()
+        self._line_filter = line_filter = QtWidgets.QLineEdit()
         line_filter.setPlaceholderText("Filter")
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
 
