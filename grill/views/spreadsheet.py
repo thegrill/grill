@@ -1,5 +1,6 @@
 import io
 import csv
+import enum
 import inspect
 import itertools
 import contextlib
@@ -39,16 +40,24 @@ _COLUMNS = (
 )
 
 
-class _ColumnOptions(QtWidgets.QWidget):
+class _ColumnOptions(enum.Flag):
+    """Options that will be available on the header of a table."""
+    SEARCH = enum.auto()
+    VISIBILITY = enum.auto()
+    LOCK = enum.auto()
+    ALL = SEARCH | VISIBILITY | LOCK
+
+
+class _ColumnHeaderOptions(QtWidgets.QWidget):
     """A widget to be used within a header for columns on a USD spreadsheet."""
-    def __init__(self, name, *args, **kwargs):
+    def __init__(self, name, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
         options_layout = QtWidgets.QHBoxLayout()
         self.setLayout(layout)
 
         # Search filter
-        line_filter = QtWidgets.QLineEdit()
+        self._line_filter = line_filter = QtWidgets.QLineEdit()
         line_filter.setPlaceholderText("Filter")
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
 
@@ -72,16 +81,20 @@ class _ColumnOptions(QtWidgets.QWidget):
         layout.addLayout(options_layout)
         self._filter_layout = filter_layout = QtWidgets.QFormLayout()
         filter_layout.addRow("🔎", line_filter)
-        layout.addLayout(filter_layout)
-
+        if _ColumnOptions.SEARCH in options:
+            layout.addLayout(filter_layout)
+        self._options = options
         self._decorateLockButton(lock_button, lock_button.isChecked())
         lock_button.toggled.connect(partial(self._decorateLockButton, lock_button))
+
+        # set visibility after widgets are added to our layout
+        vis_button.setVisible(_ColumnOptions.VISIBILITY in options)
+        lock_button.setVisible(_ColumnOptions.LOCK in options)
 
         # public members exposure
         self.label = label
         self.locked = self._lock_button.toggled
         self.toggled = self._vis_button.toggled
-        # self.toggle = self._vis_button.toggle
         self.filterChanged = line_filter.textChanged
 
     def resizeEvent(self, event:QtGui.QResizeEvent):
@@ -92,12 +105,13 @@ class _ColumnOptions(QtWidgets.QWidget):
 
     def _updateMask(self):
         """We want nothing but the filter and buttons to be clickable on this widget."""
-        self.setMask(
-            QtGui.QRegion(self._filter_layout.geometry()) +
-            # when button are flat, geometry has a small render offset on x
-            QtGui.QRegion(self._lock_button.geometry().adjusted(-2, 0, 2, 0)) +
-            QtGui.QRegion(self._vis_button.geometry().adjusted(-2, 0, 2, 0))
-        )
+        region = QtGui.QRegion(self._filter_layout.geometry())
+        # when buttons are flat, geometry has a small render offset on x
+        if _ColumnOptions.LOCK in self._options:
+            region += self._lock_button.geometry().adjusted(-2, 0, 2, 0)
+        if _ColumnOptions.VISIBILITY in self._options:
+            region += self._vis_button.geometry().adjusted(-2, 0, 2, 0)
+        self.setMask(region)
 
     def _decorateLockButton(self, button, locked):
         if locked:
@@ -116,6 +130,7 @@ class _ColumnOptions(QtWidgets.QWidget):
 class _ProxyModel(QtCore.QSortFilterProxyModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # TODO: move model hierarchy filter logic to a different class
         self._useModelHierarchy = False
 
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
@@ -160,13 +175,13 @@ class _Header(QtWidgets.QHeaderView):
         https://www.qt.io/blog/2012/09/28/qt-support-weekly-27-widgets-on-a-header
         https://www.learnpyqt.com/courses/model-views/qtableview-modelviews-numpy-pandas/
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, columns, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
 
-        for index, columndata in enumerate(_COLUMNS):
-            column_options = _ColumnOptions(columndata.name, parent=self)
+        for index, name in enumerate(columns):
+            column_options = _ColumnHeaderOptions(name, options=options, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
             self.section_options[index] = column_options
             self.setMinimumHeight(column_options.sizeHint().height() + 20)
@@ -262,51 +277,38 @@ class _ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
 
-class Spreadsheet(QtWidgets.QDialog):
-    """TODO:
-        - Make paste work with filtered items (paste has been disabled)
-        - Per column control on context menu on all vis button
-        - Add row creates an anonymous prim
-    """
-    def __init__(self, stage=None, parent=None, **kwargs):
-        super().__init__(parent=parent, **kwargs)
-        self.model = model = QtGui.QStandardItemModel(0, len(_COLUMNS))
-        header = _Header(QtCore.Qt.Horizontal)
+class _Spreadsheet(QtWidgets.QDialog):
+    def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = model = QtGui.QStandardItemModel(0, len(columns))
+        header = _Header(columns, options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
         # for every column, create a proxy model and chain it to the next one
         proxy_model = source_model = model
-        model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
-        hide_key = "👀 Hide All"
-        self._vis_states = {"👀 Show All": True, hide_key: False}
-        self._vis_key_by_value = {v:k for k, v in self._vis_states.items()}  # True: Show All
-        self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
-        vis_all.clicked.connect(self._conformVisibility)
-        lock_key = "🔐 Lock All"
-        self._lock_states = {lock_key: True, "🔓 Unlock All": False}
-        self._lock_key_by_value = {v: k for k, v in self._lock_states.items()}  # True: Lock All
-        self._lock_all = lock_all = QtWidgets.QPushButton(lock_key)
-        lock_all.clicked.connect(self._conformLocked)
+
         self._column_options = dict()
-        for column_index, columndata in enumerate(_COLUMNS):
+        for column_index, column_name in enumerate(columns):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
             proxy_model.setFilterKeyColumn(column_index)
             source_model = proxy_model  # chain so next proxy model takes this one
 
             column_options = header.section_options[column_index]
-            column_options.filterChanged.connect(proxy_model.setFilterRegExp)
-            column_options.toggled.connect(partial(self._toggleColumnVisibility, column_index))
-            column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
-            column_options.locked.connect(partial(self._setColumnLocked, column_index))
-            column_options._lock_button.clicked.connect(self._conformLockSwitch)
+            if _ColumnOptions.SEARCH in options:
+                column_options.filterChanged.connect(proxy_model.setFilterRegExp)
+            if _ColumnOptions.VISIBILITY in options:
+                column_options.toggled.connect(partial(self._setColumnVisibility, column_index))
+                column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
+            if _ColumnOptions.LOCK in options:
+                column_options.locked.connect(partial(self._setColumnLocked, column_index))
+                column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
-            if columndata.name == "Type":
+            if column_name == "Type":
                 table.setItemDelegateForColumn(column_index, _ComboBoxItemDelegate())
 
-            model_hierarchy.toggled.connect(proxy_model._setModelHierarchyEnabled)
-            model_hierarchy.clicked.connect(proxy_model.invalidateFilter)
             self._column_options[column_index] = column_options
+            self._connectProxyModel(proxy_model)  # TODO: only reason of this is model hierarchy. explore to remove soon.
 
         header.setModel(proxy_model)
         header.setSectionsClickable(True)
@@ -315,6 +317,46 @@ class Spreadsheet(QtWidgets.QDialog):
         table.setHorizontalHeader(header)
         table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.SelectedClicked)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(table)
+        self.setLayout(layout)
+
+    def _connectProxyModel(self, proxy_model):
+        # TODO: only reason of this is model hierarchy. explore to remove soon.
+        pass
+
+    def _setColumnVisibility(self, index: int, visible: bool):
+        self.table.setColumnHidden(index, not visible)
+
+    def _setColumnLocked(self, column_index, value):
+        model = self.model
+        for row_index in range(model.rowCount()):
+            item = model.item(row_index, column_index)
+            item.setEditable(not value)
+
+
+class SpreadsheetEditor(_Spreadsheet):
+    """TODO:
+        - Make paste work with filtered items (paste has been disabled)
+        - Per column control on context menu on all vis button
+        - Add row creates an anonymous prim
+    """
+    def __init__(self, stage=None, parent=None, **kwargs):
+        columns = [c.name for c in _COLUMNS]
+        self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
+        super().__init__(columns, parent=parent, **kwargs)
+
+        hide_key = "👀 Hide All"
+        self._vis_states = {"👀 Show All": True, hide_key: False}
+        self._vis_key_by_value = {v: k for k, v in self._vis_states.items()}  # True: Show All
+        self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
+        vis_all.clicked.connect(self._conformVisibility)
+        lock_key = "🔐 Lock All"
+        self._lock_states = {lock_key: True, "🔓 Unlock All": False}
+        self._lock_key_by_value = {v: k for k, v in self._lock_states.items()}  # True: Lock All
+        self._lock_all = lock_all = QtWidgets.QPushButton(lock_key)
+        lock_all.clicked.connect(self._conformLocked)
 
         # table options
         sorting_enabled = QtWidgets.QCheckBox("Sorting Enabled")
@@ -326,21 +368,22 @@ class Spreadsheet(QtWidgets.QDialog):
         options_layout.addWidget(vis_all)
         options_layout.addWidget(lock_all)
         options_layout.addStretch()
-        sorting_enabled.toggled.connect(table.setSortingEnabled)
+        sorting_enabled.toggled.connect(self.table.setSortingEnabled)
         self.sorting_enabled = sorting_enabled
 
-        layout = QtWidgets.QVBoxLayout()
+        layout = self.layout()
         layout.addLayout(options_layout)
-        layout.addWidget(table)
+        layout.addWidget(self.table)
         insert_row = QtWidgets.QPushButton("Add Row")
         layout.addWidget(insert_row)
-        self.setLayout(layout)
         self.installEventFilter(self)
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Spreadsheet Editor")
 
-    def _toggleColumnVisibility(self, index: int, visible: bool):
-        self.table.setColumnHidden(index, not visible)
+    def _connectProxyModel(self, proxy_model):
+        super()._connectProxyModel(proxy_model)
+        self._model_hierarchy.toggled.connect(proxy_model._setModelHierarchyEnabled)
+        self._model_hierarchy.clicked.connect(proxy_model.invalidateFilter)
 
     def _conformVisibilitySwitch(self):
         """Make vis option offer inverse depending on how much is currently hidden"""
@@ -351,7 +394,7 @@ class Spreadsheet(QtWidgets.QDialog):
     def _conformVisibility(self):
         value = self._vis_states[self._vis_all.text()]
         for index, options in self._column_options.items():
-            self.table.setColumnHidden(index, not value)
+            self._setColumnVisibility(index, value)
             options._setHidden(not value)
 
         self._vis_all.setText(self._vis_key_by_value[not value])
@@ -518,23 +561,3 @@ class Spreadsheet(QtWidgets.QDialog):
             item.setData(attribute, QtCore.Qt.DisplayRole)
             item.setData(prim, QtCore.Qt.UserRole)
             model.setItem(row_index, column_index, item)
-
-    def _setColumnLocked(self, column_index, value):
-        model = self.model
-        for row_index in range(model.rowCount()):
-            item = model.item(row_index, column_index)
-            item.setEditable(not value)
-
-
-if __name__ == "__main__":
-    """ Run the application. """
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\UsdSkelExamples\UsdSkelExamples\HumanFemale\HumanFemale.walk.usd")
-    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\PointInstancedMedCity\PointInstancedMedCity.usd")
-    spreadsheet = Spreadsheet()
-    spreadsheet.setStage(stage)
-    spreadsheet.show()
-    sys.exit(app.exec_())

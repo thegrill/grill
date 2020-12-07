@@ -15,7 +15,7 @@ def spreadsheet():
     stage = viewer.stage()
     import importlib
     importlib.reload(_spreadsheet)
-    editor = _spreadsheet.Spreadsheet(parent=hou.qt.mainWindow())
+    editor = _spreadsheet.SpreadsheetEditor(parent=hou.qt.mainWindow())
     editor.setStage(stage)
 
     def refresh_ui():
@@ -55,4 +55,15 @@ def prim_composition():
                 editor._prim = prim
 
     hou.ui.addEventLoopCallback(_updatePrim)
+    editor.show()
+
+
+def layer_stack_composition():
+    print("Launching Layer Stack Composition!")
+    import importlib
+    importlib.reload(_description)
+    editor = _description.LayersComposition(parent=hou.qt.mainWindow())
+    viewer = toolutils.sceneViewer()
+    stage = viewer.stage()
+    editor.setStage(stage)
     editor.show()
