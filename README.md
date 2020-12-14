@@ -22,13 +22,13 @@ Foundational tools:
 - [USD](https://graphics.pixar.com/usd/docs/index.html)
 - [EdgeDB](https://edgedb.com)
 
-### Install
+## Install
 
 ```bash
 python -m pip install grill
 ```
 
-### Extra Dependencies
+## Extra Dependencies
 
 The following optional dependencies should be installed separately.
 
