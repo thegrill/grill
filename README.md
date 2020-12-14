@@ -28,12 +28,14 @@ Foundational tools:
 python -m pip install grill
 ```
 
-### Dependencies
+### Extra Dependencies
 
-The following dependencies are required and should be installed separately.
+The following optional dependencies should be installed separately.
 
 - graphviz (for graph widgets)
-  ```bash
+
+  ```
   conda install -c anaconda graphviz
   ```
+
 - USDView (hopefully will be available soon via pypi). In the meantime, it can be downloaded from [NVidia](https://developer.nvidia.com/usd) or built from USD source ([conda recipe](https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888))
