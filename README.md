@@ -18,6 +18,24 @@ With future users and readers in mind, `the grill` aims to stick to the followin
 - [KISS (keep it simple)](https://en.wikipedia.org/wiki/KISS_principle)
 
 Foundational tools:
-- [EdgeDB](https://edgedb.com)
-- [USD](https://graphics.pixar.com/usd/docs/index.html)
 - [Python](https://docs.python.org/3/)
+- [USD](https://graphics.pixar.com/usd/docs/index.html)
+- [EdgeDB](https://edgedb.com)
+
+## Install
+
+```bash
+python -m pip install grill
+```
+
+## Extra Dependencies
+
+The following optional dependencies should be installed separately.
+
+- graphviz (for graph widgets)
+
+  ```
+  conda install -c anaconda graphviz
+  ```
+
+- USDView (hopefully will be available soon via pypi). In the meantime, it can be downloaded from [NVidia](https://developer.nvidia.com/usd) or built from USD source ([conda recipe](https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888))

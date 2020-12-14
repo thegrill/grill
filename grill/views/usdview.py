@@ -18,7 +18,7 @@ def spreadsheet_editor(usdviewApi):
 def prim_composition(usdviewApi):
     widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
 
-    def primChanged(new_paths, old_paths):
+    def primChanged(new_paths, __):
         new_path = next(iter(new_paths), None)
         widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()
 
