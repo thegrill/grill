@@ -18,9 +18,9 @@ With future users and readers in mind, `the grill` aims to stick to the followin
 - [KISS (keep it simple)](https://en.wikipedia.org/wiki/KISS_principle)
 
 Foundational tools:
-- [EdgeDB](https://edgedb.com)
-- [USD](https://graphics.pixar.com/usd/docs/index.html)
 - [Python](https://docs.python.org/3/)
+- [USD](https://graphics.pixar.com/usd/docs/index.html)
+- [EdgeDB](https://edgedb.com)
 
 ### Install
 
