@@ -80,4 +80,4 @@ This is a walk-through on how to start using `the grill` tools with a fresh `con
    (grilldemo01) C:\Users\Christian>set PXR_PLUGINPATH_NAME=%PXR_PLUGINPATH_NAME%;C:\Users\Christian\.conda\envs\grilldemo01\lib\site-packages\grill\resources\plugInfo.json
    ```
 9. You should be able to launch `usdview` and see the `Grill` menu on the menu bar.
-   [imghere]
+   ![usdview_grill_menu](https://user-images.githubusercontent.com/8294116/102703258-b2738000-42c0-11eb-8db4-29003fe928b3.gif)
