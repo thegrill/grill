@@ -32,10 +32,52 @@ python -m pip install grill
 
 The following optional dependencies should be installed separately.
 
-- graphviz (for graph widgets)
+- [graphviz](http://graphviz.org/) (for graph widgets)
+- [usdview](https://graphics.pixar.com/usd/docs/USD-Toolset.html#USDToolset-usdview) (hopefully will be available soon via pypi). In the meantime, it can be downloaded from [NVidia](https://developer.nvidia.com/usd) or built from USD source ([conda recipe](https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888))
 
-  ```
-  conda install -c anaconda graphviz
-  ```
+## Conda Environment Example
 
-- USDView (hopefully will be available soon via pypi). In the meantime, it can be downloaded from [NVidia](https://developer.nvidia.com/usd) or built from USD source ([conda recipe](https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888))
+For environment management, `the grill` uses `conda`.
+This is a walk-through on how to start using `the grill` tools with a fresh `conda` environment. 
+
+1. If `conda` is not on the system yet, install [miniconda](https://docs.conda.io/en/latest/miniconda.html)
+   Note: `conda` environment manager comes in two flavours: 
+   - [Anaconda](https://docs.anaconda.com/anaconda/user-guide/getting-started/), which is [conda](https://docs.conda.io/projects/conda/en/latest/index.html) + a lot of extra utilities.
+   - [miniconda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html) is the main bootstrap for `conda` and is the preferred one. When in doubt, install this one.
+2. Launch [Anaconda Prompt](https://docs.anaconda.com/anaconda/user-guide/getting-started/#open-anaconda-prompt) (it came as part of the `miniconda` installation)
+3. Create a new `conda` environment with `python=3.7`, e.g:
+   ```
+   (base) C:\>conda create -n grilldemo01 python=3.7
+   ```
+4. Activate that environment
+   ```
+   (base) C:\>conda activate grilldemo01
+   ```
+5. Install `grill` via pip
+   ```
+   (grilldemo01) C:\>python -m pip install grill
+   ```
+6. If missing, optionally install `graphviz` via conda
+   ```
+   (grilldemo01) C:\>conda install -c anaconda graphviz
+   ```
+7. If missing, optionally install `usdview` via [NVidia builds](https://developer.nvidia.com/usd) or via building USD from source using this ([conda recipe](https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888))
+   Note that if you're installing via the NVidia builds, you'll need `PyOpenGL`:
+   ```
+   (grilldemo01) C:\>python -m pip install PyOpenGL
+   ```
+8. Extend the `PXR_PLUGINPATH_NAME` environment variable to include the `plugInfo.json` file from the `grill.resources` path location.
+   To know where the installed file is, run the following python command:
+   ```
+   (grilldemo01) C:\Users\Christian>python -c "from pathlib import Path;from grill import resources;path=(Path(resources.__path__._path[0]) / 'plugInfo.json');assert path.is_file();print(path)
+   ``` 
+   It will print something like:
+   ```
+   C:\Users\Christian\.conda\envs\grilldemo01\lib\site-packages\grill\resources\plugInfo.json
+   ```
+   Which you can use to extend the pixar environment variable, e.g:
+   ```
+   (grilldemo01) C:\Users\Christian>set PXR_PLUGINPATH_NAME=%PXR_PLUGINPATH_NAME%;C:\Users\Christian\.conda\envs\grilldemo01\lib\site-packages\grill\resources\plugInfo.json
+   ```
+9. You should be able to launch `usdview` and see the `Grill` menu on the menu bar.
+   [imghere]
