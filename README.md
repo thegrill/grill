@@ -72,7 +72,7 @@ This is a walk-through on how to start using `the grill` tools with a fresh `con
    
    To know where the installed file is, run the following python command:
    ```
-   (grilldemo01) C:\Users\Christian>python -c "from pathlib import Path;from grill import resources;path=(Path(resources.__path__._path[0]) / 'plugInfo.json');assert path.is_file();print(path)
+   (grilldemo01) C:\Users\Christian>python -c "from pathlib import Path;from grill import resources;path=(Path(resources.__path__._path[0]) / 'plugInfo.json');assert path.is_file();print(path)"
    ``` 
    It will print something like:
    ```
