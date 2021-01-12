@@ -6,14 +6,17 @@ import itertools
 import contextlib
 
 from typing import NamedTuple
-from functools import partial
 from collections import Counter
+from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom
 from PySide2 import QtCore, QtWidgets, QtGui
 
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
+# TODO: add more types here
 options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
+
+_read_only = lambda x, y: x
 
 
 @contextlib.contextmanager
@@ -25,19 +28,73 @@ def wait():
         QtWidgets.QApplication.restoreOverrideCursor()
 
 
-class _Column(NamedTuple):
-    name: str
-    getter: callable
-    setter: callable
+@lru_cache(maxsize=None)
+def _property_name_from_option_type(optype):
+    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QItemEditorFactory.html
+    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QAbstractItemDelegate.html#PySide2.QtWidgets.PySide2.QtWidgets.QAbstractItemDelegate.createEditor
+    # https://discourse.techart.online/t/pyside2-qitemeditorfactory-and-missing-qvariant-qmetatype/11387/2
+    factory = QtWidgets.QItemEditorFactory.defaultFactory()
+    property_name = factory.valuePropertyName(optype)  # e.g. QtCore.QByteArray(b'text')
+    return property_name.data().decode()  # e.g. from b'text' to "text", "value", ...
 
 
-_COLUMNS = (
-    _Column("Name", Usd.Prim.GetName, lambda x, y: x),
-    _Column("Path", lambda prim: str(prim.GetPath()), lambda x, y: x),
-    _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
-    _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
-    _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
-)
+class _PrimItemDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
+    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+    """
+
+    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+        editor = super().createEditor(parent, option, index)
+        editor._property_name = _property_name_from_option_type(option.type)
+        return editor
+
+    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        # we would always fallback to _property_name but it looks like there's no
+        # consistency, so we always prefer to check for "value" and only if it's None
+        # we check the property name found from the option when the editor was created.
+        value = editor.property("value")
+        print(f"From property 'value': {value}, type: {type(value)}")
+        if value is None:
+            value = editor.property(editor._property_name)
+            print(f"From property '{editor._property_name}': {value}, type: {type(value)}")
+
+        prim = index.data(QtCore.Qt.UserRole)
+        setter = index.data(QtCore.Qt.UserRole + 1)
+        print(f"Setting: {value} on prim {prim} via {setter}")
+        setter(prim, value)
+        return super().setModelData(editor, model, index)
+
+
+class _PrimTypeItemDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
+    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+    """
+    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+        combobox = QtWidgets.QComboBox(parent=parent)
+        combobox.addItems(list(options.keys()))
+        return combobox
+
+    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
+        # get the index of the text in the combobox that matches the current value of the item
+        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
+        if cbox_index:  # if we know about this value, set it already
+            editor.setCurrentIndex(cbox_index)
+
+    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        prim = index.data(QtCore.Qt.UserRole)
+        prim.SetTypeName(editor.currentText())
+        model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
+
+    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
+    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
+    # def commitAndCloseEditor(self):
+    #     editor = self.sender()
+    #     # The commitData signal must be emitted when we've finished editing
+    #     # and need to write our changed back to the model.
+    #     self.commitData.emit(editor)
+    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
 
 class _ColumnOptions(enum.Flag):
@@ -246,49 +303,18 @@ class _Table(QtWidgets.QTableView):
         header._updateVisualSections(min(header.section_options))
 
 
-class _ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
-    """
-    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
-    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
-    """
-    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        combobox = QtWidgets.QComboBox(parent=parent)
-        combobox.addItems(list(options.keys()))
-        return combobox
-
-    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
-        # get the index of the text in the combobox that matches the current value of the item
-        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
-        if cbox_index:  # if we know about this value, set it already
-            editor.setCurrentIndex(cbox_index)
-
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-        prim = index.data(QtCore.Qt.UserRole)
-        prim.SetTypeName(editor.currentText())
-        model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
-
-    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
-    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
-    # def commitAndCloseEditor(self):
-    #     editor = self.sender()
-    #     # The commitData signal must be emitted when we've finished editing
-    #     # and need to write our changed back to the model.
-    #     self.commitData.emit(editor)
-    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
-
-
 class _Spreadsheet(QtWidgets.QDialog):
     def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(columns))
-        header = _Header(columns, options, QtCore.Qt.Horizontal)
+        header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
         # for every column, create a proxy model and chain it to the next one
         proxy_model = source_model = model
 
         self._column_options = dict()
-        for column_index, column_name in enumerate(columns):
+        for column_index, column_data in enumerate(columns):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
             proxy_model.setFilterKeyColumn(column_index)
@@ -304,8 +330,11 @@ class _Spreadsheet(QtWidgets.QDialog):
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
                 column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
-            if column_name == "Type":
-                table.setItemDelegateForColumn(column_index, _ComboBoxItemDelegate())
+            delegate = column_data.delegate()
+            table.setItemDelegateForColumn(column_index, delegate)
+            # for custom delegates we need to keep a reference, otherwise they're
+            # garbage collected and might cause crashes.
+            setattr(self, f"_delegate_{column_index}", delegate)
 
             self._column_options[column_index] = column_options
             self._connectProxyModel(proxy_model)  # TODO: only reason of this is model hierarchy. explore to remove soon.
@@ -336,6 +365,24 @@ class _Spreadsheet(QtWidgets.QDialog):
             item.setEditable(not value)
 
 
+class _Column(NamedTuple):
+    name: str
+    getter: callable
+    setter: callable = _read_only  # "Read-only" by default
+    delegate: QtWidgets.QStyledItemDelegate = _PrimItemDelegate
+
+
+_COLUMNS = (
+    _Column("Name", Usd.Prim.GetName),
+    _Column("Path", lambda prim: str(prim.GetPath())),
+    _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _PrimTypeItemDelegate),
+    _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
+    _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+    _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
+    _Column("Segments", lambda prim: len(prim.GetChildren())),
+)
+
+
 class SpreadsheetEditor(_Spreadsheet):
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
@@ -343,7 +390,7 @@ class SpreadsheetEditor(_Spreadsheet):
         - Add row creates an anonymous prim
     """
     def __init__(self, stage=None, parent=None, **kwargs):
-        columns = [c.name for c in _COLUMNS]
+        columns = _COLUMNS
         self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
         super().__init__(columns, parent=parent, **kwargs)
 
@@ -560,4 +607,18 @@ class SpreadsheetEditor(_Spreadsheet):
             item = QtGui.QStandardItem()
             item.setData(attribute, QtCore.Qt.DisplayRole)
             item.setData(prim, QtCore.Qt.UserRole)
+            item.setData(column_data.setter, QtCore.Qt.UserRole + 1)
             model.setItem(row_index, column_index, item)
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set_instanced.usd")
+    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\UsdSkelExamples\UsdSkelExamples\HumanFemale\HumanFemale.walk.usd")
+    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\PointInstancedMedCity\PointInstancedMedCity.usd")
+    sheet = SpreadsheetEditor()
+    sheet.setStage(stage)
+    sheet.show()
+    sys.exit(app.exec_())
