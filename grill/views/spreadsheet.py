@@ -395,9 +395,10 @@ class SpreadsheetEditor(_Spreadsheet):
         _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox,
                 _ComboBoxItemDelegate),
         _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
-        _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
         _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
-        _Column("Segments", lambda prim: len(prim.GetChildren())),
+        _Column("Visibility", lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
+        _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+        # _Column("Segments", lambda prim: len(prim.GetChildren())),
     )
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
