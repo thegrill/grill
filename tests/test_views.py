@@ -119,4 +119,6 @@ class TestViews(unittest.TestCase):
         widget._conformVisibilitySwitch()
 
         widget._column_options[0]._line_filter.setText("")
+        widget._model_hierarchy.click()  # disables model hierarchy, which we don't have any
+        widget.table.selectAll()
         widget._pasteClipboard()
