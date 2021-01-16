@@ -9,7 +9,7 @@ from typing import NamedTuple
 from collections import Counter
 from functools import partial, lru_cache
 
-from pxr import Usd, UsdGeom
+from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtCore, QtWidgets, QtGui
 
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
@@ -481,7 +481,9 @@ class SpreadsheetEditor(_Spreadsheet):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
             self._copySelection()
         elif event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Paste):
-            self._pasteClipboard()
+            with Sdf.ChangeBlock():
+                self._pasteClipboard()
+
         return super().eventFilter(source, event)
 
     def _pasteClipboard(self):
@@ -494,11 +496,11 @@ class SpreadsheetEditor(_Spreadsheet):
         selection = selection_model.selectedIndexes()
         print(f"Selection model indexes: {selection}")
 
-        selected_rows = [i.row() for i in selection]
-        selected_columns = [i.column() for i in selection]
+        selected_rows = {i.row() for i in selection}
+        selected_columns = {i.column() for i in selection}
         # if selection is not continuous, alert the user and abort instead of
         # trying to figure out what to paste where.
-        if len(selection) != len(set(selected_rows)) * len(set(selected_columns)):
+        if len(selection) != len(selected_rows) * len(selected_columns):
             msg = ("To paste with multiple selection,"
                    "cells need to be selected continuously\n"
                    "(no gaps between rows / columns).")
@@ -517,13 +519,24 @@ class SpreadsheetEditor(_Spreadsheet):
         print(f"selected_column, {selected_column}")
         data = tuple(csv.reader(io.StringIO(text), delimiter=csv.excel_tab.delimiter))
         print(f"data, {data}")
+
+        len_data = len(data)
+        single_row_source = len_data == 1
+        # if data rows are more than 1, we do not allow for gaps on the selected rows to paste.
+        if not single_row_source and len_data != len(range(selected_row, max(selected_rows, default=current_count)+1)):
+            msg = ("Clipboard data contains multiple rows,"
+                   "in order to paste this content, row cells need to be selected continuously\n"
+                   "(no gaps between them).")
+            QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
+            return
+
         self.table.setSortingEnabled(False)  # prevent auto sort while adding rows
 
         maxrow = max(selected_row + len(data) - 1,  # either the amount of rows to paste
                      max(selected_rows, default=current_count))  # or the current row count
         print(f"maxrow, {maxrow}")
         print("Coming soon!")
-        return
+        # return
         stage = self._stage
         # cycle the data in case that selection to paste on is bigger than source
         table_model = self.table.model()
@@ -539,6 +552,10 @@ class SpreadsheetEditor(_Spreadsheet):
                 return index
 
         for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
+            if single_row_source and visual_row not in selected_rows:
+                print(f"Skipping paste on visual row {visual_row} on contigous mode")
+                continue
+            print(visual_row)
             # model.ind
             # table.sele
             # model.data()
@@ -557,8 +574,10 @@ class SpreadsheetEditor(_Spreadsheet):
 
                 source_index = _sourceIndex(model.index(visual_row, 0))
                 source_item = self.model.itemFromIndex(source_index)
+
                 # model.index
                 # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
+
                 prim = source_item.data(_OBJECT)
                 print("Source model:")
                 print(prim)
@@ -573,7 +592,18 @@ class SpreadsheetEditor(_Spreadsheet):
                     s_index = _sourceIndex(model.index(visual_row, column_index))
                     s_item = self.model.itemFromIndex(s_index)
                     assert s_item.data(_OBJECT) is prim
-                    _COLUMNS[column_index].setter(prim, column_data)
+
+                    setter = self._COLUMNS[column_index].setter
+                    print(f"Setting {column_data} with type {type(column_data)} on {prim}")
+                    import json  # big hack. how to?
+                    try:
+                        setter(prim, column_data)
+                    except Exception as exc:
+                        print(exc)
+                        column_data = json.loads(column_data.lower())
+                        print(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
+                        setter(prim, column_data)
+
                     s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
             if visual_row == maxrow:
@@ -633,7 +663,8 @@ if __name__ == "__main__":
     import sys
     app = QtWidgets.QApplication(sys.argv)
 
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set_instanced.usd")
+    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set_instanced.usd")
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\UsdSkelExamples\UsdSkelExamples\HumanFemale\HumanFemale.walk.usd")
     # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\PointInstancedMedCity\PointInstancedMedCity.usd")
     sheet = SpreadsheetEditor()

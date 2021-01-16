@@ -96,8 +96,7 @@ class _DotViewer(QtWidgets.QFrame):
 
 class PrimComposition(QtWidgets.QDialog):
     _COLUMNS = {
-        "Target Layer": lambda
-            arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
+        "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
         "Target Path": lambda arc: arc.GetTargetNode().path,
         "Arc": lambda arc: arc.GetArcType().displayName,
         "Has Specs": Usd.CompositionArc.HasSpecs,
