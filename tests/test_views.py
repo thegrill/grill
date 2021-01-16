@@ -100,7 +100,7 @@ class TestViews(unittest.TestCase):
         widget._copySelection()
         clip = QtWidgets.QApplication.instance().clipboard().text()
         data = tuple(csv.reader(io.StringIO(clip), delimiter=csv.excel_tab.delimiter))
-        expected_data = (['child', '/nested/child', '', '', 'False'],)
+        expected_data = (['child', '/nested/child', '', '', 'False', '', 'False'],)
         self.assertEqual(data, expected_data)
 
         widget.table.clearSelection()
