@@ -48,7 +48,6 @@ _OBJECT = QtCore.Qt.UserRole + 0
 _VALUE_GETTER = QtCore.Qt.UserRole + 1
 _VALUE_SETTER = QtCore.Qt.UserRole + 2
 _EDITOR_CREATOR = QtCore.Qt.UserRole + 3
-_ITEM_DELEGATE = QtCore.Qt.UserRole + 4
 
 
 class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
@@ -389,25 +388,24 @@ class _Column(NamedTuple):
     delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
 
 
-_COLUMNS = (
-    _Column("Name", Usd.Prim.GetName),
-    _Column("Path", lambda prim: str(prim.GetPath())),
-    _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox, _ComboBoxItemDelegate),
-    _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
-    _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
-    _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
-    _Column("Segments", lambda prim: len(prim.GetChildren())),
-)
-
-
 class SpreadsheetEditor(_Spreadsheet):
+    _COLUMNS = (
+        _Column("Name", Usd.Prim.GetName),
+        _Column("Path", lambda prim: str(prim.GetPath())),
+        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox,
+                _ComboBoxItemDelegate),
+        _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
+        _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+        _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
+        _Column("Segments", lambda prim: len(prim.GetChildren())),
+    )
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
         - Per column control on context menu on all vis button
         - Add row creates an anonymous prim
     """
     def __init__(self, stage=None, parent=None, **kwargs):
-        columns = _COLUMNS
+        columns = self._COLUMNS
         self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
         super().__init__(columns, parent=parent, **kwargs)
 
@@ -607,7 +605,7 @@ class SpreadsheetEditor(_Spreadsheet):
         model = self.model
         model.clear()
         # labels are on the header widgets
-        model.setHorizontalHeaderLabels([''] * len(_COLUMNS))
+        model.setHorizontalHeaderLabels([''] * len(self._COLUMNS))
         table.setSortingEnabled(False)
         items = list(enumerate(stage.TraverseAll()))
         model.setRowCount(len(items))
@@ -619,7 +617,7 @@ class SpreadsheetEditor(_Spreadsheet):
 
     def _addPrimToRow(self, row_index, prim):
         model = self.model
-        for column_index, column_data in enumerate(_COLUMNS):
+        for column_index, column_data in enumerate(self._COLUMNS):
             attribute = column_data.getter(prim)
             item = QtGui.QStandardItem()
             item.setData(attribute, QtCore.Qt.DisplayRole)
