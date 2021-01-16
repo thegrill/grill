@@ -38,14 +38,34 @@ def _property_name_from_option_type(optype):
     return property_name.data().decode()  # e.g. from b'text' to "text", "value", ...
 
 
-class _PrimItemDelegate(QtWidgets.QStyledItemDelegate):
+def _prim_type_combobox(parent, option, index):
+    combobox = QtWidgets.QComboBox(parent=parent)
+    combobox.addItems(list(options.keys()))
+    return combobox
+
+
+_OBJECT = QtCore.Qt.UserRole + 0
+_VALUE_GETTER = QtCore.Qt.UserRole + 1
+_VALUE_SETTER = QtCore.Qt.UserRole + 2
+_EDITOR_CREATOR = QtCore.Qt.UserRole + 3
+_ITEM_DELEGATE = QtCore.Qt.UserRole + 4
+
+
+class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     https://doc.qt.io/qtforpython/overviews/sql-presenting.html
     https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+
+    Contract:
+    Object - UserRole
+    ValueGetter - UserRole + 1
+    ValueSetter - UserRole + 2
+    Widget - UserRole + 3
     """
 
     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        editor = super().createEditor(parent, option, index)
+        creator = index.data(_EDITOR_CREATOR) or super().createEditor
+        editor = creator(parent, option, index)
         editor._property_name = _property_name_from_option_type(option.type)
         return editor
 
@@ -54,38 +74,34 @@ class _PrimItemDelegate(QtWidgets.QStyledItemDelegate):
         # consistency, so we always prefer to check for "value" and only if it's None
         # we check the property name found from the option when the editor was created.
         value = editor.property("value")
+        # value will usually work for "bool"
         print(f"From property 'value': {value}, type: {type(value)}")
+        # text will work for line edits and other text editors.
         if value is None:
             value = editor.property(editor._property_name)
             print(f"From property '{editor._property_name}': {value}, type: {type(value)}")
-
-        prim = index.data(QtCore.Qt.UserRole)
-        setter = index.data(QtCore.Qt.UserRole + 1)
-        print(f"Setting: {value} on prim {prim} via {setter}")
-        setter(prim, value)
+        # currentText will work for combo boxes.
+        if value is None:
+            value = editor.property("currentText")
+            print(f"From property 'currentText': {value}, type: {type(value)}")
+        # there's also datetime, time, but those should be coming from editor._property_name
+        # fail if we find something we don't know how to translate
+        if value is None:
+            raise ValueError(f"Can not obtain value to set from editor: {editor} on index {index}")
+        obj = index.data(_OBJECT)
+        setter = index.data(_VALUE_SETTER)
+        print(f"Setting: {value} on object {obj} via {setter}")
+        setter(obj, value)
         return super().setModelData(editor, model, index)
 
 
-class _PrimTypeItemDelegate(QtWidgets.QStyledItemDelegate):
-    """
-    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
-    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
-    """
-    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        combobox = QtWidgets.QComboBox(parent=parent)
-        combobox.addItems(list(options.keys()))
-        return combobox
+class _ComboBoxItemDelegate(_ColumnItemDelegate):
 
     def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
         # get the index of the text in the combobox that matches the current value of the item
         cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
         if cbox_index:  # if we know about this value, set it already
             editor.setCurrentIndex(cbox_index)
-
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-        prim = index.data(QtCore.Qt.UserRole)
-        prim.SetTypeName(editor.currentText())
-        model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
 
     # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
     # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
@@ -204,7 +220,7 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         if not index.isValid():
             raise ValueError(f"Invalid index from source_row={source_row}, source_column={source_column}, source_parent={source_parent}")
 
-        prim = index.data(QtCore.Qt.UserRole)
+        prim = index.data(_OBJECT)
         if not prim:
             # row may have been just inserted as a result of a model.insertRow or
             # model.appendRow call, so no prim yet. Mmmm see how to prevent this?
@@ -369,13 +385,14 @@ class _Column(NamedTuple):
     name: str
     getter: callable
     setter: callable = _read_only  # "Read-only" by default
-    delegate: QtWidgets.QStyledItemDelegate = _PrimItemDelegate
+    editor: callable = None
+    delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
 
 
 _COLUMNS = (
     _Column("Name", Usd.Prim.GetName),
     _Column("Path", lambda prim: str(prim.GetPath())),
-    _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _PrimTypeItemDelegate),
+    _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox, _ComboBoxItemDelegate),
     _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
     _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
     _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
@@ -543,7 +560,7 @@ class SpreadsheetEditor(_Spreadsheet):
                 source_item = self.model.itemFromIndex(source_index)
                 # model.index
                 # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
-                prim = source_item.data(QtCore.Qt.UserRole)
+                prim = source_item.data(_OBJECT)
                 print("Source model:")
                 print(prim)
                 # print("Table proxy model:")
@@ -556,7 +573,7 @@ class SpreadsheetEditor(_Spreadsheet):
                     # item = model.item(row_index, column_index)
                     s_index = _sourceIndex(model.index(visual_row, column_index))
                     s_item = self.model.itemFromIndex(s_index)
-                    assert s_item.data(QtCore.Qt.UserRole) is prim
+                    assert s_item.data(_OBJECT) is prim
                     _COLUMNS[column_index].setter(prim, column_data)
                     s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
@@ -606,8 +623,10 @@ class SpreadsheetEditor(_Spreadsheet):
             attribute = column_data.getter(prim)
             item = QtGui.QStandardItem()
             item.setData(attribute, QtCore.Qt.DisplayRole)
-            item.setData(prim, QtCore.Qt.UserRole)
-            item.setData(column_data.setter, QtCore.Qt.UserRole + 1)
+            item.setData(prim, _OBJECT)
+            item.setData(column_data.getter, _VALUE_GETTER)
+            item.setData(column_data.setter, _VALUE_SETTER)
+            item.setData(column_data.editor, _EDITOR_CREATOR)
             model.setItem(row_index, column_index, item)
 
 
