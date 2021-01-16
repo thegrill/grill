@@ -532,8 +532,8 @@ class SpreadsheetEditor(_Spreadsheet):
 
         self.table.setSortingEnabled(False)  # prevent auto sort while adding rows
 
-        maxrow = max(selected_row + len(data) - 1,  # either the amount of rows to paste
-                     max(selected_rows, default=current_count))  # or the current row count
+        maxrow = max(selected_row + len(data),  # either the amount of rows to paste
+                     max(selected_rows, default=current_count) + 1)  # or the current row count
         print(f"maxrow, {maxrow}")
         print("Coming soon!")
         # return
@@ -552,10 +552,13 @@ class SpreadsheetEditor(_Spreadsheet):
                 return index
 
         for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
+            print(f"visual_row={visual_row}")
+            if visual_row > maxrow:
+                print("Bye!")
+                break
             if single_row_source and visual_row not in selected_rows:
-                print(f"Skipping paste on visual row {visual_row} on contigous mode")
                 continue
-            print(visual_row)
+
             # model.ind
             # table.sele
             # model.data()
@@ -606,10 +609,6 @@ class SpreadsheetEditor(_Spreadsheet):
 
                     s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
-            if visual_row == maxrow:
-                print("Bye!")
-                break
-
         self.table.setSortingEnabled(self.sorting_enabled.isChecked())  # prevent auto sort while adding rows
 
     def _copySelection(self):
@@ -657,17 +656,3 @@ class SpreadsheetEditor(_Spreadsheet):
             item.setData(column_data.setter, _VALUE_SETTER)
             item.setData(column_data.editor, _EDITOR_CREATOR)
             model.setItem(row_index, column_index, item)
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-
-    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set_instanced.usd")
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\UsdSkelExamples\UsdSkelExamples\HumanFemale\HumanFemale.walk.usd")
-    # # stage = Usd.Stage.Open(r"B:\read\cg\downloads\PointInstancedMedCity\PointInstancedMedCity.usd")
-    sheet = SpreadsheetEditor()
-    sheet.setStage(stage)
-    sheet.show()
-    sys.exit(app.exec_())
