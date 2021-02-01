@@ -72,7 +72,7 @@ This is a walk-through on how to start using `the grill` tools with a fresh `con
    
    To know where the installed file is, run the following python command:
    ```
-   (grilldemo01) C:\Users\Christian>python -c "from pathlib import Path;from grill import resources;path=(Path(resources.__path__._path[0]) / 'plugInfo.json');assert path.is_file();print(path)"
+   (grilldemo01) C:\>python -c "from pathlib import Path;from grill import resources;path=(Path(resources.__path__._path[0]) / 'plugInfo.json');assert path.is_file();print(path)"
    ``` 
    It will print something like:
    ```
@@ -80,10 +80,10 @@ This is a walk-through on how to start using `the grill` tools with a fresh `con
    ```
    Which you can use to extend the pixar environment variable, e.g:
    ```
-   (grilldemo01) C:\Users\Christian>set PXR_PLUGINPATH_NAME=%PXR_PLUGINPATH_NAME%;C:\Users\Christian\.conda\envs\grilldemo01\lib\site-packages\grill\resources\plugInfo.json
+   (grilldemo01) C:\>set PXR_PLUGINPATH_NAME=%PXR_PLUGINPATH_NAME%;C:\Users\Christian\.conda\envs\grilldemo01\lib\site-packages\grill\resources\plugInfo.json
    ```
 9. You should be able to launch `usdview` and see the `Grill` menu on the menu bar.
     ```
-    (grilldemo01) C:\Users\Christian>usdview B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd
+    (grilldemo01) C:\>usdview B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd
     ```
    ![usdview_grill_menu](https://user-images.githubusercontent.com/8294116/102703258-b2738000-42c0-11eb-8db4-29003fe928b3.gif)

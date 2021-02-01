@@ -9,31 +9,12 @@ from functools import lru_cache
 from collections import defaultdict
 
 import networkx
-from pxr import Usd, Pcp
+from pxr import Usd, Pcp, Sdf
 from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from grill.views import spreadsheet as _spreadsheet
 
-
-# TODO: All these mapppings... worth it? Consider refactor, defs location.
-_COLUMNS = {
-    "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
-    "Target Path": lambda arc: arc.GetTargetNode().path,
-    "Arc": lambda arc: arc.GetArcType().displayName,
-    "Has Specs": Usd.CompositionArc.HasSpecs,
-    "Is Ancestral": Usd.CompositionArc.IsAncestral,
-    "Is Implicit": Usd.CompositionArc.IsImplicit,
-    "From Root Layer Prim Spec": Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
-    "From Root Layer Stack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
-}
-
-_LAYERS_COMPOSITION_LAYER_IDS = {
-    "Layer Identifier": lambda layer: layer.identifier,
-}
-_LAYERS_COMPOSITION_PRIM_PATHS = {
-    "Spec on Prim Path": lambda prim: str(prim.GetPath()),
-}
 
 @lru_cache(maxsize=None)
 def _dot_exe():
@@ -114,6 +95,17 @@ class _DotViewer(QtWidgets.QFrame):
 
 
 class PrimComposition(QtWidgets.QDialog):
+    _COLUMNS = {
+        "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
+        "Target Path": lambda arc: arc.GetTargetNode().path,
+        "Arc": lambda arc: arc.GetArcType().displayName,
+        "Has Specs": Usd.CompositionArc.HasSpecs,
+        "Is Ancestral": Usd.CompositionArc.IsAncestral,
+        "Is Implicit": Usd.CompositionArc.IsImplicit,
+        "From Root Layer Prim Spec": Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
+        "From Root Layer Stack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
+    }
+
     def __init__(self, *args, **kwargs):
         """For inspection and debug purposes, this widget makes primary use of:
 
@@ -125,8 +117,8 @@ class PrimComposition(QtWidgets.QDialog):
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
         self.composition_tree = tree = QtWidgets.QTreeWidget()
-        tree.setColumnCount(len(_COLUMNS))
-        tree.setHeaderLabels([k for k in _COLUMNS])
+        tree.setColumnCount(len(self._COLUMNS))
+        tree.setHeaderLabels([k for k in self._COLUMNS])
         tree.setAlternatingRowColors(True)
         self._dot_view = _DotViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
@@ -152,7 +144,7 @@ class PrimComposition(QtWidgets.QDialog):
         query = Usd.PrimCompositionQuery(prim)
         tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
         for arc in query.GetCompositionArcs():
-            strings = [str(getter(arc)) for getter in _COLUMNS.values()]
+            strings = [str(getter(arc)) for getter in self._COLUMNS.values()]
             intro_layer = arc.GetIntroducingLayer()
             if intro_layer and intro_layer in tree_items:
                 parent = tree_items[intro_layer]
@@ -168,12 +160,19 @@ class PrimComposition(QtWidgets.QDialog):
 
 
 class LayersComposition(QtWidgets.QDialog):
+    _LAYERS_COLUMNS = (
+        _spreadsheet._Column("Layer Identifier", Sdf.Layer.identifier.getter),
+    )
+
+    _PRIM_COLUMNS = (
+        _spreadsheet._Column("Spec on Prim Path", lambda prim: str(prim.GetPath)),
+    )
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         options = _spreadsheet._ColumnOptions.SEARCH
-        self._layers = _spreadsheet._Spreadsheet(list(_LAYERS_COMPOSITION_LAYER_IDS), options)
-        self._prims = _spreadsheet._Spreadsheet(list(_LAYERS_COMPOSITION_PRIM_PATHS), options)
+        self._layers = _spreadsheet._Spreadsheet(self._LAYERS_COLUMNS, options)
+        self._prims = _spreadsheet._Spreadsheet(self._PRIM_COLUMNS, options)
 
         for each in self._layers, self._prims:
             each.layout().setContentsMargins(0,0,0,0)
@@ -208,11 +207,11 @@ class LayersComposition(QtWidgets.QDialog):
 
         prims_model = self._prims.model
         prims_model.clear()
-        prims_model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_PRIM_PATHS))
+        prims_model.setHorizontalHeaderLabels([''] * len(self._PRIM_COLUMNS))
         prims_model.setRowCount(len(paths))
         prims_model.blockSignals(True)
         for row_index, path in enumerate(paths):
-            for column_index, getter in enumerate(_LAYERS_COMPOSITION_PRIM_PATHS):
+            for column_index, getter in enumerate(self._LAYERS_COLUMNS):
                 item = QtGui.QStandardItem()
                 item.setData(path, QtCore.Qt.DisplayRole)
                 item.setData(path, QtCore.Qt.UserRole)
@@ -259,8 +258,8 @@ class LayersComposition(QtWidgets.QDialog):
             table.table.setSortingEnabled(False)
 
         # labels are on the header widgets
-        self._layers.model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_LAYER_IDS))
-        self._prims.model.setHorizontalHeaderLabels([''] * len(_LAYERS_COMPOSITION_PRIM_PATHS))
+        self._layers.model.setHorizontalHeaderLabels([''] * len(self._LAYERS_COLUMNS))
+        self._prims.model.setHorizontalHeaderLabels([''] * len(self._PRIM_COLUMNS))
 
         self._graph = graph = networkx.DiGraph(tooltip="My label")
         # legend

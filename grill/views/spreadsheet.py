@@ -6,14 +6,17 @@ import itertools
 import contextlib
 
 from typing import NamedTuple
-from functools import partial
 from collections import Counter
+from functools import partial, lru_cache
 
-from pxr import Usd, UsdGeom
+from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtCore, QtWidgets, QtGui
 
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
+# TODO: add more types here
 options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
+
+_read_only = lambda x, y: x
 
 
 @contextlib.contextmanager
@@ -25,19 +28,88 @@ def wait():
         QtWidgets.QApplication.restoreOverrideCursor()
 
 
-class _Column(NamedTuple):
-    name: str
-    getter: callable
-    setter: callable
+@lru_cache(maxsize=None)
+def _property_name_from_option_type(optype):
+    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QItemEditorFactory.html
+    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QAbstractItemDelegate.html#PySide2.QtWidgets.PySide2.QtWidgets.QAbstractItemDelegate.createEditor
+    # https://discourse.techart.online/t/pyside2-qitemeditorfactory-and-missing-qvariant-qmetatype/11387/2
+    factory = QtWidgets.QItemEditorFactory.defaultFactory()
+    property_name = factory.valuePropertyName(optype)  # e.g. QtCore.QByteArray(b'text')
+    return property_name.data().decode()  # e.g. from b'text' to "text", "value", ...
 
 
-_COLUMNS = (
-    _Column("Name", Usd.Prim.GetName, lambda x, y: x),
-    _Column("Path", lambda prim: str(prim.GetPath()), lambda x, y: x),
-    _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
-    _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
-    _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
-)
+def _prim_type_combobox(parent, option, index):
+    combobox = QtWidgets.QComboBox(parent=parent)
+    combobox.addItems(list(options.keys()))
+    return combobox
+
+
+_OBJECT = QtCore.Qt.UserRole + 0
+_VALUE_GETTER = QtCore.Qt.UserRole + 1
+_VALUE_SETTER = QtCore.Qt.UserRole + 2
+_EDITOR_CREATOR = QtCore.Qt.UserRole + 3
+
+
+class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
+    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+
+    Contract:
+    Object - UserRole
+    ValueGetter - UserRole + 1
+    ValueSetter - UserRole + 2
+    Widget - UserRole + 3
+    """
+
+    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+        creator = index.data(_EDITOR_CREATOR) or super().createEditor
+        editor = creator(parent, option, index)
+        editor._property_name = _property_name_from_option_type(option.type)
+        return editor
+
+    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        # we would always fallback to _property_name but it looks like there's no
+        # consistency, so we always prefer to check for "value" and only if it's None
+        # we check the property name found from the option when the editor was created.
+        value = editor.property("value")
+        # value will usually work for "bool"
+        print(f"From property 'value': {value}, type: {type(value)}")
+        # text will work for line edits and other text editors.
+        if value is None:
+            value = editor.property(editor._property_name)
+            print(f"From property '{editor._property_name}': {value}, type: {type(value)}")
+        # currentText will work for combo boxes.
+        if value is None:
+            value = editor.property("currentText")
+            print(f"From property 'currentText': {value}, type: {type(value)}")
+        # there's also datetime, time, but those should be coming from editor._property_name
+        # fail if we find something we don't know how to translate
+        if value is None:
+            raise ValueError(f"Can not obtain value to set from editor: {editor} on index {index}")
+        obj = index.data(_OBJECT)
+        setter = index.data(_VALUE_SETTER)
+        print(f"Setting: {value} on object {obj} via {setter}")
+        setter(obj, value)
+        return super().setModelData(editor, model, index)
+
+
+class _ComboBoxItemDelegate(_ColumnItemDelegate):
+
+    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
+        # get the index of the text in the combobox that matches the current value of the item
+        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
+        if cbox_index:  # if we know about this value, set it already
+            editor.setCurrentIndex(cbox_index)
+
+    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
+    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
+    # def commitAndCloseEditor(self):
+    #     editor = self.sender()
+    #     # The commitData signal must be emitted when we've finished editing
+    #     # and need to write our changed back to the model.
+    #     self.commitData.emit(editor)
+    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
 
 class _ColumnOptions(enum.Flag):
@@ -147,7 +219,7 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         if not index.isValid():
             raise ValueError(f"Invalid index from source_row={source_row}, source_column={source_column}, source_parent={source_parent}")
 
-        prim = index.data(QtCore.Qt.UserRole)
+        prim = index.data(_OBJECT)
         if not prim:
             # row may have been just inserted as a result of a model.insertRow or
             # model.appendRow call, so no prim yet. Mmmm see how to prevent this?
@@ -246,49 +318,18 @@ class _Table(QtWidgets.QTableView):
         header._updateVisualSections(min(header.section_options))
 
 
-class _ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
-    """
-    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
-    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
-    """
-    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        combobox = QtWidgets.QComboBox(parent=parent)
-        combobox.addItems(list(options.keys()))
-        return combobox
-
-    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
-        # get the index of the text in the combobox that matches the current value of the item
-        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
-        if cbox_index:  # if we know about this value, set it already
-            editor.setCurrentIndex(cbox_index)
-
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-        prim = index.data(QtCore.Qt.UserRole)
-        prim.SetTypeName(editor.currentText())
-        model.setData(index, editor.currentText(), QtCore.Qt.EditRole)
-
-    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
-    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
-    # def commitAndCloseEditor(self):
-    #     editor = self.sender()
-    #     # The commitData signal must be emitted when we've finished editing
-    #     # and need to write our changed back to the model.
-    #     self.commitData.emit(editor)
-    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
-
-
 class _Spreadsheet(QtWidgets.QDialog):
     def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(columns))
-        header = _Header(columns, options, QtCore.Qt.Horizontal)
+        header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
         # for every column, create a proxy model and chain it to the next one
         proxy_model = source_model = model
 
         self._column_options = dict()
-        for column_index, column_name in enumerate(columns):
+        for column_index, column_data in enumerate(columns):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
             proxy_model.setFilterKeyColumn(column_index)
@@ -304,8 +345,11 @@ class _Spreadsheet(QtWidgets.QDialog):
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
                 column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
-            if column_name == "Type":
-                table.setItemDelegateForColumn(column_index, _ComboBoxItemDelegate())
+            delegate = column_data.delegate()
+            table.setItemDelegateForColumn(column_index, delegate)
+            # for custom delegates we need to keep a reference, otherwise they're
+            # garbage collected and might cause crashes.
+            setattr(self, f"_delegate_{column_index}", delegate)
 
             self._column_options[column_index] = column_options
             self._connectProxyModel(proxy_model)  # TODO: only reason of this is model hierarchy. explore to remove soon.
@@ -336,14 +380,33 @@ class _Spreadsheet(QtWidgets.QDialog):
             item.setEditable(not value)
 
 
+class _Column(NamedTuple):
+    name: str
+    getter: callable
+    setter: callable = _read_only  # "Read-only" by default
+    editor: callable = None
+    delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
+
+
 class SpreadsheetEditor(_Spreadsheet):
+    _COLUMNS = (
+        _Column("Name", Usd.Prim.GetName),
+        _Column("Path", lambda prim: str(prim.GetPath())),
+        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox,
+                _ComboBoxItemDelegate),
+        _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
+        _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
+        _Column("Visibility", lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
+        _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+        # _Column("Segments", lambda prim: len(prim.GetChildren())),
+    )
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
         - Per column control on context menu on all vis button
         - Add row creates an anonymous prim
     """
     def __init__(self, stage=None, parent=None, **kwargs):
-        columns = [c.name for c in _COLUMNS]
+        columns = self._COLUMNS
         self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox("🏡 Model Hierarchy")
         super().__init__(columns, parent=parent, **kwargs)
 
@@ -418,7 +481,9 @@ class SpreadsheetEditor(_Spreadsheet):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
             self._copySelection()
         elif event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Paste):
-            self._pasteClipboard()
+            with Sdf.ChangeBlock():
+                self._pasteClipboard()
+
         return super().eventFilter(source, event)
 
     def _pasteClipboard(self):
@@ -431,11 +496,11 @@ class SpreadsheetEditor(_Spreadsheet):
         selection = selection_model.selectedIndexes()
         print(f"Selection model indexes: {selection}")
 
-        selected_rows = [i.row() for i in selection]
-        selected_columns = [i.column() for i in selection]
+        selected_rows = {i.row() for i in selection}
+        selected_columns = {i.column() for i in selection}
         # if selection is not continuous, alert the user and abort instead of
         # trying to figure out what to paste where.
-        if len(selection) != len(set(selected_rows)) * len(set(selected_columns)):
+        if len(selection) != len(selected_rows) * len(selected_columns):
             msg = ("To paste with multiple selection,"
                    "cells need to be selected continuously\n"
                    "(no gaps between rows / columns).")
@@ -454,13 +519,24 @@ class SpreadsheetEditor(_Spreadsheet):
         print(f"selected_column, {selected_column}")
         data = tuple(csv.reader(io.StringIO(text), delimiter=csv.excel_tab.delimiter))
         print(f"data, {data}")
+
+        len_data = len(data)
+        single_row_source = len_data == 1
+        # if data rows are more than 1, we do not allow for gaps on the selected rows to paste.
+        if not single_row_source and len_data != len(range(selected_row, max(selected_rows, default=current_count)+1)):
+            msg = ("Clipboard data contains multiple rows,"
+                   "in order to paste this content, row cells need to be selected continuously\n"
+                   "(no gaps between them).")
+            QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
+            return
+
         self.table.setSortingEnabled(False)  # prevent auto sort while adding rows
 
-        maxrow = max(selected_row + len(data) - 1,  # either the amount of rows to paste
-                     max(selected_rows, default=current_count))  # or the current row count
+        maxrow = max(selected_row + len(data),  # either the amount of rows to paste
+                     max(selected_rows, default=current_count) + 1)  # or the current row count
         print(f"maxrow, {maxrow}")
         print("Coming soon!")
-        return
+        # return
         stage = self._stage
         # cycle the data in case that selection to paste on is bigger than source
         table_model = self.table.model()
@@ -476,6 +552,13 @@ class SpreadsheetEditor(_Spreadsheet):
                 return index
 
         for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
+            print(f"visual_row={visual_row}")
+            if visual_row > maxrow:
+                print("Bye!")
+                break
+            if single_row_source and visual_row not in selected_rows:
+                continue
+
             # model.ind
             # table.sele
             # model.data()
@@ -494,9 +577,11 @@ class SpreadsheetEditor(_Spreadsheet):
 
                 source_index = _sourceIndex(model.index(visual_row, 0))
                 source_item = self.model.itemFromIndex(source_index)
+
                 # model.index
                 # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
-                prim = source_item.data(QtCore.Qt.UserRole)
+
+                prim = source_item.data(_OBJECT)
                 print("Source model:")
                 print(prim)
                 # print("Table proxy model:")
@@ -509,13 +594,20 @@ class SpreadsheetEditor(_Spreadsheet):
                     # item = model.item(row_index, column_index)
                     s_index = _sourceIndex(model.index(visual_row, column_index))
                     s_item = self.model.itemFromIndex(s_index)
-                    assert s_item.data(QtCore.Qt.UserRole) is prim
-                    _COLUMNS[column_index].setter(prim, column_data)
-                    s_item.setData(column_data, QtCore.Qt.DisplayRole)
+                    assert s_item.data(_OBJECT) is prim
 
-            if visual_row == maxrow:
-                print("Bye!")
-                break
+                    setter = self._COLUMNS[column_index].setter
+                    print(f"Setting {column_data} with type {type(column_data)} on {prim}")
+                    import json  # big hack. how to?
+                    try:
+                        setter(prim, column_data)
+                    except Exception as exc:
+                        print(exc)
+                        column_data = json.loads(column_data.lower())
+                        print(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
+                        setter(prim, column_data)
+
+                    s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
         self.table.setSortingEnabled(self.sorting_enabled.isChecked())  # prevent auto sort while adding rows
 
@@ -543,7 +635,7 @@ class SpreadsheetEditor(_Spreadsheet):
         model = self.model
         model.clear()
         # labels are on the header widgets
-        model.setHorizontalHeaderLabels([''] * len(_COLUMNS))
+        model.setHorizontalHeaderLabels([''] * len(self._COLUMNS))
         table.setSortingEnabled(False)
         items = list(enumerate(stage.TraverseAll()))
         model.setRowCount(len(items))
@@ -555,9 +647,12 @@ class SpreadsheetEditor(_Spreadsheet):
 
     def _addPrimToRow(self, row_index, prim):
         model = self.model
-        for column_index, column_data in enumerate(_COLUMNS):
+        for column_index, column_data in enumerate(self._COLUMNS):
             attribute = column_data.getter(prim)
             item = QtGui.QStandardItem()
             item.setData(attribute, QtCore.Qt.DisplayRole)
-            item.setData(prim, QtCore.Qt.UserRole)
+            item.setData(prim, _OBJECT)
+            item.setData(column_data.getter, _VALUE_GETTER)
+            item.setData(column_data.setter, _VALUE_SETTER)
+            item.setData(column_data.editor, _EDITOR_CREATOR)
             model.setItem(row_index, column_index, item)

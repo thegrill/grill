@@ -100,7 +100,7 @@ class TestViews(unittest.TestCase):
         widget._copySelection()
         clip = QtWidgets.QApplication.instance().clipboard().text()
         data = tuple(csv.reader(io.StringIO(clip), delimiter=csv.excel_tab.delimiter))
-        expected_data = (['child', '/nested/child', '', '', 'False'],)
+        expected_data = (['child', '/nested/child', '', '', 'False', '', 'False'],)
         self.assertEqual(data, expected_data)
 
         widget.table.clearSelection()
@@ -119,4 +119,6 @@ class TestViews(unittest.TestCase):
         widget._conformVisibilitySwitch()
 
         widget._column_options[0]._line_filter.setText("")
+        widget._model_hierarchy.click()  # disables model hierarchy, which we don't have any
+        widget.table.selectAll()
         widget._pasteClipboard()
