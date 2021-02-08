@@ -236,7 +236,7 @@ class LayersComposition(QtWidgets.QDialog):
             self._graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(
             self._graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = list(range(6))  # needs to be label nodes
+        nodes_of_interest = list(range(10))  # needs to be label nodes
         nodes_of_interest.extend(chain(node_indices, successors, predecessors))
         subgraph = self._graph.subgraph(nodes_of_interest)
 
@@ -267,6 +267,8 @@ class LayersComposition(QtWidgets.QDialog):
             Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),  # purple
             Pcp.ArcTypeReference: dict(color=6, colorscheme="paired12", fontcolor=6),  # red
             Pcp.ArcTypeVariant: dict(color=8, colorscheme="paired12", fontcolor=8),  # yellow
+            Pcp.ArcTypeSpecialize: dict(color=12, colorscheme="paired12", fontcolor=12),  # brown
+            Pcp.ArcTypeInherit: dict(color=4, colorscheme="paired12", fontcolor=4),  # green
         }
         legend_node_ids = set()
         for arc_type, edge_attrs in arcs_to_display.items():
