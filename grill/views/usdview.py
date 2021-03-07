@@ -52,7 +52,7 @@ class GrillPlugin(PluginContainer):
         ]
 
     def configureView(self, plugRegistry, plugUIBuilder):
-        grill_menu = plugUIBuilder.findOrCreateMenu("Grill")
+        grill_menu = plugUIBuilder.findOrCreateMenu("👨‍🍳 Grill")
         for item in self._menu_items:
             grill_menu.addItem(item)
 
