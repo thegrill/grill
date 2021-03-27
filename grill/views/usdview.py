@@ -3,8 +3,11 @@ from functools import lru_cache, partial
 from pxr import Tf
 from pxr.Usdviewq.plugin import PluginContainer
 
+from PySide2 import QtWidgets
+
 from . import spreadsheet as _spreadsheet
 from . import description as _description
+from . import create as _create
 
 
 @lru_cache(maxsize=None)
@@ -35,6 +38,24 @@ def layer_stack_composition(usdviewApi):
     return widget
 
 
+@lru_cache(maxsize=None)
+def create_asset(usdviewApi):
+    widget = _create.CreateAsset(parent=usdviewApi.qMainWindow)
+    widget.setStage(usdviewApi.stage)
+    return widget
+
+
+def save_changes(usdviewApi):
+    class Save:
+        def show(self):
+            text = "All changes will be saved to disk.\n\nContiue?"
+            if QtWidgets.QMessageBox.question(
+                    usdviewApi.qMainWindow, "Save All Changes?", text
+            ) == QtWidgets.QMessageBox.Yes:
+                usdviewApi.stage.Save()
+    return Save()
+
+
 class GrillPlugin(PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
@@ -48,7 +69,10 @@ class GrillPlugin(PluginContainer):
                 partial(show, launcher),
             )
             # contract: every caller here returns a widget to show.
-            for launcher in (spreadsheet_editor, prim_composition, layer_stack_composition)
+            for launcher in (
+                spreadsheet_editor, prim_composition, layer_stack_composition,
+                create_asset, save_changes,
+            )
         ]
 
     def configureView(self, plugRegistry, plugUIBuilder):
@@ -58,3 +82,7 @@ class GrillPlugin(PluginContainer):
 
 
 Tf.Type.Define(GrillPlugin)
+from grill import write
+from pathlib import Path
+token = write.repo.set(Path(r"B:\write\code\git\easy-edgedb\chapter4\repo"))
+
