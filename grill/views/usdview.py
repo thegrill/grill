@@ -39,8 +39,8 @@ def layer_stack_composition(usdviewApi):
 
 
 @lru_cache(maxsize=None)
-def create_asset(usdviewApi):
-    widget = _create.CreateAsset(parent=usdviewApi.qMainWindow)
+def create_assets(usdviewApi):
+    widget = _create.CreateAssets(parent=usdviewApi.qMainWindow)
     widget.setStage(usdviewApi.stage)
     return widget
 
@@ -49,8 +49,9 @@ def save_changes(usdviewApi):
     class Save:
         def show(self):
             text = "All changes will be saved to disk.\n\nContiue?"
+            parent = usdviewApi.qMainWindow
             if QtWidgets.QMessageBox.question(
-                    usdviewApi.qMainWindow, "Save All Changes?", text
+                    parent, "Save Changes", text
             ) == QtWidgets.QMessageBox.Yes:
                 usdviewApi.stage.Save()
     return Save()
@@ -68,10 +69,13 @@ class GrillPlugin(PluginContainer):
                 launcher.__qualname__.replace("_", " ").title(),  # lazy, naming conventions
                 partial(show, launcher),
             )
-            # contract: every caller here returns a widget to show.
+            # contract: each of these return an object which show a widget on `show()`
             for launcher in (
-                spreadsheet_editor, prim_composition, layer_stack_composition,
-                create_asset, save_changes,
+                create_assets,
+                spreadsheet_editor,
+                prim_composition,
+                layer_stack_composition,
+                save_changes,
             )
         ]
 

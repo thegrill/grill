@@ -2,6 +2,7 @@ import io
 import csv
 import enum
 import inspect
+import logging
 import itertools
 import contextlib
 
@@ -11,6 +12,8 @@ from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtCore, QtWidgets, QtGui
+
+logger = logging.getLogger(__name__)
 
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
@@ -89,8 +92,11 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
             raise ValueError(f"Can not obtain value to set from editor: {editor} on index {index}")
         obj = index.data(_OBJECT)
         setter = index.data(_VALUE_SETTER)
-        print(f"Setting: {value} on object {obj} via {setter}")
-        setter(obj, value)
+        if setter:
+            print(f"Setting: {value} on object {obj} via {setter}")
+            setter(obj, value)
+        else:
+            print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
         return super().setModelData(editor, model, index)
 
 
@@ -114,6 +120,7 @@ class _ComboBoxItemDelegate(_ColumnItemDelegate):
 
 class _ColumnOptions(enum.Flag):
     """Options that will be available on the header of a table."""
+    NONE = enum.auto()
     SEARCH = enum.auto()
     VISIBILITY = enum.auto()
     LOCK = enum.auto()
@@ -177,7 +184,9 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
 
     def _updateMask(self):
         """We want nothing but the filter and buttons to be clickable on this widget."""
-        region = QtGui.QRegion(self._filter_layout.geometry())
+        region = QtGui.QRegion(self.frameGeometry())
+        if _ColumnOptions.SEARCH in self._options:
+            region += QtGui.QRegion(self._filter_layout.geometry())
         # when buttons are flat, geometry has a small render offset on x
         if _ColumnOptions.LOCK in self._options:
             region += self._lock_button.geometry().adjusted(-2, 0, 2, 0)
@@ -322,6 +331,8 @@ class _Spreadsheet(QtWidgets.QDialog):
     def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(columns))
+        self._columns_spec = columns
+        # logger.critical(self._columns_spec[0])
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
@@ -340,10 +351,8 @@ class _Spreadsheet(QtWidgets.QDialog):
                 column_options.filterChanged.connect(proxy_model.setFilterRegExp)
             if _ColumnOptions.VISIBILITY in options:
                 column_options.toggled.connect(partial(self._setColumnVisibility, column_index))
-                column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
             if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
-                column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
             delegate = column_data.delegate()
             table.setItemDelegateForColumn(column_index, delegate)
@@ -364,6 +373,7 @@ class _Spreadsheet(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(table)
+        self.installEventFilter(self)
         self.setLayout(layout)
 
     def _connectProxyModel(self, proxy_model):
@@ -377,7 +387,161 @@ class _Spreadsheet(QtWidgets.QDialog):
         model = self.model
         for row_index in range(model.rowCount()):
             item = model.item(row_index, column_index)
+            if not item:
+                # add an item here if it's missing?
+                logger.warning(f"Creating new item for: {row_index}, {column_index}")
+                item = QtGui.QStandardItem()
+                item.setData(None, _OBJECT)
+                column_data = self._columns_spec[column_index]
+                item.setData(column_data.getter, _VALUE_GETTER)
+                item.setData(column_data.setter, _VALUE_SETTER)
+                item.setData(column_data.editor, _EDITOR_CREATOR)
+                model.setItem(row_index, column_index, item)
+
             item.setEditable(not value)
+
+    def eventFilter(self, source, event):
+        if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
+            self._copySelection()
+        elif event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Paste):
+            with Sdf.ChangeBlock():
+                self._pasteClipboard()
+
+        return super().eventFilter(source, event)
+
+    def _copySelection(self):
+        selection = self.table.selectedIndexes()
+        if selection:
+            rows = sorted(index.row() for index in selection)
+            columns = sorted(index.column() for index in selection)
+            rowcount = rows[-1] - rows[0] + 1
+            colcount = columns[-1] - columns[0] + 1
+            table = [[''] * colcount for _ in range(rowcount)]
+            for index in selection:
+                row = index.row() - rows[0]
+                column = index.column() - columns[0]
+                table[row][column] = index.data()
+            stream = io.StringIO()
+            csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(table)
+            QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
+
+    def _pasteClipboard(self):
+        text = QtWidgets.QApplication.instance().clipboard().text()
+        logger.info(f"Creating rows with:\n{text}")
+        if not text:
+            logger.info("Nothing to do!")
+            return
+        selection_model = self.table.selectionModel()
+        selection = selection_model.selectedIndexes()
+        logger.info(f"Selection model indexes: {selection}")
+
+        selected_rows = {i.row() for i in selection}
+        selected_columns = {i.column() for i in selection}
+        # if selection is not continuous, alert the user and abort instead of
+        # trying to figure out what to paste where.
+        if len(selection) != len(selected_rows) * len(selected_columns):
+            msg = ("To paste with multiple selection,"
+                   "cells need to be selected continuously\n"
+                   "(no gaps between rows / columns).")
+            QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
+            return
+
+        model = self.table.model()
+        current_count = model.rowCount()
+
+        logger.info(f"Selected Rows: {selected_rows}")
+        logger.info(f"Selected Columns: {selected_columns}")
+        logger.info(f"Current count: {current_count}")
+        # selection_model.
+        selected_row = min(selected_rows, default=current_count)
+        selected_column = min(selected_columns, default=0)
+        logger.info(f"selected_row, {selected_row}")
+        logger.info(f"selected_column, {selected_column}")
+        data = tuple(csv.reader(io.StringIO(text), delimiter=csv.excel_tab.delimiter))
+        logger.info(f"data, {data}")
+
+        len_data = len(data)
+        single_row_source = len_data == 1
+        # if data rows are more than 1, we do not allow for gaps on the selected rows to paste.
+        if not single_row_source and len_data != len(range(selected_row, max(selected_rows, default=current_count)+1)):
+            msg = ("Clipboard data contains multiple rows,"
+                   "in order to paste this content, row cells need to be selected continuously\n"
+                   "(no gaps between them).")
+            QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
+            return
+
+        orig_sort_enabled = self.table.isSortingEnabled()
+        self.table.setSortingEnabled(False)  # prevent auto sort while adding rows
+
+        maxrow = max(selected_row + len(data),  # either the amount of rows to paste
+                     max(selected_rows, default=current_count) + 1)  # or the current row count
+        print(f"maxrow, {maxrow}")
+
+        # this is a bit broken. When pasting a single row on N non-sequential selected items,
+        # we are pasting the same value on all the inbetween non selected rows. please fix
+        def _sourceIndex(index):
+            """Recursively get the source index of a proxy model index"""
+            source_model = index.model()
+            if isinstance(source_model, _ProxyModel):
+                return _sourceIndex(source_model.mapToSource(index))
+            else:
+                return index
+
+        for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
+            if visual_row > maxrow:
+                print(f"Visual row {visual_row} maxed maxrow {maxrow}. Stopping. Bye!")
+                break
+            if single_row_source and visual_row not in selected_rows:
+                print(f"Visual row {visual_row} not in selected rows {selected_rows}. Continue")
+                continue
+
+            print(f"visual_row={visual_row}")
+            print(f"pasting data={rowdata}")
+
+            if visual_row == current_count:
+                # If we are in a filtered place, alert the user if they want to paste rest
+                print(f"inserting a row at row_index {visual_row}???")
+                # model.insertRow(row_index)
+                # time_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                # prim = stage.DefinePrim(f"/root/test_{row_index}_{time_str}")
+                # print(prim)
+                # self._addPrimToRow(row_index, prim)
+            else:
+                source_index = _sourceIndex(model.index(visual_row, 0))
+                source_item = self.model.itemFromIndex(source_index)
+                # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
+
+                prim = source_item.data(_OBJECT)
+                print("Source model:")
+                print(prim)
+                # print("Table proxy model:")
+                # print(self.table.model().index(row_index, 0).data(QtCore.Qt.UserRole))
+
+                for column_index, column_data in enumerate(rowdata, start=selected_column):
+                    # item = model.map
+                    # mapped = table_model.mapToSource(table_model.index(row_index, column_index))
+                    # _sourceIndex(model.index(visual_row, column_index))
+                    # item = model.item(row_index, column_index)
+                    s_index = _sourceIndex(model.index(visual_row, column_index))
+                    s_item = self.model.itemFromIndex(s_index)
+                    assert s_item.data(_OBJECT) is prim
+
+                    setter = self._columns_spec[column_index].setter
+                    if prim:
+                        print(f"Setting {column_data} with type {type(column_data)} on {prim}")
+                        import json  # big hack. how to?
+                        # due to boolean types
+                        try:
+                            setter(prim, column_data)
+                        except Exception as exc:
+                            print(exc)
+                            column_data = json.loads(column_data.lower())
+                            print(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
+                            setter(prim, column_data)
+
+                    s_item.setData(column_data, QtCore.Qt.DisplayRole)
+
+        self.table.setSortingEnabled(orig_sort_enabled)
 
 
 class _Column(NamedTuple):
@@ -392,8 +556,7 @@ class SpreadsheetEditor(_Spreadsheet):
     _COLUMNS = (
         _Column("Name", Usd.Prim.GetName),
         _Column("Path", lambda prim: str(prim.GetPath())),
-        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox,
-                _ComboBoxItemDelegate),
+        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox, _ComboBoxItemDelegate),
         _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
         _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
         _Column("Visibility", lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
@@ -439,9 +602,13 @@ class SpreadsheetEditor(_Spreadsheet):
         layout.addWidget(self.table)
         insert_row = QtWidgets.QPushButton("Add Row")
         layout.addWidget(insert_row)
-        self.installEventFilter(self)
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Spreadsheet Editor")
+
+        for column_index, column_options in self._column_options.items():
+            column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
+            column_options._lock_button.clicked.connect(self._conformLockSwitch)
+
 
     def _connectProxyModel(self, proxy_model):
         super()._connectProxyModel(proxy_model)
@@ -453,6 +620,14 @@ class SpreadsheetEditor(_Spreadsheet):
         counter = Counter(self.table.isColumnHidden(i) for i in self._column_options)
         current, count = next(iter(counter.most_common(1)))
         self._vis_all.setText(self._vis_key_by_value[current])
+        return current
+
+    def _conformLockSwitch(self):
+        """Make lock option offer inverse depending on how much is currently locked"""
+        counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
+        current, count = next(iter(counter.most_common(1)))
+        self._lock_all.setText(self._lock_key_by_value[not current])
+        return current
 
     def _conformVisibility(self):
         value = self._vis_states[self._vis_all.text()]
@@ -463,12 +638,6 @@ class SpreadsheetEditor(_Spreadsheet):
         self._vis_all.setText(self._vis_key_by_value[not value])
         self.table.horizontalHeader()._handleSectionResized(0)
 
-    def _conformLockSwitch(self):
-        """Make lock option offer inverse depending on how much is currently locked"""
-        counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
-        current, count = next(iter(counter.most_common(1)))
-        self._lock_all.setText(self._lock_key_by_value[not current])
-
     @wait()
     def _conformLocked(self):
         value = self._lock_states[self._lock_all.text()]
@@ -476,156 +645,6 @@ class SpreadsheetEditor(_Spreadsheet):
             options._lock_button.setChecked(value)
             self._setColumnLocked(index, value)
         self._lock_all.setText(self._lock_key_by_value[not value])
-
-    def eventFilter(self, source, event):
-        if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
-            self._copySelection()
-        elif event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Paste):
-            with Sdf.ChangeBlock():
-                self._pasteClipboard()
-
-        return super().eventFilter(source, event)
-
-    def _pasteClipboard(self):
-        text = QtWidgets.QApplication.instance().clipboard().text()
-        print(f"Creating rows with:\n{text}")
-        if not text:
-            print("Nothing to do!")
-            return
-        selection_model = self.table.selectionModel()
-        selection = selection_model.selectedIndexes()
-        print(f"Selection model indexes: {selection}")
-
-        selected_rows = {i.row() for i in selection}
-        selected_columns = {i.column() for i in selection}
-        # if selection is not continuous, alert the user and abort instead of
-        # trying to figure out what to paste where.
-        if len(selection) != len(selected_rows) * len(selected_columns):
-            msg = ("To paste with multiple selection,"
-                   "cells need to be selected continuously\n"
-                   "(no gaps between rows / columns).")
-            QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
-            return
-
-        model = self.table.model()
-        print(f"Selected Rows: {selected_rows}")
-        print(f"Selected Columns: {selected_columns}")
-        current_count = model.rowCount()
-        print(f"Current count: {current_count}")
-        # selection_model.
-        selected_row = min(selected_rows, default=current_count)
-        selected_column = min(selected_columns, default=0)
-        print(f"selected_row, {selected_row}")
-        print(f"selected_column, {selected_column}")
-        data = tuple(csv.reader(io.StringIO(text), delimiter=csv.excel_tab.delimiter))
-        print(f"data, {data}")
-
-        len_data = len(data)
-        single_row_source = len_data == 1
-        # if data rows are more than 1, we do not allow for gaps on the selected rows to paste.
-        if not single_row_source and len_data != len(range(selected_row, max(selected_rows, default=current_count)+1)):
-            msg = ("Clipboard data contains multiple rows,"
-                   "in order to paste this content, row cells need to be selected continuously\n"
-                   "(no gaps between them).")
-            QtWidgets.QMessageBox.warning(self, "Invalid Paste Selection", msg)
-            return
-
-        self.table.setSortingEnabled(False)  # prevent auto sort while adding rows
-
-        maxrow = max(selected_row + len(data),  # either the amount of rows to paste
-                     max(selected_rows, default=current_count) + 1)  # or the current row count
-        print(f"maxrow, {maxrow}")
-        print("Coming soon!")
-        # return
-        stage = self._stage
-        # cycle the data in case that selection to paste on is bigger than source
-        table_model = self.table.model()
-
-        # this is a bit broken. When pasting a single row on N non-sequential selected items,
-        # we are pasting the same value on all the inbetween non selected rows. please fix
-        def _sourceIndex(index):
-            """Recursively get the source index of a proxy model index"""
-            source_model = index.model()
-            if isinstance(source_model, _ProxyModel):
-                return _sourceIndex(source_model.mapToSource(index))
-            else:
-                return index
-
-        for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
-            print(f"visual_row={visual_row}")
-            if visual_row > maxrow:
-                print("Bye!")
-                break
-            if single_row_source and visual_row not in selected_rows:
-                continue
-
-            # model.ind
-            # table.sele
-            # model.data()
-
-
-            # row_index = visual_row
-            if visual_row == current_count:
-                # If we are in a filtered place, alert the user if they want to paste rest
-                print(f"inserting a row at row_index {visual_row}???")
-                # model.insertRow(row_index)
-                # time_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                # prim = stage.DefinePrim(f"/root/test_{row_index}_{time_str}")
-                # print(prim)
-                # self._addPrimToRow(row_index, prim)
-            else:
-
-                source_index = _sourceIndex(model.index(visual_row, 0))
-                source_item = self.model.itemFromIndex(source_index)
-
-                # model.index
-                # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
-
-                prim = source_item.data(_OBJECT)
-                print("Source model:")
-                print(prim)
-                # print("Table proxy model:")
-                # print(self.table.model().index(row_index, 0).data(QtCore.Qt.UserRole))
-
-                for column_index, column_data in enumerate(rowdata, start=selected_column):
-                    # item = model.map
-                    # mapped = table_model.mapToSource(table_model.index(row_index, column_index))
-                    # _sourceIndex(model.index(visual_row, column_index))
-                    # item = model.item(row_index, column_index)
-                    s_index = _sourceIndex(model.index(visual_row, column_index))
-                    s_item = self.model.itemFromIndex(s_index)
-                    assert s_item.data(_OBJECT) is prim
-
-                    setter = self._COLUMNS[column_index].setter
-                    print(f"Setting {column_data} with type {type(column_data)} on {prim}")
-                    import json  # big hack. how to?
-                    try:
-                        setter(prim, column_data)
-                    except Exception as exc:
-                        print(exc)
-                        column_data = json.loads(column_data.lower())
-                        print(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
-                        setter(prim, column_data)
-
-                    s_item.setData(column_data, QtCore.Qt.DisplayRole)
-
-        self.table.setSortingEnabled(self.sorting_enabled.isChecked())  # prevent auto sort while adding rows
-
-    def _copySelection(self):
-        selection = self.table.selectedIndexes()
-        if selection:
-            rows = sorted(index.row() for index in selection)
-            columns = sorted(index.column() for index in selection)
-            rowcount = rows[-1] - rows[0] + 1
-            colcount = columns[-1] - columns[0] + 1
-            table = [[''] * colcount for _ in range(rowcount)]
-            for index in selection:
-                row = index.row() - rows[0]
-                column = index.column() - columns[0]
-                table[row][column] = index.data()
-            stream = io.StringIO()
-            csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(table)
-            QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
 
     @wait()
     def setStage(self, stage):
