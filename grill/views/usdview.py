@@ -5,14 +5,14 @@ from pxr.Usdviewq.plugin import PluginContainer
 
 from PySide2 import QtWidgets
 
-from . import spreadsheet as _spreadsheet
+from . import sheets as _sheets
 from . import description as _description
 from . import create as _create
 
 
 @lru_cache(maxsize=None)
 def spreadsheet_editor(usdviewApi):
-    widget = _spreadsheet.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
+    widget = _sheets.SpreadsheetEditor(parent=usdviewApi.qMainWindow)
     widget.setStage(usdviewApi.stage)
     return widget
 

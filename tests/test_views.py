@@ -5,7 +5,7 @@ import unittest
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
-from grill.views import description, spreadsheet
+from grill.views import description, sheets
 
 
 class TestViews(unittest.TestCase):
@@ -78,7 +78,7 @@ class TestViews(unittest.TestCase):
     def test_spreadsheet_editor(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-        widget = spreadsheet.SpreadsheetEditor()
+        widget = sheets.SpreadsheetEditor()
         widget.setStage(self.world)
         widget.table.scrollContentsBy(10, 10)
 

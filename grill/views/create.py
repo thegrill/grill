@@ -3,7 +3,7 @@ from PySide2 import QtWidgets
 
 from grill import write
 
-from . import spreadsheet as _spreadsheet
+from . import sheets as _sheets
 
 
 class CreateAssets(QtWidgets.QDialog):
@@ -23,45 +23,42 @@ class CreateAssets(QtWidgets.QDialog):
         button_box.rejected.connect(self.reject)
         self._asset_type_options = []
 
-        #################### Move to own class?
-
         def _asset_type_combobox(parent, option, index):
             combobox = QtWidgets.QComboBox(parent=parent)
             combobox.addItems(sorted(self._asset_type_options))
             return combobox
 
-        options = _spreadsheet._ColumnOptions.NONE
         identity = lambda x: x
-        _creation_columns = (
-            _spreadsheet._Column("🧬 Type", identity, editor=_asset_type_combobox),
-            _spreadsheet._Column("🔖 Asset Name", identity),
-            _spreadsheet._Column("🏷 Display Name", identity),
-            _spreadsheet._Column("📜 Description", identity),
+        _columns = (
+            _sheets._Column("🧬 Type", identity, editor=_asset_type_combobox),
+            _sheets._Column("🔖 Asset Name", identity),
+            _sheets._Column("🏷 Display Name", identity),
+            _sheets._Column("📜 Description", identity),
         )
 
-        self.table = table = _spreadsheet._Spreadsheet(_creation_columns, options)
-        table.model.setHorizontalHeaderLabels([''] * len(_creation_columns))
-        self._amount.valueChanged.connect(table.model.setRowCount)
-        table.layout().setContentsMargins(0, 0, 0, 0)
+        self.sheet = sheet = _sheets._Spreadsheet(_columns, _sheets._ColumnOptions.NONE)
+        sheet.model.setHorizontalHeaderLabels([''] * len(_columns))
+        self._amount.valueChanged.connect(sheet.model.setRowCount)
+        sheet.layout().setContentsMargins(0, 0, 0, 0)
         ################
 
         self._amount.setValue(1)
         self._amount.setMinimum(1)
         self._amount.setMaximum(500)
-        layout.addWidget(table)
+        layout.addWidget(sheet)
         layout.addWidget(button_box)
         self.setLayout(layout)
         self.accepted.connect(self._create)
         self.setWindowTitle("Create Assets")
-        size = table.table.viewportSizeHint()
+        size = sheet.table.viewportSizeHint()
         size.setWidth(size.width() + 65)  # sensible size at init time
         size.setHeight(self.sizeHint().height())
         self.resize(size)
 
-    @_spreadsheet.wait()
+    @_sheets.wait()
     def _create(self):
         types_root = self._stage.GetPrimAtPath("/DBTypes")
-        model = self.table.table.model()
+        model = self.sheet.table.model()
         for row in range(model.rowCount()):
             db_type_name = model.data(model.index(row, 0))
             db_type = types_root.GetPrimAtPath(db_type_name)

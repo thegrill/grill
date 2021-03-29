@@ -1,7 +1,7 @@
 import hou
 import toolutils
 
-from . import spreadsheet as _spreadsheet
+from . import sheets as _sheets
 from . import description as _description
 
 
@@ -14,8 +14,8 @@ def spreadsheet():
     viewer = toolutils.sceneViewer()
     stage = viewer.stage()
     import importlib
-    importlib.reload(_spreadsheet)
-    editor = _spreadsheet.SpreadsheetEditor(parent=hou.qt.mainWindow())
+    importlib.reload(_sheets)
+    editor = _sheets.SpreadsheetEditor(parent=hou.qt.mainWindow())
     editor.setStage(stage)
 
     def refresh_ui():

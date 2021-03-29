@@ -13,7 +13,7 @@ from pxr import Usd, Pcp, Sdf
 from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
-from grill.views import spreadsheet as _spreadsheet
+from . import sheets as _sheets
 
 
 @lru_cache(maxsize=None)
@@ -161,18 +161,18 @@ class PrimComposition(QtWidgets.QDialog):
 
 class LayersComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
-        _spreadsheet._Column("Layer Identifier", Sdf.Layer.identifier.getter),
+        _sheets._Column("Layer Identifier", Sdf.Layer.identifier.getter),
     )
 
     _PRIM_COLUMNS = (
-        _spreadsheet._Column("Spec on Prim Path", lambda prim: str(prim.GetPath)),
+        _sheets._Column("Spec on Prim Path", lambda prim: str(prim.GetPath)),
     )
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        options = _spreadsheet._ColumnOptions.SEARCH
-        self._layers = _spreadsheet._Spreadsheet(self._LAYERS_COLUMNS, options)
-        self._prims = _spreadsheet._Spreadsheet(self._PRIM_COLUMNS, options)
+        options = _sheets._ColumnOptions.SEARCH
+        self._layers = _sheets._Spreadsheet(self._LAYERS_COLUMNS, options)
+        self._prims = _sheets._Spreadsheet(self._PRIM_COLUMNS, options)
 
         for each in self._layers, self._prims:
             each.layout().setContentsMargins(0,0,0,0)
@@ -249,7 +249,7 @@ class LayersComposition(QtWidgets.QDialog):
         dot_path = self._subgraph_dot_path(tuple(node_indices))
         self._dot_view.setDotPath(dot_path)
 
-    @_spreadsheet.wait()
+    @_sheets.wait()
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
