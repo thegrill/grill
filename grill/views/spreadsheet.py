@@ -50,7 +50,7 @@ def _prim_type_combobox(parent, option, index):
 _OBJECT = QtCore.Qt.UserRole + 0
 _VALUE_GETTER = QtCore.Qt.UserRole + 1
 _VALUE_SETTER = QtCore.Qt.UserRole + 2
-_EDITOR_CREATOR = QtCore.Qt.UserRole + 3
+# _EDITOR_CREATOR = QtCore.Qt.UserRole + 3
 
 
 class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
@@ -66,7 +66,7 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
     """
 
     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        creator = index.data(_EDITOR_CREATOR) or super().createEditor
+        creator = getattr(self, "_editor") or super().createEditor
         editor = creator(parent, option, index)
         editor._property_name = _property_name_from_option_type(option.type)
         return editor
@@ -100,13 +100,13 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
         return super().setModelData(editor, model, index)
 
 
-class _ComboBoxItemDelegate(_ColumnItemDelegate):
-
-    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
-        # get the index of the text in the combobox that matches the current value of the item
-        cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
-        if cbox_index:  # if we know about this value, set it already
-            editor.setCurrentIndex(cbox_index)
+# class _ComboBoxItemDelegate(_ColumnItemDelegate):
+#
+#     def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
+#         # get the index of the text in the combobox that matches the current value of the item
+#         cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
+#         if cbox_index:  # if we know about this value, set it already
+#             editor.setCurrentIndex(cbox_index)
 
     # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
     # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
@@ -354,7 +354,8 @@ class _Spreadsheet(QtWidgets.QDialog):
             if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
 
-            delegate = column_data.delegate()
+            delegate = _ColumnItemDelegate()
+            delegate._editor = column_data.editor
             table.setItemDelegateForColumn(column_index, delegate)
             # for custom delegates we need to keep a reference, otherwise they're
             # garbage collected and might cause crashes.
@@ -395,7 +396,7 @@ class _Spreadsheet(QtWidgets.QDialog):
                 column_data = self._columns_spec[column_index]
                 item.setData(column_data.getter, _VALUE_GETTER)
                 item.setData(column_data.setter, _VALUE_SETTER)
-                item.setData(column_data.editor, _EDITOR_CREATOR)
+                # item.setData(column_data.editor, _EDITOR_CREATOR)
                 model.setItem(row_index, column_index, item)
 
             item.setEditable(not value)
@@ -549,14 +550,16 @@ class _Column(NamedTuple):
     getter: callable
     setter: callable = _read_only  # "Read-only" by default
     editor: callable = None
-    delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
+    # delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
+    # delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
 
 
 class SpreadsheetEditor(_Spreadsheet):
     _COLUMNS = (
         _Column("Name", Usd.Prim.GetName),
         _Column("Path", lambda prim: str(prim.GetPath())),
-        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox, _ComboBoxItemDelegate),
+        # _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox, _ComboBoxItemDelegate),
+        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox),
         _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
         _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
         _Column("Visibility", lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
@@ -673,5 +676,4 @@ class SpreadsheetEditor(_Spreadsheet):
             item.setData(prim, _OBJECT)
             item.setData(column_data.getter, _VALUE_GETTER)
             item.setData(column_data.setter, _VALUE_SETTER)
-            item.setData(column_data.editor, _EDITOR_CREATOR)
             model.setItem(row_index, column_index, item)

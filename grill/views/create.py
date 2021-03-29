@@ -1,4 +1,4 @@
-from pxr import Usd, Sdf
+from pxr import Usd
 from PySide2 import QtWidgets, QtCore
 
 from grill import write
@@ -6,15 +6,11 @@ from grill import write
 from . import spreadsheet as _spreadsheet
 
 
-_OBJECT = QtCore.Qt.UserRole + 0
-_ProxyModel = _spreadsheet._ProxyModel
-
-
-class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
-    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        editor = QtWidgets.QComboBox(parent=parent)
-        editor.addItems(sorted(self.options))
-        return editor
+# class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
+#     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+#         editor = QtWidgets.QComboBox(parent=parent)
+#         editor.addItems(sorted(self.options))
+#         return editor
 
 
 class CreateAssets(QtWidgets.QDialog):
@@ -32,22 +28,30 @@ class CreateAssets(QtWidgets.QDialog):
         button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        self._type_delegate = _ColumnItemDelegate()
-        self._type_delegate.options = []
+        # self._type_delegate = _ColumnItemDelegate()
+        self._asset_type_options = []
 
         #################### Move to own class?
+
+        def _asset_type_combobox(parent, option, index):
+            print("HELLO!!!!")
+            combobox = QtWidgets.QComboBox(parent=parent)
+            combobox.addItems(sorted(self._asset_type_options))
+            return combobox
+
         options = _spreadsheet._ColumnOptions.NONE
+        identity = lambda x: x
         _CREATE_ASSETS_COLUMNS = (
-            _spreadsheet._Column("🧬 Type", Sdf.Layer.identifier.getter),
-            _spreadsheet._Column("🔖 Asset Name", Sdf.Layer.identifier.getter),
-            _spreadsheet._Column("🏷 Display Name", Sdf.Layer.identifier.getter),
-            _spreadsheet._Column("📜 Description", Sdf.Layer.identifier.getter),
+            _spreadsheet._Column("🧬 Type", identity, editor=_asset_type_combobox),
+            _spreadsheet._Column("🔖 Asset Name", identity),
+            _spreadsheet._Column("🏷 Display Name", identity),
+            _spreadsheet._Column("📜 Description", identity),
         )
 
         self.table = table = _spreadsheet._Spreadsheet(_CREATE_ASSETS_COLUMNS, options)
         table.model.setHorizontalHeaderLabels([''] * len(_CREATE_ASSETS_COLUMNS))
         self._amount.valueChanged.connect(table.model.setRowCount)
-        table.table.setItemDelegateForColumn(0, self._type_delegate)
+        # table.table.setItemDelegateForColumn(0, self._type_delegate)
         table.layout().setContentsMargins(0, 0, 0, 0)
         ################
 
@@ -83,4 +87,5 @@ class CreateAssets(QtWidgets.QDialog):
     def setStage(self, stage):
         self._stage = stage
         types_root = stage.GetPrimAtPath("/DBTypes")
-        self._type_delegate.options = [child.GetName() for child in types_root.GetFilteredChildren(Usd.PrimIsAbstract)] if types_root else []
+        self._asset_type_options = [child.GetName() for child in types_root.GetFilteredChildren(Usd.PrimIsAbstract)] if types_root else []
+        # self._type_delegate.options = [child.GetName() for child in types_root.GetFilteredChildren(Usd.PrimIsAbstract)] if types_root else []
