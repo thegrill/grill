@@ -50,7 +50,6 @@ def _prim_type_combobox(parent, option, index):
 _OBJECT = QtCore.Qt.UserRole + 0
 _VALUE_GETTER = QtCore.Qt.UserRole + 1
 _VALUE_SETTER = QtCore.Qt.UserRole + 2
-# _EDITOR_CREATOR = QtCore.Qt.UserRole + 3
 
 
 class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
@@ -98,24 +97,6 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
         else:
             print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
         return super().setModelData(editor, model, index)
-
-
-# class _ComboBoxItemDelegate(_ColumnItemDelegate):
-#
-#     def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex):
-#         # get the index of the text in the combobox that matches the current value of the item
-#         cbox_index = editor.findText(index.data(QtCore.Qt.EditRole))
-#         if cbox_index:  # if we know about this value, set it already
-#             editor.setCurrentIndex(cbox_index)
-
-    # if this was to be an "interactive editing" e.g. a line edit, we'd connect the
-    # editingFinished signal to the commitAndCloseEditor method. Mmmm is this needed?
-    # def commitAndCloseEditor(self):
-    #     editor = self.sender()
-    #     # The commitData signal must be emitted when we've finished editing
-    #     # and need to write our changed back to the model.
-    #     self.commitData.emit(editor)
-    #     self.closeEditor.emit(editor, QStyledItemDelegate.NoHint)
 
 
 class _ColumnOptions(enum.Flag):
@@ -332,7 +313,6 @@ class _Spreadsheet(QtWidgets.QDialog):
         super().__init__(*args, **kwargs)
         self.model = model = QtGui.QStandardItemModel(0, len(columns))
         self._columns_spec = columns
-        # logger.critical(self._columns_spec[0])
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
@@ -396,7 +376,6 @@ class _Spreadsheet(QtWidgets.QDialog):
                 column_data = self._columns_spec[column_index]
                 item.setData(column_data.getter, _VALUE_GETTER)
                 item.setData(column_data.setter, _VALUE_SETTER)
-                # item.setData(column_data.editor, _EDITOR_CREATOR)
                 model.setItem(row_index, column_index, item)
 
             item.setEditable(not value)
@@ -500,6 +479,7 @@ class _Spreadsheet(QtWidgets.QDialog):
             print(f"pasting data={rowdata}")
 
             if visual_row == current_count:
+                # we're at the end of the rows.
                 # If we are in a filtered place, alert the user if they want to paste rest
                 print(f"inserting a row at row_index {visual_row}???")
                 # model.insertRow(row_index)
@@ -550,21 +530,17 @@ class _Column(NamedTuple):
     getter: callable
     setter: callable = _read_only  # "Read-only" by default
     editor: callable = None
-    # delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
-    # delegate: QtWidgets.QStyledItemDelegate = _ColumnItemDelegate
 
 
 class SpreadsheetEditor(_Spreadsheet):
     _COLUMNS = (
         _Column("Name", Usd.Prim.GetName),
         _Column("Path", lambda prim: str(prim.GetPath())),
-        # _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox, _ComboBoxItemDelegate),
         _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox),
         _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
         _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
         _Column("Visibility", lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
         _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
-        # _Column("Segments", lambda prim: len(prim.GetChildren())),
     )
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
