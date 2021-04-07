@@ -86,6 +86,15 @@ class TestViews(unittest.TestCase):
 
         widget._amount.setValue(10)  # TODO: create 10 assets, clear tmp directory
 
+        data = (['Option1', 'asset01', 'Asset 01', 'Description 01'],)
+
+        stream = io.StringIO()
+        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
+        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
+
+        widget.sheet.table.selectAll()
+        widget.sheet._pasteClipboard()
+
     def test_spreadsheet_editor(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
