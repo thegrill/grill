@@ -19,7 +19,7 @@ from grill.views import description, sheets, create
 
 from grill import write
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +95,17 @@ class TestViews(unittest.TestCase):
             cached_stage = write.fetch_stage(layer_id)
             self.assertIsNot(non_cache_stage, cached_stage)
             self.assertIs(cached_stage, write.fetch_stage(layer_id))
+
+            custom_cached = str(write.UsdFile.get_default(stream='temp_test', item='custom_cached'))
+            layer = Sdf.Layer.CreateNew(str(repo_path / custom_cached))
+            del layer
+
+            custom_cached_layer = Sdf.Layer.FindOrOpen(custom_cached)
+            custom_cached_stage = Usd.Stage.Open(custom_cached_layer)
+            from pxr import UsdUtils
+            cache = UsdUtils.StageCache.Get()
+            cache.Insert(custom_cached_stage)
+            self.assertIs(custom_cached_stage, write.fetch_stage(custom_cached))
 
         transport_enum = write.define_db_type(stage, "Transport")
         person_type = write.define_db_type(stage, "Person", (displayable_type,))

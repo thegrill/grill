@@ -89,6 +89,9 @@ class TestViews(unittest.TestCase):
 
         data = (['Option1', 'asset01', 'Asset 01', 'Description 01'],)
 
+        QtWidgets.QApplication.instance().clipboard().setText('')
+        widget.sheet._pasteClipboard()
+
         stream = io.StringIO()
         csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
         QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
