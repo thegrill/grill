@@ -78,6 +78,7 @@ class TestViews(unittest.TestCase):
     def test_create_assets(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
+
         widget = create.CreateAssets()
         stage = Usd.Stage.CreateInMemory()
         for each in range(1, 6):
