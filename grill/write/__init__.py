@@ -141,7 +141,13 @@ def create(stage, dbtype, name, display_name=""):
     asset_stage.SetDefaultPrim(asset_origin)
 
     if display_name:
-        asset_origin.GetAttribute("display_name").Set(display_name)
+        display_attr = asset_origin.GetAttribute("display_name")
+        if not display_attr.IsValid():
+            # TODO: enforce this always?
+            logger.debug(f"Invalid attribute: {display_attr}. Creating a new one on {asset_origin}")
+            display_attr = asset_origin.CreateAttribute("display_name", Sdf.ValueTypeNames.String)
+
+        display_attr.Set(display_name)
 
     over_prim = stage.OverridePrim(path)
     over_prim.GetPayloads().AddPayload(asset_stage.GetRootLayer().identifier)

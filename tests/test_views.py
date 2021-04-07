@@ -78,16 +78,24 @@ class TestViews(unittest.TestCase):
     def test_create_assets(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
+        import tempfile
+        tmpf = tempfile.mkdtemp()
+        token = create.write.repo.set(create.write.Path(tmpf) / "repo")
+        rootf = create.write.UsdFile.get_default(stream='testestest')
+        stage = create.write.fetch_stage(str(rootf))
+
+        for each in range(1, 6):
+            create.write.define_db_type(stage, f"Option{each}")
 
         widget = create.CreateAssets()
-        stage = Usd.Stage.CreateInMemory()
-        for each in range(1, 6):
-            stage.CreateClassPrim(f"/DBTypes/Option{each}")
         widget.setStage(stage)
 
-        widget._amount.setValue(10)  # TODO: create 10 assets, clear tmp directory
+        widget._amount.setValue(2)  # TODO: create 10 assets, clear tmp directory
 
-        data = (['Option1', 'asset01', 'Asset 01', 'Description 01'],)
+        data = (
+            ['Option1', 'asset01', 'Asset 01', 'Description 01'],
+            ['Option2', 'asset02', 'Asset 02', 'Description 02'],
+        )
 
         QtWidgets.QApplication.instance().clipboard().setText('')
         widget.sheet._pasteClipboard()
@@ -98,6 +106,7 @@ class TestViews(unittest.TestCase):
 
         widget.sheet.table.selectAll()
         widget.sheet._pasteClipboard()
+        widget._create()
 
     def test_spreadsheet_editor(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
