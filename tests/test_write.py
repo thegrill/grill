@@ -80,6 +80,22 @@ class TestViews(unittest.TestCase):
 
         # all DB definitions go to the db types asset.
         displayable_type = write.define_db_type(stage, "DisplayableName")
+        displayable_type = write.define_db_type(stage, "DisplayableName")
+
+        with self.assertRaises(ValueError):
+            write._first_matching(dict(missing='tokens'), stage.GetLayerStack())
+
+        from pxr import Ar
+        repo_path = write.repo.get()
+        resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
+        with Ar.ResolverContextBinder(resolver_ctx):
+            layer_id = str(write.UsdFile.get_default(stream='temp_test'))
+            Sdf.Layer.CreateNew(str(repo_path / layer_id))
+            non_cache_stage = Usd.Stage.Open(layer_id)
+            cached_stage = write.fetch_stage(layer_id)
+            self.assertIsNot(non_cache_stage, cached_stage)
+            self.assertIs(cached_stage, write.fetch_stage(layer_id))
+
         transport_enum = write.define_db_type(stage, "Transport")
         person_type = write.define_db_type(stage, "Person", (displayable_type,))
         pc_type = write.define_db_type(stage, "PC", (person_type, transport_enum))
@@ -114,6 +130,11 @@ class TestViews(unittest.TestCase):
         cityRoot = stage.DefinePrim(f"/{city_type.GetName()}")
 
         write.create(stage, city_type, 'Munich')
+        write.create(stage, city_type, 'Munich')
+
+        with self.assertRaises(TypeError):
+            write.edit_context(object(), stage)
+
         write.create(stage, city_type, 'Budapest', display_name='Buda-Pesth')
         bistritz = write.create(stage, city_type, 'Bistritz', display_name='Bistritz')
         london = write.create(stage, city_type, 'London')
