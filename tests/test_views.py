@@ -5,7 +5,7 @@ import unittest
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
-from grill.views import description, sheets
+from grill.views import description, sheets, create
 
 
 class TestViews(unittest.TestCase):
@@ -74,6 +74,17 @@ class TestViews(unittest.TestCase):
         self.assertEqual(topLevel.childCount(), 1)
 
         widget.clear()
+
+    def test_create_assets(self):
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+        widget = create.CreateAssets()
+        stage = Usd.Stage.CreateInMemory()
+        for each in range(1, 6):
+            stage.CreateClassPrim(f"/DBTypes/Option{each}")
+        widget.setStage(stage)
+
+        widget._amount.setValue(10)  # TODO: create 10 assets, clear tmp directory
 
     def test_spreadsheet_editor(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
