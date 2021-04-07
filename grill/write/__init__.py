@@ -1,27 +1,35 @@
+import uuid
 import types
 import logging
+import functools
+import itertools
 import contextvars
+import collections
+
 from pathlib import Path
-from functools import singledispatch
+from pxr import UsdUtils, Usd, Sdf, Ar, Kind
 
 from grill import names
-
-from pxr import UsdUtils, Usd, Sdf, Ar, Kind
 
 logger = logging.getLogger(__name__)
 
 repo = contextvars.ContextVar('repo')
-DB_TOKENS = types.MappingProxyType(dict(kingdom="db", item='types'))
+_DB_TOKENS = types.MappingProxyType(dict(kingdom="db", item='types'))
 
 
 class UsdFile(names.CGAssetFile):
     DEFAULT_SUFFIX = 'usda'
 
+    @classmethod
+    def get_anonymous(cls, **kwargs):
+        """Convenience method to get an anonymous unique name object for a USD file."""
+        default_name = cls.get_default(**kwargs)
+        keys = default_name.get_pattern_list()
+        values = itertools.cycle(uuid.uuid4().fields)
+        return cls.get_default(**collections.ChainMap(kwargs, dict(zip(keys, values))))
 
-from functools import lru_cache
 
-
-@lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=None)
 def fetch_stage(root_id) -> Usd.Stage:
     """For the given root layer identifier, get a corresponding stage.
 
@@ -80,7 +88,7 @@ def define_db_type(stage, name, references=tuple()) -> Usd.Prim:
         return db_type
     stage_layer = stage.GetRootLayer()
     current_asset_name = UsdFile(Path(stage.GetRootLayer().realPath).name)
-    db_asset_name = current_asset_name.get(**DB_TOKENS)
+    db_asset_name = current_asset_name.get(**_DB_TOKENS)
     db_stage = fetch_stage(db_asset_name)
 
     db_layer = db_stage.GetRootLayer()
@@ -134,7 +142,7 @@ def create(stage, dbtype, name, display_name=""):
     asset_origin = asset_stage.GetPrimAtPath("/origin")
     if not asset_origin:
         asset_origin = asset_stage.DefinePrim("/origin")
-        db_layer = _first_matching(DB_TOKENS, stage.GetLayerStack())
+        db_layer = _first_matching(_DB_TOKENS, stage.GetLayerStack())
         db_layer_relid = str(Path(db_layer.realPath).relative_to(repo.get()))
         asset_origin.GetReferences().AddReference(db_layer_relid, dbtype.GetPath())
 
@@ -154,7 +162,7 @@ def create(stage, dbtype, name, display_name=""):
     return over_prim
 
 
-@singledispatch
+@functools.singledispatch
 def edit_context(obj, stage):
     raise TypeError(f"Not implemented: {locals()}")  # lazy
 

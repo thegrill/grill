@@ -1,111 +1,62 @@
 import logging
+import unittest
+import tempfile
+
 from pathlib import Path
 
-from pxr import Usd, Sdf, Kind
-import sys
-# sys.path.append(r"B:\write\code\git\grill")
-from grill import write
-
-import datetime
-
-import io
-import csv
-import unittest
-
-from pxr import Usd, UsdGeom, Sdf
-from PySide2 import QtWidgets, QtCore
-
-from grill.views import description, sheets, create
+from pxr import Kind, Usd, Sdf, Ar, UsdUtils
 
 from grill import write
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-class TestViews(unittest.TestCase):
-    def setUp(self):
-        sphere = Usd.Stage.CreateInMemory()
-        UsdGeom.Sphere.Define(sphere, "/sph")
-        root_path = "/root"
-        sphere_root = sphere.DefinePrim(root_path)
-        sphere_root.CreateAttribute("greet", Sdf.ValueTypeNames.String).Set("hello")
-        sphere.SetDefaultPrim(sphere_root)
-        # print(sphere.GetRootLayer().ExportToString())
+class TestWrite(unittest.TestCase):
+    def setUp(self) -> None:
+        tempdir = tempfile.mkdtemp()
+        logger.debug(f"Repository root directory: {tempdir}")
+        self.token = write.repo.set(Path(tempdir) / "repo")
 
-        capsule = Usd.Stage.CreateInMemory()
-        UsdGeom.Capsule.Define(capsule, "/cap")
-        root_path = "/root"
-        capsule_root = capsule.DefinePrim(root_path)
-        capsule_root.CreateAttribute("who", Sdf.ValueTypeNames.String).Set("world")
-        capsule.SetDefaultPrim(capsule_root)
-        # print(capsule.GetRootLayer().ExportToString())
+    def tearDown(self) -> None:
+        write.repo.reset(self.token)
 
-        merge = Usd.Stage.CreateInMemory()
-        for i in (capsule, sphere):
-            merge.GetRootLayer().subLayerPaths.append(i.GetRootLayer().identifier)
-        merge.SetDefaultPrim(merge.GetPrimAtPath(root_path))
-        # print(merge.GetRootLayer().ExportToString())
+    def test_write(self):
+        rootf = write.UsdFile.get_anonymous()
 
-        world = Usd.Stage.CreateInMemory()
-        self.nested = world.DefinePrim("/nested/child")
-        self.nested.GetReferences().AddReference(merge.GetRootLayer().identifier)
-        # print(world.GetRootLayer().ExportToString())
+        stage = write.fetch_stage(rootf)
+        # fetching stage outside of AR context should resolve to same stage
+        self.assertIs(stage, write.fetch_stage(rootf))
 
-        self.capsule = capsule
-        self.sphere = sphere
-        self.merge = merge
-        self.world = world
-
-    def test_layer_composition(self):
-        dracula_root_id = write.UsdFile.get_default(code='dracula')
-
-        import tempfile
-        tmpf = tempfile.mkdtemp()
-        token = write.repo.set(Path(tmpf) / "repo")
-
-        logger.info(f"Repository path: {write.repo.get()}")
-        logger.info(f"Stage identifier: {dracula_root_id}")
-
-        stage = write.fetch_stage(dracula_root_id)
-        tos = lambda: logger.info(stage.GetRootLayer().ExportToString())
-
-        assert stage is write.fetch_stage(dracula_root_id)
-
-        # types, types.
-        # this types should ideally come directly from EdgeDB? without reaching the database first?
-
-        # TODO: what should person and place be? Assemblies vs components.
-        #   For now, only cities are considered assemblies.
-
-        # all DB definitions go to the db types asset.
-        displayable_type = write.define_db_type(stage, "DisplayableName")
-        displayable_type = write.define_db_type(stage, "DisplayableName")
-
-        with self.assertRaises(ValueError):
-            write._first_matching(dict(missing='tokens'), stage.GetLayerStack())
-
-        from pxr import Ar
         repo_path = write.repo.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
         with Ar.ResolverContextBinder(resolver_ctx):
-            layer_id = str(write.UsdFile.get_default(stream='temp_test'))
+            # inside an AR resolver context, a new layer and custom stage should end up
+            # in that stage not resolving to the same as the one from write.fetch_stage
+            layer_id = str(write.UsdFile.get_anonymous(item='non_cached'))
             Sdf.Layer.CreateNew(str(repo_path / layer_id))
             non_cache_stage = Usd.Stage.Open(layer_id)
             cached_stage = write.fetch_stage(layer_id)
             self.assertIsNot(non_cache_stage, cached_stage)
+            # but after fetching once, subsequent fetches should persist
             self.assertIs(cached_stage, write.fetch_stage(layer_id))
 
-            custom_cached = str(write.UsdFile.get_default(stream='temp_test', item='custom_cached'))
+            # creating a new layer + stage + adding it to the cache maually
+            # should allow fetch_stage to retrieve it as well.
+            custom_cached = str(write.UsdFile.get_default(item='cached'))
             layer = Sdf.Layer.CreateNew(str(repo_path / custom_cached))
             del layer
-
             custom_cached_layer = Sdf.Layer.FindOrOpen(custom_cached)
             custom_cached_stage = Usd.Stage.Open(custom_cached_layer)
-            from pxr import UsdUtils
             cache = UsdUtils.StageCache.Get()
             cache.Insert(custom_cached_stage)
             self.assertIs(custom_cached_stage, write.fetch_stage(custom_cached))
+
+        with self.assertRaises(ValueError):
+            write._first_matching(dict(missing='tokens'), stage.GetLayerStack())
+
+        displayable_type = write.define_db_type(stage, "DisplayableName")
+        # idempotent call should keep previously created prim
+        self.assertEqual(displayable_type, write.define_db_type(stage, "DisplayableName"))
 
         transport_enum = write.define_db_type(stage, "Transport")
         person_type = write.define_db_type(stage, "Person", (displayable_type,))
@@ -117,7 +68,7 @@ class TestViews(unittest.TestCase):
         city_type = write.define_db_type(stage, "City", (place_type,))
 
         # TODO: the following db relationships as well. This time we do this with an edit target
-        db_layer = write._first_matching(write.DB_TOKENS, stage.GetLayerStack())
+        db_layer = write._first_matching(write._DB_TOKENS, stage.GetLayerStack())
 
         ### DB edits  ###
         with write.edit_context(db_layer, stage):
@@ -168,21 +119,7 @@ class TestViews(unittest.TestCase):
         dracula = write.create(stage, vampire_type, 'CountDracula',
                                display_name='Count Dracula')
         mina = write.create(stage, npc_type, 'MinaMurray', display_name='Mina Murray')
-        # TODO: LIMIT, how to? (Unsure if USD supports constraints on relationships.
         mina.GetRelationship("lover").AddTarget(jonathan.GetPath())
-        """
-        If you just want to return a single part of a type without the object structure, you can use . after the type name. For example, SELECT City.modern_name will give this output:
-
-        {'Budapest', 'Bistrița'}
-        """
-
-        logger.info([p for p in Usd.PrimRange(cityRoot) if
-                     p.GetAttribute("modern_name").IsValid() and p.GetAttribute(
-                         "modern_name").Get()])
-
-        """
-        But we want to have Jonathan be connected to the cities he has traveled to. We'll change places_visited when we INSERT to places_visited := City:
-        """
 
         for prim, places in {
             jonathan: cityRoot.GetChildren(),
@@ -213,24 +150,3 @@ class TestViews(unittest.TestCase):
 
         with write.edit_context(emil, emil_layer, stage):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")
-
-        # DELETING
-        # try deleting the countries, this works as long as definitions are on the current edit target
-        # note how relationships still exist (since they're authored paths)
-        # country_root = stage.GetPrimAtPath(f"/{city_type.GetName()}")
-        # stage.RemovePrim(country_root.GetPath())
-
-        # 4 Questions / Unresolved
-        # Time type, needed? Has "awake" property  driven by hour ( awake < 7am asleep < 19h awake
-
-        for x in range(5):
-            # for x in range(1_000):
-            # atm creating 1_000 new cities (including each USD file) takes around 7 seconds.
-            # could be faster.
-            write.create(stage, city_type, f'NewCity{x}',
-                         display_name=f"New City Hello {x}")
-
-        stage.Save()
-
-        # code that uses 'var'; var.get() returns 'new value'. Call at the end.
-        write.repo.reset(token)
