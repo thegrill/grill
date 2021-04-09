@@ -40,7 +40,6 @@ class CreateAssets(QtWidgets.QDialog):
         sheet.model.setHorizontalHeaderLabels([''] * len(_columns))
         self._amount.valueChanged.connect(sheet.model.setRowCount)
         sheet.layout().setContentsMargins(0, 0, 0, 0)
-        ################
 
         self._amount.setValue(1)
         self._amount.setMinimum(1)

@@ -81,7 +81,7 @@ class TestViews(unittest.TestCase):
         import tempfile
         tmpf = tempfile.mkdtemp()
         token = create.write.repo.set(create.write.Path(tmpf) / "repo")
-        rootf = create.write.UsdFile.get_default(stream='testestest')
+        rootf = create.write.UsdAsset.get_default(stream='testestest')
         stage = create.write.fetch_stage(str(rootf))
 
         for each in range(1, 6):

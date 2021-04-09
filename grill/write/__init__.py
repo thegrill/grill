@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import uuid
 import types
+import typing
 import logging
 import functools
 import itertools
@@ -9,6 +12,7 @@ import collections
 from pathlib import Path
 from pxr import UsdUtils, Usd, Sdf, Ar, Kind
 
+import naming
 from grill import names
 
 logger = logging.getLogger(__name__)
@@ -17,16 +21,29 @@ repo = contextvars.ContextVar('repo')
 _DB_TOKENS = types.MappingProxyType(dict(kingdom="db", item='types'))
 
 
-class UsdFile(names.CGAssetFile):
+class UsdAsset(names.CGAssetFile):
     DEFAULT_SUFFIX = 'usda'
+    file_config = naming.NameConfig(
+        {'suffix': "|".join(Sdf.FileFormat.FindAllFileFormatExtensions())}
+    )
 
     @classmethod
-    def get_anonymous(cls, **kwargs):
-        """Convenience method to get an anonymous unique name object for a USD file."""
-        default_name = cls.get_default(**kwargs)
-        keys = default_name.get_pattern_list()
-        values = itertools.cycle(uuid.uuid4().fields)
-        return cls.get_default(**collections.ChainMap(kwargs, dict(zip(keys, values))))
+    def get_anonymous(cls, **values) -> UsdAsset:
+        """Get an anonymous USD file name with optional field overrides.
+
+        Generally useful for situation where a temporary but valid identifier is needed.
+
+        :param values: Variable keyword arguments with the keys referring to the name's
+            fields which will use the given values.
+
+        Example:
+            >>> UsdAsset.get_anonymous(stream='test')
+            UsdAsset("4209091047-34604-19646-169-123-test-4209091047-34604-19646-169.1.usda")
+
+        """
+        keys = cls.get_default().get_pattern_list()
+        anon = itertools.cycle(uuid.uuid4().fields)
+        return cls.get_default(**collections.ChainMap(values, dict(zip(keys, anon))))
 
 
 @functools.lru_cache(maxsize=None)
@@ -41,7 +58,7 @@ def fetch_stage(root_id) -> Usd.Stage:
     :param root_id:
     :return:
     """
-    rootf = UsdFile(root_id)
+    rootf = UsdAsset(root_id)
     cache = UsdUtils.StageCache.Get()
     repo_path = repo.get()
     resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
@@ -87,7 +104,7 @@ def define_db_type(stage, name, references=tuple()) -> Usd.Prim:
     if db_type:
         return db_type
     stage_layer = stage.GetRootLayer()
-    current_asset_name = UsdFile(Path(stage.GetRootLayer().realPath).name)
+    current_asset_name = UsdAsset(Path(stage.GetRootLayer().realPath).name)
     db_asset_name = current_asset_name.get(**_DB_TOKENS)
     db_stage = fetch_stage(db_asset_name)
 
@@ -110,10 +127,14 @@ def define_db_type(stage, name, references=tuple()) -> Usd.Prim:
     return stage.GetPrimAtPath(db_type_path)
 
 
-def _first_matching(tokens, layers):
+def find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
+    """Find the first layer matching the given identifier tokens.
+
+    :raises ValueError: If none of the given layers match the provided tokens.
+    """
     tokens = set(tokens.items())
     for layer in layers:
-        name = UsdFile(Path(layer.realPath).name)
+        name = UsdAsset(Path(layer.realPath).name)
         if tokens.difference(name.values.items()):
             continue
         return layer
@@ -124,7 +145,7 @@ def create(stage, dbtype, name, display_name=""):
     """Whenever we create a new item from the database, make it it's own entity"""
     new_tokens = dict(kingdom='assets', cluster=dbtype.GetName(), item=name)
     # contract: all dbtypes have a display_name
-    current_asset_name = UsdFile(Path(stage.GetRootLayer().realPath).name)
+    current_asset_name = UsdAsset(Path(stage.GetRootLayer().realPath).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
     # Scope collecting all assets of the same type
@@ -142,7 +163,7 @@ def create(stage, dbtype, name, display_name=""):
     asset_origin = asset_stage.GetPrimAtPath("/origin")
     if not asset_origin:
         asset_origin = asset_stage.DefinePrim("/origin")
-        db_layer = _first_matching(_DB_TOKENS, stage.GetLayerStack())
+        db_layer = find_layer_matching(_DB_TOKENS, stage.GetLayerStack())
         db_layer_relid = str(Path(db_layer.realPath).relative_to(repo.get()))
         asset_origin.GetReferences().AddReference(db_layer_relid, dbtype.GetPath())
 
