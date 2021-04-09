@@ -70,3 +70,18 @@ houdini.layer_stack_composition()
 ```
 
 ![stack_composition_houdin_2](https://user-images.githubusercontent.com/8294116/100744825-7cb24880-3432-11eb-8906-9c2c4019678e.gif)
+
+## Creating Assets
+
+### USD View
+
+Creating assets requires a repository path to be set. If not set, a dialog to set it will be prompted upon creation request.
+To set the repository path at any point, go to `Grill -> Preferences -> Repository Path`:
+
+![grill_select_repopath_4](https://user-images.githubusercontent.com/8294116/114215808-681a2a00-99a9-11eb-85c2-04d45d5a3aef.gif)
+
+With a repository path set, assets can be created via the `Create Assets` menu. Any number of assets can be created. Default is 1. On the example provided, 240 "City" assets are created, copied from a CSV file and pasted directly on the table of the dialog. Then, all assets are saved to disk on the current repository path.
+
+![grill_create_cities](https://user-images.githubusercontent.com/8294116/112751505-263ccb80-901a-11eb-8a64-d46ef43dd087.gif)
+
+

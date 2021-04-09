@@ -41,13 +41,10 @@ At the highest level, all asset data, from creation to finish, goes through the 
 
 ----
 
-Inspecting
-==========
+Views (Inspecting / Authoring)
+==============================
 
 .. mdinclude:: ../../grill/views/README.md
-
-Authoring
-=========
 
 The ``production`` area is the one that defines everything that exists, from shows to areas, code names and organizational groups for assets.
 
