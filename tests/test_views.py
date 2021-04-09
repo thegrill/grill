@@ -1,5 +1,6 @@
 import io
 import csv
+import tempfile
 import unittest
 
 from pxr import Usd, UsdGeom, Sdf
@@ -78,7 +79,6 @@ class TestViews(unittest.TestCase):
     def test_create_assets(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-        import tempfile
         tmpf = tempfile.mkdtemp()
         token = create.write.repo.set(create.write.Path(tmpf) / "repo")
         rootf = create.write.UsdAsset.get_default(stream='testestest')
@@ -90,11 +90,12 @@ class TestViews(unittest.TestCase):
         widget = create.CreateAssets()
         widget.setStage(stage)
 
-        widget._amount.setValue(2)  # TODO: create 10 assets, clear tmp directory
+        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
 
         data = (
             ['Option1', 'asset01', 'Asset 01', 'Description 01'],
             ['Option2', 'asset02', 'Asset 02', 'Description 02'],
+            ['Option2', '',        'Asset 03', 'Description 03'],
         )
 
         QtWidgets.QApplication.instance().clipboard().setText('')
