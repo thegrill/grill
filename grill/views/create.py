@@ -1,7 +1,8 @@
-from pxr import Usd
-from PySide2 import QtWidgets
+from pathlib import Path
 
+from pxr import Usd
 from grill import write
+from PySide2 import QtWidgets
 
 from . import sheets as _sheets
 
@@ -56,6 +57,12 @@ class CreateAssets(QtWidgets.QDialog):
 
     @_sheets.wait()
     def _create(self):
+        if not write.repo.get(None):
+            if not self._setRepositoryPath(self, "Select a repository path to create assets on"):
+                msg = "A repository path must be selected in order to create assets."
+                QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
+                return
+        # TODO: check for "/DBTypes" existence and handle missing
         types_root = self._stage.GetPrimAtPath("/DBTypes")
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
@@ -73,3 +80,11 @@ class CreateAssets(QtWidgets.QDialog):
         self._stage = stage
         types_root = stage.GetPrimAtPath("/DBTypes")
         self._asset_type_options = [child.GetName() for child in types_root.GetFilteredChildren(Usd.PrimIsAbstract)] if types_root else []
+
+    @staticmethod
+    def _setRepositoryPath(parent=None, caption="Select a repository path"):
+        dirpath = QtWidgets.QFileDialog.getExistingDirectory(parent=parent, caption=caption)
+        if dirpath:
+            token = write.repo.set(Path(dirpath))
+            print(f"Repository path set to: {dirpath}, token: {token}")
+        return dirpath

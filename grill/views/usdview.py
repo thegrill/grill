@@ -57,19 +57,31 @@ def save_changes(usdviewApi):
     return Save()
 
 
+def repository_path(usdviewApi):
+    class Repository:
+        def show(self):
+            parent = usdviewApi.qMainWindow
+            _create.CreateAssets._setRepositoryPath(parent)
+
+    return Repository()
+
+
 class GrillPlugin(PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
         def show(_launcher, _usdviewAPI):
             return _launcher(_usdviewAPI).show()
 
-        self._menu_items = [
-            plugRegistry.registerCommandPlugin(
-                f"Grill.{launcher.__qualname__}",
-                launcher.__qualname__.replace("_", " ").title(),  # lazy, naming conventions
-                partial(show, launcher),
-            )
+        def _menu_item(_launcher):
             # contract: each of these return an object which show a widget on `show()`
+            return plugRegistry.registerCommandPlugin(
+                f"Grill.{_launcher.__qualname__}",
+                _launcher.__qualname__.replace("_", " ").title(),  # lazy, naming conventions
+                partial(show, _launcher),
+            )
+
+        self._menu_items = [
+            _menu_item(launcher)
             for launcher in (
                 create_assets,
                 spreadsheet_editor,
@@ -79,14 +91,16 @@ class GrillPlugin(PluginContainer):
             )
         ]
 
+        self._preferences_items = [_menu_item(repository_path)]
+
     def configureView(self, plugRegistry, plugUIBuilder):
         grill_menu = plugUIBuilder.findOrCreateMenu("👨‍🍳 Grill")
         for item in self._menu_items:
             grill_menu.addItem(item)
+        grill_menu.addSeparator()
+        preferences = grill_menu.findOrCreateSubmenu("Preferences")
+        for item in self._preferences_items:
+            preferences.addItem(item)
 
 
 Tf.Type.Define(GrillPlugin)
-from grill import write
-from pathlib import Path
-token = write.repo.set(Path(r"B:\write\code\git\easy-edgedb\chapter4\repo"))
-
