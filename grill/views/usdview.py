@@ -55,14 +55,14 @@ class GrillPlugin(PluginContainer):
         def show(_launcher, _usdviewAPI):
             return _launcher(_usdviewAPI).show()
 
-        def _menu_item(_launcher, title):
+        def _menu_item(title, _launcher):
             # contract: each of these return an object which show a widget on `show()`
             return plugRegistry.registerCommandPlugin(
                 f"Grill.{title.replace(' ', '_')}", title, partial(show, _launcher),
             )
 
         self._menu_items = [
-            _menu_item(launcher, title)
+            _menu_item(title, launcher)
             for (title, launcher) in (
                 ("Create Assets", _stage_on_widget(_create.CreateAssets)),
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
@@ -72,7 +72,7 @@ class GrillPlugin(PluginContainer):
             )
         ]
 
-        self._preferences_items = [_menu_item(repository_path, "Repository Path")]
+        self._preferences_items = [_menu_item("Repository Path", repository_path)]
 
     def configureView(self, plugRegistry, plugUIBuilder):
         grill_menu = plugUIBuilder.findOrCreateMenu("👨‍🍳 Grill")
