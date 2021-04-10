@@ -84,7 +84,7 @@ To set the repository path at any point, go to `Grill -> Preferences -> Reposito
 
 With a repository path set, assets can be created via the `Create Assets` menu. The default is one, but any number of assets can be created at the same time by changing the `Amount` value.
 
-On the example below, 240 "City" assets are created, copied from a CSV file and pasted directly on the table of `Create Assets` dialog.
+In the example below, 240 "City" assets are created, copied from a CSV file and pasted directly on the "Create Assets" table.
 
 All created assets are saved to disk on the current repository path.
 
