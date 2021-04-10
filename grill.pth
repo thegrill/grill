@@ -1,0 +1,1 @@
+import os, pathlib;os.environ["PXR_PLUGINPATH_NAME"] = f"{pathlib.Path(sitedir) / 'grillPlugInfo.json'};{os.environ.get('PXR_PLUGINPATH_NAME', '')}"
