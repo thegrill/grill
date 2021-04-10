@@ -1,11 +1,12 @@
 import io
 import csv
+import tempfile
 import unittest
 
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
-from grill.views import description, spreadsheet
+from grill.views import description, sheets, create
 
 
 class TestViews(unittest.TestCase):
@@ -75,10 +76,43 @@ class TestViews(unittest.TestCase):
 
         widget.clear()
 
+    def test_create_assets(self):
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+        tmpf = tempfile.mkdtemp()
+        token = create.write.repo.set(create.write.Path(tmpf) / "repo")
+        rootf = create.write.UsdAsset.get_default(stream='testestest')
+        stage = create.write.fetch_stage(str(rootf))
+
+        for each in range(1, 6):
+            create.write.define_db_type(stage, f"Option{each}")
+
+        widget = create.CreateAssets()
+        widget.setStage(stage)
+
+        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
+
+        data = (
+            ['Option1', 'asset01', 'Asset 01', 'Description 01'],
+            ['Option2', 'asset02', 'Asset 02', 'Description 02'],
+            ['Option2', '',        'Asset 03', 'Description 03'],
+        )
+
+        QtWidgets.QApplication.instance().clipboard().setText('')
+        widget.sheet._pasteClipboard()
+
+        stream = io.StringIO()
+        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
+        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
+
+        widget.sheet.table.selectAll()
+        widget.sheet._pasteClipboard()
+        widget._create()
+
     def test_spreadsheet_editor(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-        widget = spreadsheet.SpreadsheetEditor()
+        widget = sheets.SpreadsheetEditor()
         widget.setStage(self.world)
         widget.table.scrollContentsBy(10, 10)
 
