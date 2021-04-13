@@ -8,8 +8,8 @@ from setuptools.command.easy_install import easy_install
 from setuptools.command.install_lib import install_lib
 
 
-# Reference:
-# https://github.com/pytest-dev/pytest-cov/blob/daf54e79fcb8f549699d28e691302a9251f7e54b/setup.py#L145-L151
+# Hopefully all of the following will not be needed after PEP 648
+# Reference: https://github.com/pytest-dev/pytest-cov/blob/daf54e79fcb8f549699d28e691302a9251f7e54b/setup.py#L145-L151
 def _copy_pth(obj, install_dir):
     path = os.path.join(os.path.dirname(__file__), "grill.pth")
     dest = os.path.join(install_dir, os.path.basename(path))
@@ -47,8 +47,6 @@ class InstallLibPTH(install_lib):
 
 setuptools.setup(
     cmdclass={
-        # Reference:
-        # https://github.com/pytest-dev/pytest-cov/blob/daf54e79fcb8f549699d28e691302a9251f7e54b/setup.py#L145-L151
         "build": BuildPTH,
         "develop": DevelopPTH,
         "easy_insall": EasyInstallPTH,
