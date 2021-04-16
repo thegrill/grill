@@ -1,3 +1,4 @@
+# USDView not on pypi yet, so not possible to test this on CI
 import types
 from functools import lru_cache, partial
 
@@ -11,10 +12,10 @@ from . import description as _description
 from . import create as _create
 
 
-def _stage_on_widget(widgetCls):
+def _stage_on_widget(widget_creator):
     @lru_cache(maxsize=None)
     def _launcher(usdviewApi):
-        widget = widgetCls(parent=usdviewApi.qMainWindow)
+        widget = widget_creator(parent=usdviewApi.qMainWindow)
         widget.setStage(usdviewApi.stage)
         return widget
     return _launcher
@@ -45,8 +46,8 @@ def save_changes(usdviewApi):
 
 
 def repository_path(usdviewApi):
-    parent = usdviewApi.qMainWindow
-    return types.SimpleNamespace(show=_create.CreateAssets._setRepositoryPath(parent))
+    show = partial(_create.CreateAssets._setRepositoryPath, usdviewApi.qMainWindow)
+    return types.SimpleNamespace(show=show)
 
 
 class GrillPlugin(PluginContainer):
@@ -56,7 +57,7 @@ class GrillPlugin(PluginContainer):
             return _launcher(_usdviewAPI).show()
 
         def _menu_item(title, _launcher):
-            # contract: each of these return an object which show a widget on `show()`
+            # contract: _launcher() returns an object that shows a widget on `show()`
             return plugRegistry.registerCommandPlugin(
                 f"Grill.{title.replace(' ', '_')}", title, partial(show, _launcher),
             )

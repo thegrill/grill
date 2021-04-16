@@ -288,7 +288,9 @@ class LayersComposition(QtWidgets.QDialog):
             return Path(layer.realPath).stem or layer.identifier
 
         def _walk_layer_tree(tree):
-            yield tree.layer
+            tree_layer = tree.layer
+            if tree_layer:
+                yield tree_layer
             for childtree in tree.childTrees:
                 yield from _walk_layer_tree(childtree)
 
