@@ -46,8 +46,7 @@ def save_changes(usdviewApi):
 
 
 def repository_path(usdviewApi):
-    parent = usdviewApi.qMainWindow
-    show = partial(_create.CreateAssets._setRepositoryPath, parent)
+    show = partial(_create.CreateAssets._setRepositoryPath, usdviewApi.qMainWindow)
     return types.SimpleNamespace(show=show)
 
 
@@ -58,7 +57,7 @@ class GrillPlugin(PluginContainer):
             return _launcher(_usdviewAPI).show()
 
         def _menu_item(title, _launcher):
-            # contract: each of these return an object which show a widget on `show()`
+            # contract: _launcher() returns an object that shows a widget on `show()`
             return plugRegistry.registerCommandPlugin(
                 f"Grill.{title.replace(' ', '_')}", title, partial(show, _launcher),
             )
