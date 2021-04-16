@@ -1,3 +1,4 @@
+# USDView not on pypi yet, so not possible to test this on CI
 import types
 from functools import lru_cache, partial
 
@@ -11,10 +12,10 @@ from . import description as _description
 from . import create as _create
 
 
-def _stage_on_widget(widgetCls):
+def _stage_on_widget(widget_creator):
     @lru_cache(maxsize=None)
     def _launcher(usdviewApi):
-        widget = widgetCls(parent=usdviewApi.qMainWindow)
+        widget = widget_creator(parent=usdviewApi.qMainWindow)
         widget.setStage(usdviewApi.stage)
         return widget
     return _launcher
@@ -46,7 +47,8 @@ def save_changes(usdviewApi):
 
 def repository_path(usdviewApi):
     parent = usdviewApi.qMainWindow
-    return types.SimpleNamespace(show=_create.CreateAssets._setRepositoryPath(parent))
+    show = partial(_create.CreateAssets._setRepositoryPath, parent)
+    return types.SimpleNamespace(show=show)
 
 
 class GrillPlugin(PluginContainer):
