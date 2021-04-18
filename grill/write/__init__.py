@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 repo = contextvars.ContextVar('repo')
 _ASSET_TOKENS = types.MappingProxyType(dict(kingdom="asset"))
-_ASSET_ORIGIN = Sdf.Path("/Origin")
 _CATEGORY_TOKENS = types.MappingProxyType(dict(kingdom="category",))
 _CATEGORY_ROOT_PATH = Sdf.Path("/Category")
 
@@ -153,12 +152,13 @@ def create(category: Usd.Prim, name, display_name=""):
         return stage.GetPrimAtPath(path)
 
     asset_stage = fetch_stage(new_asset_name)
-    asset_origin = asset_stage.GetPrimAtPath(_ASSET_ORIGIN)
+    asset_origin_path = Sdf.Path("/Origin")
+    asset_origin = asset_stage.GetPrimAtPath(asset_origin_path)
     if not asset_origin:
-        asset_origin = asset_stage.DefinePrim(_ASSET_ORIGIN)
-        db_layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
-        db_layer_relid = str(Path(db_layer.realPath).relative_to(repo.get()))
-        asset_origin.GetReferences().AddReference(db_layer_relid, category.GetPath())
+        asset_origin = asset_stage.DefinePrim(asset_origin_path)
+        category_layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
+        category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
+        asset_origin.GetReferences().AddReference(category_layer_id, category.GetPath())
 
     asset_stage.SetDefaultPrim(asset_origin)
 
@@ -201,17 +201,21 @@ def category_context(stage):
         # Our layer is not yet on the current layer stack. Let's bring it.
         stage_layer = stage.GetRootLayer()
         current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
-        db_asset_name = current_asset_name.get(**_CATEGORY_TOKENS)
-        db_stage = fetch_stage(db_asset_name)
-        db_layer = db_stage.GetRootLayer()
+        # TODO: this is probably incorrect, should we get a category name for all the project?
+        category_name = current_asset_name.get(**_CATEGORY_TOKENS)
+        category_stage = fetch_stage(category_name)
+        category_layer = category_stage.GetRootLayer()
         # TODO: There's a slight chance that the identifier is not a relative one.
         #   Ensure we don't author absolute paths here. It should all be relative
         #   to a path in our search path from the current resolver context.
         #   If it's not happening, we need to manually create a relative asset path
-        #   str(Path(db_layer.identifier).relative_to(repo))
-        stage_layer.subLayerPaths.append(db_layer.identifier)
-        if not db_stage.GetDefaultPrim():
-            db_stage.SetDefaultPrim(db_stage.DefinePrim(_CATEGORY_ROOT_PATH))
+        #   str(Path(category_layer.identifier).relative_to(repo))
+        # category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
+        category_layer_id = category_layer.identifier
+        stage_layer.subLayerPaths.append(category_layer_id)
+
+        if not category_stage.GetDefaultPrim():
+            category_stage.SetDefaultPrim(category_stage.DefinePrim(_CATEGORY_ROOT_PATH))
         layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
     return edit_context(layer, stage)
 
