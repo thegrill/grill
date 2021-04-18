@@ -104,19 +104,6 @@ def define_category(stage: Usd.Stage, name: str, references=tuple()) -> Usd.Prim
     db_type = stage.GetPrimAtPath(db_type_path)
     if db_type:
         return db_type
-    # stage_layer = stage.GetRootLayer()
-    # current_asset_name = UsdAsset(Path(stage.GetRootLayer().realPath).name)
-    # db_asset_name = current_asset_name.get(**_CATEGORY_TOKENS)
-    # db_stage = fetch_stage(db_asset_name)
-    #
-    # db_layer = db_stage.GetRootLayer()
-    # if db_layer not in stage.GetLayerStack():
-    #     # TODO: There's a slight chance that the identifier is not a relative one.
-    #     #   Ensure we don't author absolute paths here. It should all be relative
-    #     #   to a path in our search path from the current resolver context.
-    #     #   If it's not happening, we need to manually create a relative asset path
-    #     #   str(Path(db_layer.identifier).relative_to(repo))
-    #     stage_layer.subLayerPaths.append(db_layer.identifier)
 
     # Use class prims since we want db types to be abstract.
     with category_context(stage):
@@ -124,8 +111,6 @@ def define_category(stage: Usd.Stage, name: str, references=tuple()) -> Usd.Prim
         for reference in references:
             db_type.GetReferences().AddInternalReference(reference.GetPath())
 
-    # if not stage.GetDefaultPrim():
-    #     stage.SetDefaultPrim(stage.GetPrimAtPath(db_root_path))
     return stage.GetPrimAtPath(db_type_path)
 
 
@@ -137,7 +122,7 @@ def find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Laye
     tokens = set(tokens.items())
     seen = set()
     for layer in layers:
-        name = UsdAsset(Path(layer.realPath).name)
+        name = UsdAsset(Path(layer.identifier).name)
         if tokens.difference(name.values.items()):
             seen.add(layer)
             continue
@@ -150,7 +135,7 @@ def create(category: Usd.Prim, name, display_name=""):
     stage = category.GetStage()
     new_tokens = dict(kingdom='assets', cluster=category.GetName(), item=name)
     # contract: all categorys have a display_name
-    current_asset_name = UsdAsset(Path(stage.GetRootLayer().realPath).name)
+    current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
     # Scope collecting all assets of the same type
@@ -216,7 +201,6 @@ def category_context(stage):
         db_asset_name = current_asset_name.get(**_CATEGORY_TOKENS)
         db_stage = fetch_stage(db_asset_name)
         db_layer = db_stage.GetRootLayer()
-        # if db_layer not in stage.GetLayerStack():
         # TODO: There's a slight chance that the identifier is not a relative one.
         #   Ensure we don't author absolute paths here. It should all be relative
         #   to a path in our search path from the current resolver context.
