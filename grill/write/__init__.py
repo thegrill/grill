@@ -122,7 +122,8 @@ def find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Laye
     tokens = set(tokens.items())
     seen = set()
     for layer in layers:
-        name = UsdAsset(Path(layer.identifier).name)
+        # anonymous layers realPath defaults to an empty string
+        name = UsdAsset(Path(layer.realPath).name)
         if tokens.difference(name.values.items()):
             seen.add(layer)
             continue
