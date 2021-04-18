@@ -19,6 +19,8 @@ from grill import names
 logger = logging.getLogger(__name__)
 
 repo = contextvars.ContextVar('repo')
+_ASSET_TOKENS = types.MappingProxyType(dict(kingdom="asset"))
+_ASSET_ORIGIN = Sdf.Path("/Origin")
 _CATEGORY_TOKENS = types.MappingProxyType(dict(kingdom="category",))
 _CATEGORY_ROOT_PATH = Sdf.Path("/Category")
 
@@ -134,7 +136,7 @@ def find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Laye
 def create(category: Usd.Prim, name, display_name=""):
     """Whenever we create a new item from the database, make it it's own entity"""
     stage = category.GetStage()
-    new_tokens = dict(kingdom='assets', cluster=category.GetName(), item=name)
+    new_tokens = dict(_ASSET_TOKENS, cluster=category.GetName(), item=name)
     # contract: all categorys have a display_name
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
@@ -151,9 +153,9 @@ def create(category: Usd.Prim, name, display_name=""):
         return stage.GetPrimAtPath(path)
 
     asset_stage = fetch_stage(new_asset_name)
-    asset_origin = asset_stage.GetPrimAtPath("/origin")
+    asset_origin = asset_stage.GetPrimAtPath(_ASSET_ORIGIN)
     if not asset_origin:
-        asset_origin = asset_stage.DefinePrim("/origin")
+        asset_origin = asset_stage.DefinePrim(_ASSET_ORIGIN)
         db_layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
         db_layer_relid = str(Path(db_layer.realPath).relative_to(repo.get()))
         asset_origin.GetReferences().AddReference(db_layer_relid, category.GetPath())
@@ -215,8 +217,6 @@ def category_context(stage):
 
 
 def asset_context(prim: Usd.Prim):
-    asset_layer = find_layer_matching(
-        dict(kingdom='assets'),
-        (stack.layer for stack in reversed(prim.GetPrimStack()))
-    )
+    layerstack = (stack.layer for stack in reversed(prim.GetPrimStack()))
+    asset_layer = find_layer_matching(_ASSET_TOKENS, layerstack)
     return edit_context(prim, asset_layer, prim.GetStage())
