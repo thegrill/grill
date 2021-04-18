@@ -28,7 +28,7 @@ def _stage_on_widget(widget_creator):
     widget.show()
 
 
-spreadsheet_editor = partial(_stage_on_widget, _sheets.SpreadsheetEditor)
+spreadsheet = partial(_stage_on_widget, _sheets.SpreadsheetEditor)
 layerstack_composition = partial(_stage_on_widget, _description.LayersComposition)
 
 

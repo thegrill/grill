@@ -58,7 +58,7 @@ def prim_composition():
     editor.show()
 
 
-def layer_stack_composition():
+def layerstack_composition():
     print("Launching Layer Stack Composition!")
     import importlib
     importlib.reload(_description)
