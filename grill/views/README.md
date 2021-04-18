@@ -1,5 +1,7 @@
 The `grill.views` package provides Qt widgets to author and inspect USD scene graphs.
 
+Convenience launchers for USDView, Houdini and Maya are provided, but any DCC with USD and Qt support should be able to make use of the widgets, as well as launching them standalone.
+
 ## Spreadsheet Editor
 
 Tabular representation of a stage. Ability to quickly inspect and edit prims in bulk is the main motivation for this view to exist.
