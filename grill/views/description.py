@@ -26,7 +26,7 @@ def _dot_2_svg(sourcepath):
     print(f"Creating svg for: {sourcepath}")
     targetpath = f"{sourcepath}.svg"
     dotargs = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
-    result = subprocess.run(dotargs, capture_output=True)
+    result = subprocess.run(dotargs, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
     error = result.stderr.decode() if result.returncode else None
     return error, targetpath
 
