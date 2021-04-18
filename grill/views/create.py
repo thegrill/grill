@@ -63,23 +63,23 @@ class CreateAssets(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
                 return
         # TODO: check for "/DBTypes" existence and handle missing
-        types_root = self._stage.GetPrimAtPath("/DBTypes")
+        category_root = self._stage.GetPrimAtPath(write._CATEGORY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
-            db_type_name = model.data(model.index(row, 0))
-            db_type = types_root.GetPrimAtPath(db_type_name)
+            category_name = model.data(model.index(row, 0))
+            category = category_root.GetPrimAtPath(category_name)
             asset_name = model.data(model.index(row, 1))
             if not asset_name:
                 # TODO: validate and raise error dialog to user. For now we ignore.
                 print(f"An asset name is required! Missing on row: {row}")
                 continue
             display_name = model.data(model.index(row, 2))
-            write.create(self._stage, db_type, asset_name, display_name)
+            write.create(category, asset_name, display_name)
 
     def setStage(self, stage):
         self._stage = stage
-        types_root = stage.GetPrimAtPath("/DBTypes")
-        self._asset_type_options = [child.GetName() for child in types_root.GetFilteredChildren(Usd.PrimIsAbstract)] if types_root else []
+        category_root = stage.GetPrimAtPath(write._CATEGORY_ROOT_PATH)
+        self._asset_type_options = [child.GetName() for child in category_root.GetFilteredChildren(Usd.PrimIsAbstract)] if category_root else []
 
     @staticmethod
     def _setRepositoryPath(parent=None, caption="Select a repository path"):

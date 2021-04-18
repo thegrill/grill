@@ -85,7 +85,7 @@ class TestViews(unittest.TestCase):
         stage = create.write.fetch_stage(str(rootf))
 
         for each in range(1, 6):
-            create.write.define_db_type(stage, f"Option{each}")
+            create.write.define_category(stage, f"Option{each}")
 
         widget = create.CreateAssets()
         widget.setStage(stage)
