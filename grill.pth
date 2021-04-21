@@ -1,1 +1,1 @@
-import os, pathlib;os.environ["PXR_PLUGINPATH_NAME"] = f"{pathlib.Path(sitedir) / 'grill' / 'resources' / 'plugInfo.json'}{os.pathsep}{os.environ.get('PXR_PLUGINPATH_NAME', '')}";from grill.maya.startup import install;install()
+import grill.__startup__;grill.__startup__._install(sitedir)
