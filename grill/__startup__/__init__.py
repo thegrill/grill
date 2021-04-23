@@ -12,8 +12,8 @@ def _install(sitedir):
         from functools import partial
         # After trial and error, it looks like waiting for a bit via single shot
         # guarantees that the deferred command will execute, even with 1 millisecond.
-        QtCore.QTimer.singleShot(1, lambda: cmds.evalDeferred(partial(_usd_pluginfo, sitedir), lp=True))
-        QtCore.QTimer.singleShot(1, lambda: cmds.evalDeferred(_maya, lp=True))
+        QtCore.QTimer.singleShot(1, lambda: cmds.evalDeferred(partial(_usd_pluginfo, sitedir)))
+        QtCore.QTimer.singleShot(1, lambda: cmds.evalDeferred(_maya))
     else:
         _usd_pluginfo(sitedir)
 
@@ -23,14 +23,6 @@ def _usd_pluginfo(sitedir):
 
 
 def _maya():
-    print(f"Installing The Grill.")
     from grill.views import maya
-    cmds.menu("grill",
-        label="👨‍🍳 Grill",
-        tearOff=True,
-        parent="MayaWindow"
-    )
-    cmds.menuItem("Spreadsheet Editor", command=lambda *x: maya.spreadsheet())
-    cmds.menuItem("Prim Composition", command=lambda *x: maya.prim_composition())
-    cmds.menuItem("LayerStack Composition", command=lambda *x: maya.layerstack_composition())
+    maya._create_menu()
     cmds.polyCube()
