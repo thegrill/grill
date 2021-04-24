@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mainMenu>
+    <menuBar>
+        <subMenu id="grill">
+            <label>Grill</label>
+
+            <scriptItem id="create_assets">
+                <label>Create Assets</label>
+                <scriptCode><![CDATA[from grill.views import houdini
+houdini.create_assets()]]></scriptCode>
+            </scriptItem>
+
+            <scriptItem id="spreadsheet_editor">
+                <label>Spreadsheet Editor</label>
+                <scriptCode><![CDATA[from grill.views import houdini
+houdini.spreadsheet()]]></scriptCode>
+            </scriptItem>
+
+            <scriptItem id="prim_composition">
+                <label>Prim Composition</label>
+                <scriptCode><![CDATA[from grill.views import houdini
+houdini.prim_composition()]]></scriptCode>
+            </scriptItem>
+
+            <scriptItem id="layerstack_composition">
+                <label>LayerStack Composition</label>
+                <scriptCode><![CDATA[from grill.views import houdini
+houdini.layer_stack_composition()]]></scriptCode>
+            </scriptItem>
+
+        </subMenu>
+    </menuBar>
+</mainMenu>

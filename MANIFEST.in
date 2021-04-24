@@ -1,1 +1,1 @@
-include grill/resources/plugInfo.json
+include grill/resources/*/*
