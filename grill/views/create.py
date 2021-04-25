@@ -22,18 +22,18 @@ class CreateAssets(QtWidgets.QDialog):
         button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        self._asset_type_options = []
+        self._category_options = []
 
-        def _asset_type_combobox(parent, option, index):
+        def _category_combobox(parent, option, index):
             combobox = QtWidgets.QComboBox(parent=parent)
-            combobox.addItems(sorted(self._asset_type_options))
+            combobox.addItems(sorted(self._category_options))
             return combobox
 
         identity = lambda x: x
         _columns = (
-            _sheets._Column("🧬 Type", identity, editor=_asset_type_combobox),
-            _sheets._Column("🔖 Asset Name", identity),
-            _sheets._Column("🏷 Display Name", identity),
+            _sheets._Column("🧬 Category", identity, editor=_category_combobox),
+            _sheets._Column("🔖 Name", identity),
+            _sheets._Column("🏷 Label", identity),
             _sheets._Column("📜 Description", identity),
         )
 
@@ -62,7 +62,7 @@ class CreateAssets(QtWidgets.QDialog):
                 msg = "A repository path must be selected in order to create assets."
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
                 return
-        # TODO: check for "/DBTypes" existence and handle missing
+        # TODO: check for "write._CATEGORY_ROOT_PATH" existence and handle missing
         category_root = self._stage.GetPrimAtPath(write._CATEGORY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
@@ -73,13 +73,13 @@ class CreateAssets(QtWidgets.QDialog):
                 # TODO: validate and raise error dialog to user. For now we ignore.
                 print(f"An asset name is required! Missing on row: {row}")
                 continue
-            display_name = model.data(model.index(row, 2))
-            write.create(category, asset_name, display_name)
+            label = model.data(model.index(row, 2))
+            write.create(category, asset_name, label)
 
     def setStage(self, stage):
         self._stage = stage
         category_root = stage.GetPrimAtPath(write._CATEGORY_ROOT_PATH)
-        self._asset_type_options = [child.GetName() for child in category_root.GetFilteredChildren(Usd.PrimIsAbstract)] if category_root else []
+        self._category_options = [child.GetName() for child in category_root.GetFilteredChildren(Usd.PrimIsAbstract)] if category_root else []
 
     @staticmethod
     def _setRepositoryPath(parent=None, caption="Select a repository path"):

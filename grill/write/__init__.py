@@ -115,7 +115,7 @@ def define_category(stage: Usd.Stage, name: str, references=tuple()) -> Usd.Prim
     return stage.GetPrimAtPath(db_type_path)
 
 
-def find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
+def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
     """Find the first layer matching the given identifier tokens.
 
     :raises ValueError: If none of the given layers match the provided tokens.
@@ -132,11 +132,11 @@ def find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Laye
     raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
 
 
-def create(category: Usd.Prim, name, display_name=""):
+def create(category: Usd.Prim, name, label=""):
     """Whenever we create a new item from the database, make it it's own entity"""
     stage = category.GetStage()
     new_tokens = dict(_ASSET_TOKENS, cluster=category.GetName(), item=name)
-    # contract: all categorys have a display_name
+    # contract: all categories have a label
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
@@ -153,23 +153,21 @@ def create(category: Usd.Prim, name, display_name=""):
 
     asset_stage = fetch_stage(new_asset_name)
     asset_origin_path = Sdf.Path("/Origin")
-    asset_origin = asset_stage.GetPrimAtPath(asset_origin_path)
-    if not asset_origin:
-        asset_origin = asset_stage.DefinePrim(asset_origin_path)
-        category_layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
-        category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
-        asset_origin.GetReferences().AddReference(category_layer_id, category.GetPath())
+    asset_origin = asset_stage.DefinePrim(asset_origin_path)
+    category_layer = _find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
+    category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
+    asset_origin.GetReferences().AddReference(category_layer_id, category.GetPath())
 
     asset_stage.SetDefaultPrim(asset_origin)
 
-    if display_name:
-        display_attr = asset_origin.GetAttribute("display_name")
-        if not display_attr.IsValid():
+    if label:
+        label_attr = asset_origin.GetAttribute("label")
+        if not label_attr.IsValid():
             # TODO: enforce this always?
-            logger.debug(f"Invalid attribute: {display_attr}. Creating a new one on {asset_origin}")
-            display_attr = asset_origin.CreateAttribute("display_name", Sdf.ValueTypeNames.String)
+            logger.debug(f"Invalid attribute: {label_attr}. Creating a new one on {asset_origin}")
+            label_attr = asset_origin.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
-        display_attr.Set(display_name)
+        label_attr.Set(label)
 
     over_prim = stage.OverridePrim(path)
     over_prim.GetPayloads().AddPayload(asset_stage.GetRootLayer().identifier)
@@ -196,7 +194,7 @@ def _(obj: Usd.Prim, layer, stage):
 def category_context(stage):
     """Edits go to the category root stage."""
     try:
-        layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
+        layer = _find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
     except ValueError:
         # Our layer is not yet on the current layer stack. Let's bring it.
         stage_layer = stage.GetRootLayer()
@@ -216,11 +214,11 @@ def category_context(stage):
 
         if not category_stage.GetDefaultPrim():
             category_stage.SetDefaultPrim(category_stage.DefinePrim(_CATEGORY_ROOT_PATH))
-        layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
+        layer = _find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
     return edit_context(layer, stage)
 
 
 def asset_context(prim: Usd.Prim):
     layerstack = (stack.layer for stack in reversed(prim.GetPrimStack()))
-    asset_layer = find_layer_matching(_ASSET_TOKENS, layerstack)
+    asset_layer = _find_layer_matching(_ASSET_TOKENS, layerstack)
     return edit_context(prim, asset_layer, prim.GetStage())
