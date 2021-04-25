@@ -1,10 +1,10 @@
 The `grill.views` package provides Qt widgets to author and inspect USD scene graphs.
 
-Convenience launchers for USDView, Houdini and Maya are provided, but any DCC with USD and Qt support should be able to make use of the widgets, as well as launching them standalone.
+Convenience launchers and menus for **USDView**, **Houdini** and **Maya** are provided, but any DCC or environment with `USD` and `PySide2` should be able to use the widgets.
 
 ## Spreadsheet Editor
 
-Tabular representation of a stage. Ability to quickly inspect and edit prims in bulk is the main motivation for this view to exist.
+Tabular representation of a [USD stage](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Stage). Ability to quickly inspect and edit [prims](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim) in bulk is the main motivation for this view to exist.
 Copy pasting functionality like in other spreadsheet applications should be possible (via csv clipboards). 
 
 #### USD View
@@ -15,7 +15,7 @@ Located under the `Grill` menu, the `Spreadsheet Editor` takes the current activ
 
 #### Houdini
 
-Either the `Grill` houdini shelf or executing the following python code launches the editor:
+Available from the `Grill` menu or the following python code:
 
 ```python
 from grill.views import houdini
@@ -28,7 +28,7 @@ Same as with USDView, the current active stage is loaded:
 
 #### Maya
 
-Executing the following python code on the editor launches the widget:
+Available from the `Grill` menu or the following python code:
 
 ```python
 from grill.views import maya
@@ -41,7 +41,7 @@ At the moment, the first found stage is picked:
 
 ## Prim Composition
 
-Uses existing USD Prim utilities to present extended composition arc details than the ones visible by default on USD view.  
+Uses existing USD Prim utilities to present extended [composition arc details](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-CompositionArcs) than the ones visible by default on USD view.  
 To visualize the composition graph, the `graphviz` library needs to be available on the environment. 
 
 #### USD View
@@ -50,7 +50,7 @@ To visualize the composition graph, the `graphviz` library needs to be available
 
 #### Houdini
 
-Available from the `Grill` shelf or via executing the following python script:
+Available from the `Grill` menu or the following python code:
 ```python
 from grill.views import houdini
 houdini.prim_composition()
@@ -60,7 +60,7 @@ houdini.prim_composition()
 
 #### Maya
 
-Executing the following python code on the editor launches the widget:
+Available from the `Grill` menu or the following python code:
 ```python
 from grill.views import maya
 maya.prim_composition()
@@ -71,10 +71,10 @@ maya.prim_composition()
 
 ## Layer Stack Composition
 
-Similar to `Prim Composition`, but available for the whole stage.
+Similar to `Prim Composition`, but available for the whole stage by creating a graph of [layer stacks](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack).
 This helps answer questions like:
 
-- What prims are being affected by layers X and Y?
+- What prims are being affected by [layers](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Layer) X and Y?
 
 On the upper left, all used layers in the current stage are listed.
 On the upper right, all prims that are affected by the selected layers are listed.
@@ -85,7 +85,7 @@ On the bottom, a composition arcs graph is displayed for the selected layers plu
 ![stack_composition_4](https://user-images.githubusercontent.com/8294116/100603669-8a47cf80-3359-11eb-85fd-ce0e2aa96d60.gif)
 
 #### Houdini
-Available from the `Grill` shelf or via executing the following python script:
+Available from the `Grill` menu or the following python code:
 ```python
 from grill.views import houdini
 houdini.layerstack_composition()
@@ -95,7 +95,7 @@ houdini.layerstack_composition()
 
 #### Maya
 
-Executing the following python code on the editor launches the widget:
+Available from the `Grill` menu or the following python code:
 
 ```python
 from grill.views import houdini
@@ -106,7 +106,7 @@ houdini.layerstack_composition()
 
 ## Creating Assets
 
-### USD View
+#### USD View
 
 Creating assets requires a repository path to be set. If not set, a dialog to set it will be prompted upon creation request.
 

@@ -70,26 +70,19 @@ class TestWrite(unittest.TestCase):
         with self.assertRaises(TypeError):
             write.edit_context(object(), write.fetch_stage(self.root_asset))
 
-    def test_define_asset_type(self):
+    def test_define_category(self):
         root_stage = write.fetch_stage(self.root_asset)
-        displayable_type = write.define_db_type(root_stage, "DisplayableName")
+        displayable_type = write.define_category(root_stage, "DisplayableName")
         # idempotent call should keep previously created prim
-        self.assertEqual(displayable_type, write.define_db_type(root_stage, "DisplayableName"))
+        self.assertEqual(displayable_type, write.define_category(root_stage, "DisplayableName"))
 
-        asset_types_layer = write.find_layer_matching(write._DB_TOKENS, root_stage.GetLayerStack())
+        person_type = write.define_category(root_stage, "Person", (displayable_type,))
 
-        person_type = write.define_db_type(root_stage, "Person", (displayable_type,))
-
-        with write.edit_context(asset_types_layer, root_stage):
+        with write.category_context(root_stage):
             displayable_type.CreateAttribute("display_name", Sdf.ValueTypeNames.String)
 
-        emil = write.create(root_stage, person_type, "EmilSinclair", display_name="Emil Sinclair")
-        self.assertEqual(emil, write.create(root_stage, person_type, "EmilSinclair"))
+        emil = write.create(person_type, "EmilSinclair", display_name="Emil Sinclair")
+        self.assertEqual(emil, write.create(person_type, "EmilSinclair"))
 
-        emil_layer = write.find_layer_matching(
-            dict(item='EmilSinclair', kingdom='assets'),
-            (stack.layer for stack in emil.GetPrimStack())
-        )
-
-        with write.edit_context(emil, emil_layer, root_stage):
+        with write.asset_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")

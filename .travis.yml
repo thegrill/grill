@@ -7,7 +7,7 @@ before_install:
   - pip install pytest codecov pytest-cov
 
 install:
-  - pip install ".[test]" . # install package + test dependencies
+  - pip install ".[full,test]" . # install package + test dependencies
 
 env:
   # This variable is required for Qt to work on CI.

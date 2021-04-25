@@ -1,0 +1,9 @@
+{
+    "env": [
+        {
+            "HOUDINI_MENU_PATH": {
+                "value": ""
+            }
+        }
+    ]
+}

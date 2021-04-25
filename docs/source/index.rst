@@ -10,6 +10,8 @@
 
 ----
 
+.. include:: install.rst
+
 Pipeline
 ========
 
@@ -28,7 +30,7 @@ Data Flow
 Workflow Charts Legend
 ----------------------
 
-``the grill`` flow charts will use the following symbol legend:
+``The Grill`` flow charts will use the following symbol legend:
 
 .. graphviz:: flowchart_legend.dot
 

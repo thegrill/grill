@@ -1,5 +1,5 @@
-import os
 import itertools
+from pathlib import Path
 
 import setuptools
 from distutils.command.build import build
@@ -11,10 +11,10 @@ from setuptools.command.install_lib import install_lib
 # Hopefully all of the following will not be needed after PEP 648
 # Reference: https://github.com/pytest-dev/pytest-cov/blob/daf54e79fcb8f549699d28e691302a9251f7e54b/setup.py#L145-L151
 def _copy_pth(obj, install_dir):
-    path = os.path.join(os.path.dirname(__file__), "grill.pth")
-    dest = os.path.join(install_dir, os.path.basename(path))
-    obj.copy_file(path, dest)
-    return dest
+    pth_src = Path(__file__).parent / "grill.pth"
+    pth_tgt = str(Path(install_dir) / pth_src.name)
+    obj.copy_file(str(pth_src), pth_tgt)
+    return [pth_tgt]
 
 
 class BuildPTH(build):
@@ -38,8 +38,7 @@ class EasyInstallPTH(easy_install):
 class InstallLibPTH(install_lib):
     def run(self):
         super().run()
-        dest = _copy_pth(self, self.install_dir)
-        self.outputs = [dest]
+        self.outputs = _copy_pth(self, self.install_dir)
 
     def get_outputs(self):
         return itertools.chain(super().get_outputs(), self.outputs)
