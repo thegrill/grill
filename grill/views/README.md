@@ -1,10 +1,10 @@
 The `grill.views` package provides Qt widgets to author and inspect USD scene graphs.
 
-Convenience launchers for USDView, Houdini and Maya are provided, but any DCC with USD and Qt support should be able to make use of the widgets, as well as launching them standalone.
+Convenience launchers for **USDView**, **Houdini** and **Maya** are provided, but any DCC or environment with `USD` and `PySide2` support should be able to make use of the widgets, as well as launching them standalone.
 
 ## Spreadsheet Editor
 
-Tabular representation of a stage. Ability to quickly inspect and edit prims in bulk is the main motivation for this view to exist.
+Tabular representation of a [USD stage](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Stage). Ability to quickly inspect and edit [prims](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim) in bulk is the main motivation for this view to exist.
 Copy pasting functionality like in other spreadsheet applications should be possible (via csv clipboards). 
 
 #### USD View
@@ -41,7 +41,7 @@ At the moment, the first found stage is picked:
 
 ## Prim Composition
 
-Uses existing USD Prim utilities to present extended composition arc details than the ones visible by default on USD view.  
+Uses existing USD Prim utilities to present extended [composition arc details](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-CompositionArcs) than the ones visible by default on USD view.  
 To visualize the composition graph, the `graphviz` library needs to be available on the environment. 
 
 #### USD View
@@ -71,10 +71,10 @@ maya.prim_composition()
 
 ## Layer Stack Composition
 
-Similar to `Prim Composition`, but available for the whole stage.
+Similar to `Prim Composition`, but available for the whole stage by creating a graph of [layer stacks](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack).
 This helps answer questions like:
 
-- What prims are being affected by layers X and Y?
+- What prims are being affected by [layers](https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Layer) X and Y?
 
 On the upper left, all used layers in the current stage are listed.
 On the upper right, all prims that are affected by the selected layers are listed.

@@ -55,7 +55,7 @@ Conda Environment Example
 
 For environment management, ``The Grill`` uses `conda`_. This is a
 walk-through on how to start using ``The Grill`` tools with a fresh
-`conda`_. environment.
+`conda`_ environment.
 
 1. If the ``conda`` command is not on the system yet, install `miniconda`_.
 
@@ -106,7 +106,7 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
          hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
 
-      This step might be removed in the future.
+      The manual execution of this step might be removed in the future.
 
    .. image:: https://user-images.githubusercontent.com/8294116/115981745-68d1d380-a5d9-11eb-8033-979d72ca0e6b.gif
 
