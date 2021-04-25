@@ -43,6 +43,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.graphviz',
               'm2r2',
               'sphinx.ext.inheritance_diagram',
+              'sphinx_inline_tabs',
               'sphinx_autodoc_typehints']
 
 autodoc_member_order = 'groupwise'
