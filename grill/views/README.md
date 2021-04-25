@@ -15,7 +15,7 @@ Located under the `Grill` menu, the `Spreadsheet Editor` takes the current activ
 
 #### Houdini
 
-Either the `Grill` houdini shelf or executing the following python code launches the editor:
+Available from the `Grill` menu or the following python code:
 
 ```python
 from grill.views import houdini
@@ -28,7 +28,7 @@ Same as with USDView, the current active stage is loaded:
 
 #### Maya
 
-Executing the following python code on the editor launches the widget:
+Available from the `Grill` menu or the following python code:
 
 ```python
 from grill.views import maya
@@ -50,7 +50,7 @@ To visualize the composition graph, the `graphviz` library needs to be available
 
 #### Houdini
 
-Available from the `Grill` shelf or via executing the following python script:
+Available from the `Grill` menu or the following python code:
 ```python
 from grill.views import houdini
 houdini.prim_composition()
@@ -60,7 +60,7 @@ houdini.prim_composition()
 
 #### Maya
 
-Executing the following python code on the editor launches the widget:
+Available from the `Grill` menu or the following python code:
 ```python
 from grill.views import maya
 maya.prim_composition()
@@ -85,7 +85,7 @@ On the bottom, a composition arcs graph is displayed for the selected layers plu
 ![stack_composition_4](https://user-images.githubusercontent.com/8294116/100603669-8a47cf80-3359-11eb-85fd-ce0e2aa96d60.gif)
 
 #### Houdini
-Available from the `Grill` shelf or via executing the following python script:
+Available from the `Grill` menu or the following python code:
 ```python
 from grill.views import houdini
 houdini.layerstack_composition()
@@ -95,7 +95,7 @@ houdini.layerstack_composition()
 
 #### Maya
 
-Executing the following python code on the editor launches the widget:
+Available from the `Grill` menu or the following python code:
 
 ```python
 from grill.views import houdini
@@ -106,7 +106,7 @@ houdini.layerstack_composition()
 
 ## Creating Assets
 
-### USD View
+#### USD View
 
 Creating assets requires a repository path to be set. If not set, a dialog to set it will be prompted upon creation request.
 
