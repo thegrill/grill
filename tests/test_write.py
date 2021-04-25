@@ -64,7 +64,7 @@ class TestWrite(unittest.TestCase):
     def test_match(self):
         root_stage = write.fetch_stage(self.root_asset)
         with self.assertRaises(ValueError):
-            write.find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
+            write._find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
 
     def test_edit_context(self):
         with self.assertRaises(TypeError):
@@ -79,9 +79,9 @@ class TestWrite(unittest.TestCase):
         person_type = write.define_category(root_stage, "Person", (displayable_type,))
 
         with write.category_context(root_stage):
-            displayable_type.CreateAttribute("display_name", Sdf.ValueTypeNames.String)
+            displayable_type.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
-        emil = write.create(person_type, "EmilSinclair", display_name="Emil Sinclair")
+        emil = write.create(person_type, "EmilSinclair", label="Emil Sinclair")
         self.assertEqual(emil, write.create(person_type, "EmilSinclair"))
 
         with write.asset_context(emil):

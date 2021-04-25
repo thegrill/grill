@@ -4,9 +4,9 @@ Installation
 Pip Install
 ~~~~~~~~~~~
 
-The ``grill`` package includes install options for situations where other core
-libraries have been installed outside of ``pip`` (e.g. ``USD`` & ``PySide2`` exist
-via DCC applications). This is the default option.
+The ``grill`` package includes install options for situations where core libraries
+have been installed outside of ``pip``, e.g. ``USD`` & ``PySide2`` are bundled
+with DCC apps. This is the default option.
 
 .. code:: bash
 
@@ -14,8 +14,8 @@ via DCC applications). This is the default option.
 
 .. note::
 
-   For some DCC applications (e.g. **Maya**, **Houdini**) their corresponding python
-   interpreters need to run ``pip``:
+   For some DCC applications (e.g. **Maya**, **Houdini**) ``pip`` needs to run
+   from their corresponding python interpreters:
 
    **Maya** (`official docs <https://help.autodesk.com/view/MAYAUL/2022/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_):
 
