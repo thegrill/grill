@@ -115,23 +115,6 @@ def define_category(stage: Usd.Stage, name: str, references=tuple()) -> Usd.Prim
     return stage.GetPrimAtPath(db_type_path)
 
 
-def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
-    """Find the first layer matching the given identifier tokens.
-
-    :raises ValueError: If none of the given layers match the provided tokens.
-    """
-    tokens = set(tokens.items())
-    seen = set()
-    for layer in layers:
-        # anonymous layers realPath defaults to an empty string
-        name = UsdAsset(Path(layer.realPath).name)
-        if tokens.difference(name.values.items()):
-            seen.add(layer)
-            continue
-        return layer
-    raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
-
-
 def create(category: Usd.Prim, name, label=""):
     """Whenever we create a new item from the database, make it it's own entity"""
     stage = category.GetStage()
@@ -174,23 +157,6 @@ def create(category: Usd.Prim, name, label=""):
     return over_prim
 
 
-@functools.singledispatch
-def edit_context(obj, stage):
-    raise TypeError(f"Not implemented: {locals()}")  # lazy
-
-
-@edit_context.register
-def _(obj: Sdf.Layer, stage):
-    return Usd.EditContext(stage, obj)
-
-
-@edit_context.register
-def _(obj: Usd.Prim, layer, stage):
-    # We need to explicitely construct our edit target since our layer is not on the layer stack of the stage.
-    target = Usd.EditTarget(layer, obj.GetPrimIndex().rootNode.children[0])
-    return Usd.EditContext(stage, target)
-
-
 def category_context(stage):
     """Edits go to the category root stage."""
     try:
@@ -215,10 +181,44 @@ def category_context(stage):
         if not category_stage.GetDefaultPrim():
             category_stage.SetDefaultPrim(category_stage.DefinePrim(_CATEGORY_ROOT_PATH))
         layer = _find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
-    return edit_context(layer, stage)
+    return _edit_context(layer, stage)
 
 
 def asset_context(prim: Usd.Prim):
     layerstack = (stack.layer for stack in reversed(prim.GetPrimStack()))
     asset_layer = _find_layer_matching(_ASSET_TOKENS, layerstack)
-    return edit_context(prim, asset_layer, prim.GetStage())
+    return _edit_context(prim, asset_layer, prim.GetStage())
+
+
+def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
+    """Find the first layer matching the given identifier tokens.
+
+    :raises ValueError: If none of the given layers match the provided tokens.
+    """
+    tokens = set(tokens.items())
+    seen = set()
+    for layer in layers:
+        # anonymous layers realPath defaults to an empty string
+        name = UsdAsset(Path(layer.realPath).name)
+        if tokens.difference(name.values.items()):
+            seen.add(layer)
+            continue
+        return layer
+    raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
+
+
+@functools.singledispatch
+def _edit_context(obj, stage):
+    raise TypeError(f"Not implemented: {locals()}")  # lazy
+
+
+@_edit_context.register
+def _(obj: Sdf.Layer, stage):
+    return Usd.EditContext(stage, obj)
+
+
+@_edit_context.register
+def _(obj: Usd.Prim, layer, stage):
+    # We need to explicitely construct our edit target since our layer is not on the layer stack of the stage.
+    target = Usd.EditTarget(layer, obj.GetPrimIndex().rootNode.children[0])
+    return Usd.EditContext(stage, target)

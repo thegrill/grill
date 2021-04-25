@@ -68,7 +68,7 @@ class TestWrite(unittest.TestCase):
 
     def test_edit_context(self):
         with self.assertRaises(TypeError):
-            write.edit_context(object(), write.fetch_stage(self.root_asset))
+            write._edit_context(object(), write.fetch_stage(self.root_asset))
 
     def test_define_category(self):
         root_stage = write.fetch_stage(self.root_asset)
