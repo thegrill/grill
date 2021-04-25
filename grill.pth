@@ -1,1 +1,1 @@
-import grill.__startup__;grill.__startup__._install(sitedir)
+import grill.__startup__;grill.__startup__.install(sitedir)

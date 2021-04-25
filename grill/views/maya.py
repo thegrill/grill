@@ -104,5 +104,3 @@ def _create_menu():
             ("LayerStack Composition", layerstack_composition),
     ):
         cmds.menuItem(title, command=partial(show, launcher))
-
-    cmds.polyCube()
