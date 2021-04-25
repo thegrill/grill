@@ -44,10 +44,10 @@ Extra Dependencies
 
 The following optional dependencies should be installed separately.
 
-- `graphviz <http://graphviz.org/>`_ (for graph widgets)
+- `graphviz <http://graphviz.org/>`_ (for graph widgets).
 - `usdview <https://graphics.pixar.com/usd/docs/USD-Toolset.html#USDToolset-usdview>`_
   (hopefully will be available soon via `pypi <https://pypi.org/>`_). In the meantime, it can be built from USD source
-  (`conda recipe <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888>`_)
+  (`conda recipe <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888>`_).
 
 
 Conda Environment Example

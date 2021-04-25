@@ -1,6 +1,6 @@
 The `grill.views` package provides Qt widgets to author and inspect USD scene graphs.
 
-Convenience launchers for **USDView**, **Houdini** and **Maya** are provided, but any DCC or environment with `USD` and `PySide2` support should be able to make use of the widgets, as well as launching them standalone.
+Convenience launchers and menus for **USDView**, **Houdini** and **Maya** are provided, but any DCC or environment with `USD` and `PySide2` should be able to use the widgets.
 
 ## Spreadsheet Editor
 
