@@ -4,10 +4,8 @@ Installation
 Pip Install
 ~~~~~~~~~~~
 
-The ``grill`` package includes install options for situations where core libraries
-have been installed outside of ``pip`` (e.g. ``USD`` & ``PySide2`` are bundled
-with DCC apps). This is the default. The ``[full]`` option will install ``USD``, ``PySide2``
-and ``PyOpenGL``, so use it if those are missing from the current environment.
+By default, ``grill`` won't install ``USD``, ``PySide2`` & ``PyOpenGL``. This is because
+DCC apps and other environments bundle them outside of ``pip``. To include them, use the ``[full]`` option.
 
 .. tab:: Default
 
