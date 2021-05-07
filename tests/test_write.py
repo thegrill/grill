@@ -70,19 +70,19 @@ class TestWrite(unittest.TestCase):
         with self.assertRaises(TypeError):
             write._edit_context(object(), write.fetch_stage(self.root_asset))
 
-    def test_define_category(self):
+    def test_define_taxon(self):
         root_stage = write.fetch_stage(self.root_asset)
-        displayable_type = write.define_category(root_stage, "DisplayableName")
+        displayable = write.define_taxon(root_stage, "DisplayableName")
         # idempotent call should keep previously created prim
-        self.assertEqual(displayable_type, write.define_category(root_stage, "DisplayableName"))
+        self.assertEqual(displayable, write.define_taxon(root_stage, "DisplayableName"))
 
-        person_type = write.define_category(root_stage, "Person", (displayable_type,))
+        person = write.define_taxon(root_stage, "Person", references=(displayable,))
 
-        with write.category_context(root_stage):
-            displayable_type.CreateAttribute("label", Sdf.ValueTypeNames.String)
+        with write.taxonomy_context(root_stage):
+            displayable.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
-        emil = write.create(person_type, "EmilSinclair", label="Emil Sinclair")
-        self.assertEqual(emil, write.create(person_type, "EmilSinclair"))
+        emil = write.create(person, "EmilSinclair", label="Emil Sinclair")
+        self.assertEqual(emil, write.create(person, "EmilSinclair"))
 
         with write.asset_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")

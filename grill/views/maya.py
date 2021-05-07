@@ -13,7 +13,7 @@ from . import description as _description, sheets as _sheets, create as _create
 
 
 @lru_cache(maxsize=None)
-def maya_main_window():
+def _main_window():
     return wrapInstance(int(omui.MQtUtil.mainWindow()), QtWidgets.QWidget)
 
 
@@ -21,7 +21,7 @@ def _stage_on_widget(widget_creator):
     @lru_cache(maxsize=None)
     def _launcher():
         print(f"Launching {widget_creator}!")
-        widget = widget_creator(parent=maya_main_window())
+        widget = widget_creator(parent=_main_window())
         widget.setStyleSheet(
             # Maya checked buttons style look ugly (all black), so we're adding a very
             # slightly modified USDView stylesheet for the push buttons.
@@ -55,6 +55,9 @@ def _stage_on_widget(widget_creator):
             QPushButton:disabled {
                 background-color: QLinearGradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 rgb(66, 66, 66), stop: 1 rgb(56, 56, 56));
             }
+            
+            /* Without this, maya shows larger, pixelated arrows when sorting tables. */
+            QHeaderView::down-arrow { top: 1px; width: 13px; height:9px; subcontrol-position: top center;}
             """
         )
         usd_proxies = cmds.ls(typ='mayaUsdProxyShape', l=True)
@@ -73,7 +76,7 @@ layerstack_composition = _stage_on_widget(_description.LayersComposition)
 @lru_cache(maxsize=None)
 def prim_composition():
     print("Launching PRIM COMP!")
-    widget = _description.PrimComposition(parent=maya_main_window())
+    widget = _description.PrimComposition(parent=_main_window())
 
     def selection_changed(*_, **__):
         for item in ufe.GlobalSelection.get():
