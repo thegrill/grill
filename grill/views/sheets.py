@@ -75,7 +75,10 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
         editor._property_name = _property_name_from_option_type(option.type)
         return editor
 
+    # def setEditorData(self, editor:QtWidgets.QWidget, index:QtCore.QModelIndex) -> None:
+
     def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        # setModelData = getattr(self, "_model_data_setter") or super().setModelData
         # we would always fallback to _property_name but it looks like there's no
         # consistency, so we always prefer to check for "value" and only if it's None
         # we check the property name found from the option when the editor was created.
@@ -101,7 +104,9 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
             setter(obj, value)
         else:
             print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
-        return super().setModelData(editor, model, index)
+            setModelData = getattr(self, "_setter") or super().setModelData
+            setModelData(editor, model, index)
+            # return setModelData(editor, model, index)
 
 
 class _ColumnOptions(enum.Flag):
@@ -341,6 +346,8 @@ class _Spreadsheet(QtWidgets.QDialog):
 
             delegate = _ColumnItemDelegate()
             delegate._editor = column_data.editor
+            delegate._setter = column_data.setter
+            # delegate._model_data_setter = column_data.model_data_setter
             table.setItemDelegateForColumn(column_index, delegate)
             # for custom delegates we need to keep a reference, otherwise they're
             # garbage collected and might cause crashes.
@@ -535,6 +542,7 @@ class _Column(NamedTuple):
     getter: callable
     setter: callable = _read_only  # "Read-only" by default
     editor: callable = None
+    model_data_setter: callable = None
 
 
 class SpreadsheetEditor(_Spreadsheet):

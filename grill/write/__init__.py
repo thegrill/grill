@@ -20,8 +20,11 @@ logger = logging.getLogger(__name__)
 
 repo = contextvars.ContextVar('repo')
 
-_TAXONOMY_ROOT_PATH = Sdf.Path("/Taxonomy")
-_TAXONOMY_FIELDS = dict(kingdom='taxonomy')
+# Taxonomy rank handles the grill classification and grouping of assets.
+_TAXONOMY_NAME = 'Taxonomy'
+_TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
+_TAXONOMY_UNIQUE_ID_FIELD = 'kingdom'
+_TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID_FIELD: _TAXONOMY_NAME})
 
 
 @functools.lru_cache(maxsize=None)
@@ -75,7 +78,7 @@ def fetch_stage(root_id) -> Usd.Stage:
     return stage
 
 
-def define_taxon(stage: Usd.Stage, name:str, *, id_fields: typing.Mapping=types.MappingProxyType({}), references=tuple(),) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: typing.Mapping=types.MappingProxyType({})) -> Usd.Prim:
     """Define a new taxon group for asset taxonomy.
 
     If an existing taxon with the provided name already exists, it is returned.
@@ -84,12 +87,23 @@ def define_taxon(stage: Usd.Stage, name:str, *, id_fields: typing.Mapping=types.
 
     If references are passed, they are added.
     """
+    if name == _TAXONOMY_NAME:
+        # TODO: prevent upper case lower case mismatch handle between multiple OS?
+        #  (e.g. Windows considers both the same but Linux does not)
+        raise ValueError(f"Can not define a taxon with reserved name {_TAXONOMY_NAME}.")
+
+    if _TAXONOMY_UNIQUE_ID_FIELD in id_fields:
+        raise ValueError(f"Can not provide id field {_TAXONOMY_UNIQUE_ID_FIELD} since it is automatically set. Got: {pformat(id_fields)}")
+
     with taxonomy_context(stage):
         prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
         current = (prim.GetCustomDataByKey('grill') or {}).get('fields', {})
-        prim.SetCustomDataByKey("grill", dict(fields={**id_fields, **current, 'kingdom':name}))
+        prim.SetCustomDataByKey(
+            "grill",
+            dict(fields={**id_fields, **current, _TAXONOMY_UNIQUE_ID_FIELD: name})
+        )
     return prim
 
 

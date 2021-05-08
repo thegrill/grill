@@ -1,14 +1,16 @@
 from pathlib import Path
+from functools import partial
+from pprint import pprint
 
 from pxr import Usd
 from grill import write
-from PySide2 import QtWidgets
+from PySide2 import QtWidgets, QtCore, QtGui
 
 from . import sheets as _sheets
 
 
-class CreateAssets(QtWidgets.QDialog):
-    def __init__(self, *args, **kwargs):
+class _CreatePrims(QtWidgets.QDialog):
+    def __init__(self, columns, *args, **kwargs):
         super().__init__(*args, **kwargs)
         form_l = QtWidgets.QFormLayout()
         layout = QtWidgets.QVBoxLayout()
@@ -22,23 +24,9 @@ class CreateAssets(QtWidgets.QDialog):
         button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        self._taxon_options = []
 
-        def _taxon_combobox(parent, option, index):
-            combobox = QtWidgets.QComboBox(parent=parent)
-            combobox.addItems(sorted(self._taxon_options))
-            return combobox
-
-        identity = lambda x: x
-        _columns = (
-            _sheets._Column("🧬 Taxon", identity, editor=_taxon_combobox),
-            _sheets._Column("🔖 Name", identity),
-            _sheets._Column("🏷 Label", identity),
-            _sheets._Column("📜 Description", identity),
-        )
-
-        self.sheet = sheet = _sheets._Spreadsheet(_columns, _sheets._ColumnOptions.NONE)
-        sheet.model.setHorizontalHeaderLabels([''] * len(_columns))
+        self.sheet = sheet = _sheets._Spreadsheet(columns, _sheets._ColumnOptions.NONE)
+        sheet.model.setHorizontalHeaderLabels([''] * len(columns))
         self._amount.valueChanged.connect(sheet.model.setRowCount)
         sheet.layout().setContentsMargins(0, 0, 0, 0)
 
@@ -48,12 +36,29 @@ class CreateAssets(QtWidgets.QDialog):
         layout.addWidget(sheet)
         layout.addWidget(button_box)
         self.setLayout(layout)
-        self.accepted.connect(self._create)
-        self.setWindowTitle("Create Assets")
         size = sheet.table.viewportSizeHint()
         size.setWidth(size.width() + 65)  # sensible size at init time
         size.setHeight(self.sizeHint().height())
         self.resize(size)
+
+
+class CreateAssets(_CreatePrims):
+    def __init__(self, *args, **kwargs):
+        self._taxon_options = []
+        def _taxon_combobox(parent, option, index):
+            combobox = QtWidgets.QComboBox(parent=parent)
+            combobox.addItems(sorted(self._taxon_options))
+            return combobox
+        identity = lambda x: x
+        _columns = (
+            _sheets._Column("🧬 Taxon", identity, editor=_taxon_combobox),
+            _sheets._Column("🔖 Name", identity),
+            _sheets._Column("🏷 Label", identity),
+            _sheets._Column("📜 Description", identity),
+        )
+        super().__init__(_columns, *args, **kwargs)
+        self.accepted.connect(self._create)
+        self.setWindowTitle("Create Assets")
 
     @_sheets.wait()
     def _create(self):
@@ -88,3 +93,100 @@ class CreateAssets(QtWidgets.QDialog):
             token = write.repo.set(Path(dirpath))
             print(f"Repository path set to: {dirpath}, token: {token}")
         return dirpath
+
+
+class TaxonomyEditor(_CreatePrims):
+    def setStage(self, stage):
+        pass
+
+    def __init__(self, *args, **kwargs):
+        # 1. Read only list of existing taxonomy
+        # 2. Place to create new taxon groups
+        #    - name | references | id_fields
+        self._taxon_options = []
+
+        class ReferenceSelection(QtWidgets.QDialog):
+            def __init__(self, parent=None):
+                super().__init__(parent=parent)
+                layout = QtWidgets.QVBoxLayout()
+                self._options = options = QtWidgets.QListWidget()
+                options.setSelectionMode(options.SelectionMode.ExtendedSelection)
+
+                def set_check_status(status):
+                    for each in options.selectedItems():
+                        each.setCheckState(status)
+
+                def list_context_menu(__):
+                    menu = QtWidgets.QMenu(options)
+                    for title, status in (
+                            ("Check Selected", QtCore.Qt.Checked),
+                            ("Uncheck Selected", QtCore.Qt.Unchecked),
+                    ):
+                        action = menu.addAction(title)
+                        action.triggered.connect(partial(set_check_status, status))
+                    menu.exec_(QtGui.QCursor.pos())
+
+                options.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+                options.customContextMenuRequested.connect(list_context_menu)
+                layout.addWidget(options)
+                button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+                button_box.accepted.connect(self.accept)
+                button_box.rejected.connect(self.reject)
+                layout.addWidget(button_box)
+                self.setLayout(layout)
+                self.setWindowTitle("Extend Taxon From...")
+
+            def showEvent(self, *args, **kwargs):
+                result = super().showEvent(*args, **kwargs)
+                # hack? wihout this, we appear off screen (or on top of it)
+                self.adjustPosition(self.parent())
+                return result
+
+            def property(self, name):  # override ourselves yeahhh
+                if name == 'value':
+                    return "YESSS"
+                res = super().property(*args, **kwargs)
+                print(locals())
+                return res
+
+        def _taxon_combobox(parent, option, index):
+            inter = ReferenceSelection(parent=parent)
+            inter.setModal(True)
+            # for taxon in self._taxon_options:
+            idata = index.data()
+            checked_items = set()
+            if idata:
+                checked_items.update(idata.split("\n"))
+
+            for taxon in range(10):
+                item = QtWidgets.QListWidgetItem(inter._options)
+                # item.setText(taxon.GetName())
+                name = f"Hi {taxon}"
+                item.setText(name)
+                item.setCheckState(QtCore.Qt.Checked if taxon in checked_items else QtCore.Qt.Unchecked)
+
+            return inter
+
+        # def taxon_setter(editor, model, index):
+        #     # pprint(locals())
+        #
+        #     # super().setModelData(editor, model, index)
+        def fun(editor: ReferenceSelection, model: _sheets._ProxyModel, index:QtCore.QModelIndex):
+            names = (
+                each.text()
+                for each in editor._options.findItems("*", QtCore.Qt.MatchWildcard)
+                if each.checkState() == QtCore.Qt.Checked
+            )
+            data = model.setData(index, "\n".join(names))
+            print(locals())
+
+        identity = lambda x: x
+        _columns = (
+            _sheets._Column("🧬 Taxon Name", identity),
+            # _sheets._Column("🔗 References", identity, editor=_taxon_combobox, model_data_setter=taxon_setter),
+            # _sheets._Column("🔗 References", identity, editor=_taxon_combobox),
+            _sheets._Column("🔗 References", identity, editor=_taxon_combobox, setter=fun),
+            _sheets._Column("🕵 ID Fields", identity),
+        )
+        super().__init__(_columns, *args, **kwargs)
+        self.setWindowTitle("Taxonomy Editor")

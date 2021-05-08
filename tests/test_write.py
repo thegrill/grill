@@ -76,6 +76,13 @@ class TestWrite(unittest.TestCase):
 
     def test_define_taxon(self):
         root_stage = write.fetch_stage(self.root_asset)
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, write._TAXONOMY_NAME)
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, "explicit_invalid_field", id_fields={write._TAXONOMY_UNIQUE_ID_FIELD: "explicit"})
+
         displayable = write.define_taxon(root_stage, "DisplayableName")
         # idempotent call should keep previously created prim
         self.assertEqual(displayable, write.define_taxon(root_stage, "DisplayableName"))
