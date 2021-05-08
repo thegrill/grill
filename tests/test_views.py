@@ -11,13 +11,14 @@ from grill.views import description, sheets, create
 
 class TestViews(unittest.TestCase):
     def setUp(self):
+        self._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
         sphere = Usd.Stage.CreateInMemory()
         UsdGeom.Sphere.Define(sphere, "/sph")
         root_path = "/root"
         sphere_root = sphere.DefinePrim(root_path)
         sphere_root.CreateAttribute("greet", Sdf.ValueTypeNames.String).Set("hello")
         sphere.SetDefaultPrim(sphere_root)
-        # print(sphere.GetRootLayer().ExportToString())
 
         capsule = Usd.Stage.CreateInMemory()
         UsdGeom.Capsule.Define(capsule, "/cap")
@@ -25,18 +26,15 @@ class TestViews(unittest.TestCase):
         capsule_root = capsule.DefinePrim(root_path)
         capsule_root.CreateAttribute("who", Sdf.ValueTypeNames.String).Set("world")
         capsule.SetDefaultPrim(capsule_root)
-        # print(capsule.GetRootLayer().ExportToString())
 
         merge = Usd.Stage.CreateInMemory()
         for i in (capsule, sphere):
             merge.GetRootLayer().subLayerPaths.append(i.GetRootLayer().identifier)
         merge.SetDefaultPrim(merge.GetPrimAtPath(root_path))
-        # print(merge.GetRootLayer().ExportToString())
 
         world = Usd.Stage.CreateInMemory()
         self.nested = world.DefinePrim("/nested/child")
         self.nested.GetReferences().AddReference(merge.GetRootLayer().identifier)
-        # print(world.GetRootLayer().ExportToString())
 
         self.capsule = capsule
         self.sphere = sphere
@@ -44,8 +42,6 @@ class TestViews(unittest.TestCase):
         self.world = world
 
     def test_layer_composition(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
         widget = description.LayersComposition()
         widget.setStage(self.world)
 
@@ -64,8 +60,6 @@ class TestViews(unittest.TestCase):
         widget.deleteLater()
 
     def test_prim_composition(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
         widget = description.PrimComposition()
         widget.setPrim(self.nested)
 
@@ -77,15 +71,13 @@ class TestViews(unittest.TestCase):
         widget.clear()
 
     def test_create_assets(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
         tmpf = tempfile.mkdtemp()
         token = create.write.repo.set(create.write.Path(tmpf) / "repo")
         rootf = create.write.UsdAsset.get_default(stream='testestest')
         stage = create.write.fetch_stage(str(rootf))
 
         for each in range(1, 6):
-            create.write.define_category(stage, f"Option{each}")
+            create.write.define_taxon(stage, f"Option{each}")
 
         widget = create.CreateAssets()
         widget.setStage(stage)
@@ -110,8 +102,6 @@ class TestViews(unittest.TestCase):
         widget._create()
 
     def test_spreadsheet_editor(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
         widget = sheets.SpreadsheetEditor()
         widget.setStage(self.world)
         widget.table.scrollContentsBy(10, 10)
