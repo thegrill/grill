@@ -62,7 +62,7 @@ class CreateAssets(QtWidgets.QDialog):
                 msg = "A repository path must be selected in order to create assets."
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
                 return
-        # TODO: check for "write._CATEGORY_ROOT_PATH" existence and handle missing
+        # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
         root = self._stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):

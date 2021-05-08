@@ -66,6 +66,10 @@ class TestWrite(unittest.TestCase):
         with self.assertRaises(ValueError):
             write._find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
 
+    def test_invalid_stack(self):
+        with self.assertRaises(TypeError):
+            write._layer_stack(object())
+
     def test_edit_context(self):
         with self.assertRaises(TypeError):
             write._edit_context(object(), write.fetch_stage(self.root_asset))

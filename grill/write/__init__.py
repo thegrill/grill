@@ -75,7 +75,7 @@ def fetch_stage(root_id) -> Usd.Stage:
     return stage
 
 
-def define_taxon(stage: Usd.Stage, name:str, id_fields: typing.Mapping=types.MappingProxyType({}), references=tuple(),) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name:str, *, id_fields: typing.Mapping=types.MappingProxyType({}), references=tuple(),) -> Usd.Prim:
     """Define a new taxon group for asset taxonomy.
 
     If an existing taxon with the provided name already exists, it is returned.
@@ -211,11 +211,6 @@ def _(obj: Usd.Stage):
 @_layer_stack.register
 def _(obj: Usd.Prim):
     return (spec.layer for spec in obj.GetPrimStack())
-
-
-@_layer_stack.register
-def _(obj: Usd.Property):
-    return (spec.layer for spec in obj.GetPropertyStack())
 
 
 class UsdAsset(names.CGAssetFile):
