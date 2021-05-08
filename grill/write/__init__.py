@@ -24,31 +24,6 @@ _TAXONOMY_ROOT_PATH = Sdf.Path("/Taxonomy")
 _TAXONOMY_FIELDS = dict(kingdom='taxonomy')
 
 
-class UsdAsset(names.CGAssetFile):
-    DEFAULT_SUFFIX = 'usda'
-    file_config = naming.NameConfig(
-        {'suffix': "|".join(Sdf.FileFormat.FindAllFileFormatExtensions())}
-    )
-
-    @classmethod
-    def get_anonymous(cls, **values) -> UsdAsset:
-        """Get an anonymous USD file name with optional field overrides.
-
-        Generally useful for situation where a temporary but valid identifier is needed.
-
-        :param values: Variable keyword arguments with the keys referring to the name's
-            fields which will use the given values.
-
-        Example:
-            >>> UsdAsset.get_anonymous(stream='test')
-            UsdAsset("4209091047-34604-19646-169-123-test-4209091047-34604-19646-169.1.usda")
-
-        """
-        keys = cls.get_default().get_pattern_list()
-        anon = itertools.cycle(uuid.uuid4().fields)
-        return cls.get_default(**collections.ChainMap(values, dict(zip(keys, anon))))
-
-
 @functools.lru_cache(maxsize=None)
 def fetch_stage(root_id) -> Usd.Stage:
     """For the given root layer identifier, get a corresponding stage.
@@ -157,6 +132,12 @@ def create(taxon: Usd.Prim, name, label=""):
     return over_prim
 
 
+def context(obj, tokens):
+    layers = reversed(list(_layer_stack(obj)))
+    asset_layer = _find_layer_matching(tokens, layers)
+    return _edit_context(obj, asset_layer)
+
+
 def taxonomy_context(stage):
     try:
         return context(stage, _TAXONOMY_FIELDS)
@@ -237,7 +218,26 @@ def _(obj: Usd.Property):
     return (spec.layer for spec in obj.GetPropertyStack())
 
 
-def context(obj, tokens):
-    layers = reversed(list(_layer_stack(obj)))
-    asset_layer = _find_layer_matching(tokens, layers)
-    return _edit_context(obj, asset_layer)
+class UsdAsset(names.CGAssetFile):
+    DEFAULT_SUFFIX = 'usda'
+    file_config = naming.NameConfig(
+        {'suffix': "|".join(Sdf.FileFormat.FindAllFileFormatExtensions())}
+    )
+
+    @classmethod
+    def get_anonymous(cls, **values) -> UsdAsset:
+        """Get an anonymous USD file name with optional field overrides.
+
+        Generally useful for situation where a temporary but valid identifier is needed.
+
+        :param values: Variable keyword arguments with the keys referring to the name's
+            fields which will use the given values.
+
+        Example:
+            >>> UsdAsset.get_anonymous(stream='test')
+            UsdAsset("4209091047-34604-19646-169-123-test-4209091047-34604-19646-169.1.usda")
+
+        """
+        keys = cls.get_default().get_pattern_list()
+        anon = itertools.cycle(uuid.uuid4().fields)
+        return cls.get_default(**collections.ChainMap(values, dict(zip(keys, anon))))
