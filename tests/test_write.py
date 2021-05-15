@@ -34,13 +34,13 @@ class TestWrite(unittest.TestCase):
         root_asset = self.root_asset
 
         root_stage = write.fetch_stage(root_asset)
-        # fetching stage outside of AR context should resolve to same stage
+        # fetching stage outside of AR _context should resolve to same stage
         self.assertIs(root_stage, write.fetch_stage(root_asset))
 
         repo_path = write.repo.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
         with Ar.ResolverContextBinder(resolver_ctx):
-            # inside an AR resolver context, a new layer and custom stage should end up
+            # inside an AR resolver _context, a new layer and custom stage should end up
             # in that stage not resolving to the same as the one from write.fetch_stage
             usd_opened = str(write.UsdAsset.get_anonymous(item='usd_opened'))
             Sdf.Layer.CreateNew(str(repo_path / usd_opened))

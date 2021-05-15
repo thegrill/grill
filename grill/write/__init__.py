@@ -20,13 +20,17 @@ logger = logging.getLogger(__name__)
 
 repo = contextvars.ContextVar('repo')
 
-# Taxonomy rank handles the grill classification and grouping of assets.
 _PRIM_GRILL_KEY = 'grill'
 _PRIM_FIELDS_KEY = 'fields'
+
+# Taxonomy rank handles the grill classification and grouping of assets.
 _TAXONOMY_NAME = 'Taxonomy'
 _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
-_TAXONOMY_UNIQUE_ID = ids.CGAsset.kingdom
+_TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster
 _TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
+
+_ASSET_UNIQUE_ID = ids.CGAsset.item
+_ASSET_TAXON_FIELDS = types.MappingProxyType({ids.CGAsset.kingdom.name: "Asset"})
 
 
 @functools.lru_cache(maxsize=None)
@@ -80,21 +84,6 @@ def fetch_stage(root_id) -> Usd.Stage:
     return stage
 
 
-def _get_id_fields(prim, strict=False):
-    grill_key = _PRIM_GRILL_KEY
-    custom_data = prim.GetCustomDataByKey(grill_key) or {}
-    if not custom_data and strict:
-        raise ValueError(f"No data found on key {grill_key} for {prim}")
-    fields = custom_data.get(_PRIM_FIELDS_KEY, {})
-    if not fields and strict:
-        raise ValueError(f"No '{_PRIM_FIELDS_KEY}' key found on grill data for {prim}. Available keys: {pformat(custom_data.keys())}")
-    return fields
-
-
-def _set_id_fields(prim, fields):
-    prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: fields})
-
-
 def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: typing.Mapping=types.MappingProxyType({})) -> Usd.Prim:
     """Define a new taxon group for asset taxonomy.
 
@@ -131,7 +120,7 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
 
 def create(taxon: Usd.Prim, name, label=""):
     stage = taxon.GetStage()
-    new_tokens = {**_get_id_fields(taxon, strict=True), ids.CGAsset.item.name: name}
+    new_tokens = {**_get_id_fields(taxon, strict=True), **_ASSET_TAXON_FIELDS, _ASSET_UNIQUE_ID.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
@@ -168,15 +157,9 @@ def create(taxon: Usd.Prim, name, label=""):
     return over_prim
 
 
-def context(obj, tokens):
-    layers = reversed(list(_layer_stack(obj)))
-    asset_layer = _find_layer_matching(tokens, layers)
-    return _edit_context(obj, asset_layer)
-
-
 def taxonomy_context(stage):
     try:
-        return context(stage, _TAXONOMY_FIELDS)
+        return _context(stage, _TAXONOMY_FIELDS)
     except ValueError:
         # Our layer is not yet on the current layer stack. Let's bring it.
         # TODO: root is ok? or should it be current edit target?
@@ -192,12 +175,33 @@ def taxonomy_context(stage):
         if not taxonomy_stage.GetDefaultPrim():
             taxonomy_stage.SetDefaultPrim(taxonomy_stage.DefinePrim(_TAXONOMY_ROOT_PATH))
 
-        return context(stage, _TAXONOMY_FIELDS)
+        return _context(stage, _TAXONOMY_FIELDS)
 
 
 def asset_context(prim: Usd.Prim):
-    fields = {**_get_id_fields(prim, strict=True), ids.CGAsset.item: prim.GetName()}
-    return context(prim, fields)
+    fields = {**_get_id_fields(prim, strict=True), **_ASSET_TAXON_FIELDS, _ASSET_UNIQUE_ID: prim.GetName()}
+    return _context(prim, fields)
+
+
+def _get_id_fields(prim, strict=False):
+    grill_key = _PRIM_GRILL_KEY
+    custom_data = prim.GetCustomDataByKey(grill_key) or {}
+    if not custom_data and strict:
+        raise ValueError(f"No data found on key {grill_key} for {prim}")
+    fields = custom_data.get(_PRIM_FIELDS_KEY, {})
+    if not fields and strict:
+        raise ValueError(f"No '{_PRIM_FIELDS_KEY}' key found on grill data for {prim}. Available keys: {pformat(custom_data.keys())}")
+    return fields
+
+
+def _set_id_fields(prim, fields):
+    prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: fields})
+
+
+def _context(obj, tokens):
+    layers = reversed(list(_layer_stack(obj)))
+    asset_layer = _find_layer_matching(tokens, layers)
+    return _edit_context(obj, asset_layer)
 
 
 def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
