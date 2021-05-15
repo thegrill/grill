@@ -142,6 +142,11 @@ class TestViews(unittest.TestCase):
             created = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH).GetPrimAtPath(name)
             self.assertTrue(created.IsValid())
 
+        sheet_model = widget.sheet.model
+        index = sheet_model.index(0,1)
+        editor = widget.sheet._columns_spec[1].editor(None, None, index)
+        widget.sheet._columns_spec[1].model_setter(editor, sheet_model, index)
+
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
         widget.setStage(self.world)
