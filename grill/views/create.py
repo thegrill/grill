@@ -139,7 +139,7 @@ class TaxonomyEditor(_CreatePrims):
                     action = menu.addAction(title)
                     action.triggered.connect(partial(set_check_status, status))
                 return menu
-            
+
             def showEvent(self, *args, **kwargs):
                 result = super().showEvent(*args, **kwargs)
                 # hack? wihout this, we appear off screen (or on top of it)
@@ -149,7 +149,7 @@ class TaxonomyEditor(_CreatePrims):
             def property(self, name):  # override ourselves yeahhh
                 if name == 'value':
                     return self._value()
-                return super().property(*args, **kwargs)
+                return super().property(name)
 
             def _value(self):
                 return [

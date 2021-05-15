@@ -153,6 +153,7 @@ class TestViews(unittest.TestCase):
         editor._options.selectAll()
         menu = editor._create_context_menu()
         menu.actions()[0].trigger()
+        self.assertIsNone(editor.property('text'))
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
