@@ -1,3 +1,4 @@
+import uuid
 import logging
 import unittest
 import tempfile
@@ -81,7 +82,13 @@ class TestWrite(unittest.TestCase):
             write.define_taxon(root_stage, write._TAXONOMY_NAME)
 
         with self.assertRaises(ValueError):
-            write.define_taxon(root_stage, "explicit_invalid_field", id_fields={write._TAXONOMY_UNIQUE_ID: "explicit"})
+            write.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={write._TAXONOMY_UNIQUE_ID: "by_id_value"})
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={write._TAXONOMY_UNIQUE_ID.name: "by_id_name"})
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, "nonexistingfield", id_fields={str(uuid.uuid4()): "by_id_name"})
 
         displayable = write.define_taxon(root_stage, "DisplayableName")
         # idempotent call should keep previously created prim
@@ -91,6 +98,22 @@ class TestWrite(unittest.TestCase):
 
         with write.taxonomy_context(root_stage):
             displayable.CreateAttribute("label", Sdf.ValueTypeNames.String)
+
+        not_taxon = root_stage.DefinePrim("/not/a/taxon")
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {})
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {'invalid': 42})
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: 42})
+        with self.assertRaises(TypeError):
+            write.create(not_taxon, "WillFail")
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: {}})
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
 
         emil = write.create(person, "EmilSinclair", label="Emil Sinclair")
         self.assertEqual(emil, write.create(person, "EmilSinclair"))

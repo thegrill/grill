@@ -107,7 +107,7 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
     }
     invalid_fields = set(fields).difference(ids.CGAsset.__members__)
     if invalid_fields:
-        raise ValueError(f"Got invalid id_field keys: {invalid_fields}. Allowed: {ids.CGAsset.__members__}")
+        raise ValueError(f"Got invalid id_field keys: {', '.join(invalid_fields)}. Allowed: {', '.join(ids.CGAsset.__members__)}")
 
     with taxonomy_context(stage):
         prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
@@ -185,12 +185,14 @@ def asset_context(prim: Usd.Prim):
 
 def _get_id_fields(prim, strict=False):
     grill_key = _PRIM_GRILL_KEY
-    custom_data = prim.GetCustomDataByKey(grill_key) or {}
-    if not custom_data and strict:
-        raise ValueError(f"No data found on key {grill_key} for {prim}")
-    fields = custom_data.get(_PRIM_FIELDS_KEY, {})
+    data = prim.GetCustomDataByKey(grill_key) or {}
+    if not data and strict:
+        raise ValueError(f"No data found on '{grill_key}' key for {prim}")
+    fields = data.get(_PRIM_FIELDS_KEY, {})
     if not fields and strict:
-        raise ValueError(f"No '{_PRIM_FIELDS_KEY}' key found on grill data for {prim}. Available keys: {pformat(custom_data.keys())}")
+        raise ValueError(f"Missing or empty '{_PRIM_FIELDS_KEY}' found on '{_PRIM_GRILL_KEY}' custom data for {prim}. Custom data: {pformat(data)}")
+    if not isinstance(fields, typing.Mapping):
+        raise TypeError(f"Expected mapping on key '{_PRIM_FIELDS_KEY}' from {prim} on custom data key '{grill_key}'. Got instead {fields} with type: {type(fields)}")
     return fields
 
 
