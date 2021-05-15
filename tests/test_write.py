@@ -102,15 +102,19 @@ class TestWrite(unittest.TestCase):
         not_taxon = root_stage.DefinePrim("/not/a/taxon")
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
+
         not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
+
         not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {'invalid': 42})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
+
         not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: 42})
         with self.assertRaises(TypeError):
             write.create(not_taxon, "WillFail")
+
         not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: {}})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")

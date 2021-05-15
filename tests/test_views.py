@@ -150,7 +150,9 @@ class TestViews(unittest.TestCase):
         self.assertIsInstance(editor, QtWidgets.QDialog)
         self.assertEqual(editor.property('value'), [valid_data[0][1]])
         widget.sheet._columns_spec[1].model_setter(editor, sheet_model, index)
-
+        editor._options.selectAll()
+        menu = editor._create_context_menu()
+        menu.actions()[0].trigger()
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()

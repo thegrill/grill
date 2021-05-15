@@ -112,18 +112,8 @@ class TaxonomyEditor(_CreatePrims):
                 self._options = options = QtWidgets.QListWidget()
                 options.setSelectionMode(options.SelectionMode.ExtendedSelection)
 
-                def set_check_status(status):
-                    for each in options.selectedItems():
-                        each.setCheckState(status)
-
                 def list_context_menu(__):
-                    menu = QtWidgets.QMenu(options)
-                    for title, status in (
-                            ("Check Selected", QtCore.Qt.Checked),
-                            ("Uncheck Selected", QtCore.Qt.Unchecked),
-                    ):
-                        action = menu.addAction(title)
-                        action.triggered.connect(partial(set_check_status, status))
+                    menu = self._create_context_menu()
                     menu.exec_(QtGui.QCursor.pos())
 
                 options.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
@@ -136,6 +126,20 @@ class TaxonomyEditor(_CreatePrims):
                 self.setLayout(layout)
                 self.setWindowTitle("Extend From...")
 
+            def _create_context_menu(self):
+                def set_check_status(status):
+                    for each in self._options.selectedItems():
+                        each.setCheckState(status)
+
+                menu = QtWidgets.QMenu(self._options)
+                for title, status in (
+                        ("Check Selected", QtCore.Qt.Checked),
+                        ("Uncheck Selected", QtCore.Qt.Unchecked),
+                ):
+                    action = menu.addAction(title)
+                    action.triggered.connect(partial(set_check_status, status))
+                return menu
+            
             def showEvent(self, *args, **kwargs):
                 result = super().showEvent(*args, **kwargs)
                 # hack? wihout this, we appear off screen (or on top of it)
