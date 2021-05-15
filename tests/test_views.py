@@ -107,6 +107,8 @@ class TestViews(unittest.TestCase):
         widget.sheet.table.selectAll()
         widget.sheet._pasteClipboard()
         widget._create()
+        taxon_editor = widget.sheet._columns_spec[0].editor(widget, None, None)
+        self.assertIsInstance(taxon_editor, QtWidgets.QComboBox)
 
     def test_taxonomy_editor(self):
         stage = write.fetch_stage(str(self.rootf))
@@ -145,7 +147,10 @@ class TestViews(unittest.TestCase):
         sheet_model = widget.sheet.model
         index = sheet_model.index(0, 1)
         editor = widget.sheet._columns_spec[1].editor(None, None, index)
+        self.assertIsInstance(editor, QtWidgets.QDialog)
+        self.assertEqual(editor.property('value'), [valid_data[0][1]])
         widget.sheet._columns_spec[1].model_setter(editor, sheet_model, index)
+
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
