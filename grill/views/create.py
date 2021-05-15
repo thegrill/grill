@@ -231,5 +231,5 @@ class TaxonomyEditor(_CreatePrims):
                 print(f"An asset name is required! Missing on row: {row}")
                 continue
             reference_names = (model.data(model.index(row, 1)) or '').split("\n")
-            references = (root.GetPrimAtPath(ref_name) for ref_name in reference_names)
+            references = (root.GetPrimAtPath(ref_name) for ref_name in reference_names if ref_name)
             write.define_taxon(self._stage, taxon_name, references=references)

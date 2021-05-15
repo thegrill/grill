@@ -1,11 +1,13 @@
 import io
 import csv
+import shutil
 import tempfile
 import unittest
 
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
+from grill import write
 from grill.views import description, sheets, create
 
 
@@ -41,6 +43,14 @@ class TestViews(unittest.TestCase):
         self.merge = merge
         self.world = world
 
+        self._tmpf = tempfile.mkdtemp()
+        self._token = write.repo.set(write.Path(self._tmpf) / "repo")
+        self.rootf = write.UsdAsset.get_anonymous()
+
+    def tearDown(self) -> None:
+        write.repo.reset(self._token)
+        shutil.rmtree(self._tmpf)
+
     def test_layer_composition(self):
         widget = description.LayersComposition()
         widget.setStage(self.world)
@@ -71,13 +81,10 @@ class TestViews(unittest.TestCase):
         widget.clear()
 
     def test_create_assets(self):
-        tmpf = tempfile.mkdtemp()
-        token = create.write.repo.set(create.write.Path(tmpf) / "repo")
-        rootf = create.write.UsdAsset.get_default(stream='testestest')
-        stage = create.write.fetch_stage(str(rootf))
+        stage = write.fetch_stage(str(self.rootf))
 
         for each in range(1, 6):
-            create.write.define_taxon(stage, f"Option{each}")
+            write.define_taxon(stage, f"Option{each}")
 
         widget = create.CreateAssets()
         widget.setStage(stage)
@@ -100,6 +107,40 @@ class TestViews(unittest.TestCase):
         widget.sheet.table.selectAll()
         widget.sheet._pasteClipboard()
         widget._create()
+
+    def test_taxonomy_editor(self):
+        stage = write.fetch_stage(str(self.rootf))
+
+        for each in range(1, 6):
+            write.define_taxon(stage, f"Option{each}")
+
+        widget = create.TaxonomyEditor()
+        widget.setStage(stage)
+
+        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
+
+        valid_data = (
+            ['NewType1', 'Option1', 'Id1', ],
+            ['NewType2', '', 'Id2', ],
+        )
+        data = valid_data + (
+            ['',         'Option1', 'Id3', ],
+        )
+
+        QtWidgets.QApplication.instance().clipboard().setText('')
+        widget.sheet._pasteClipboard()
+
+        stream = io.StringIO()
+        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
+        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
+
+        widget.sheet.table.selectAll()
+        widget.sheet._pasteClipboard()
+        widget._create()
+
+        for name, __, __ in valid_data:
+            created = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH).GetPrimAtPath(name)
+            self.assertTrue(created.IsValid())
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
