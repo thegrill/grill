@@ -143,7 +143,7 @@ class TestViews(unittest.TestCase):
             self.assertTrue(created.IsValid())
 
         sheet_model = widget.sheet.model
-        index = sheet_model.index(0,1)
+        index = sheet_model.index(0, 1)
         editor = widget.sheet._columns_spec[1].editor(None, None, index)
         widget.sheet._columns_spec[1].model_setter(editor, sheet_model, index)
 
