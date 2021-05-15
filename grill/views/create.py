@@ -1,6 +1,5 @@
 from pathlib import Path
 from functools import partial
-from pprint import pprint
 
 from pxr import Usd
 from grill import write
@@ -33,13 +32,24 @@ class _CreatePrims(QtWidgets.QDialog):
         self._amount.setValue(1)
         self._amount.setMinimum(1)
         self._amount.setMaximum(500)
-        layout.addWidget(sheet)
+        self._splitter = splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        splitter.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding))
+        splitter.addWidget(sheet)
+        layout.addWidget(splitter)
         layout.addWidget(button_box)
         self.setLayout(layout)
         size = sheet.table.viewportSizeHint()
         size.setWidth(size.width() + 65)  # sensible size at init time
         size.setHeight(self.sizeHint().height())
         self.resize(size)
+
+    @staticmethod
+    def _setRepositoryPath(parent=None, caption="Select a repository path"):
+        dirpath = QtWidgets.QFileDialog.getExistingDirectory(parent=parent, caption=caption)
+        if dirpath:
+            token = write.repo.set(Path(dirpath))
+            print(f"Repository path set to: {dirpath}, token: {token}")
+        return dirpath
 
 
 class CreateAssets(_CreatePrims):
@@ -86,18 +96,8 @@ class CreateAssets(_CreatePrims):
         root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
         self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
 
-    @staticmethod
-    def _setRepositoryPath(parent=None, caption="Select a repository path"):
-        dirpath = QtWidgets.QFileDialog.getExistingDirectory(parent=parent, caption=caption)
-        if dirpath:
-            token = write.repo.set(Path(dirpath))
-            print(f"Repository path set to: {dirpath}, token: {token}")
-        return dirpath
-
 
 class TaxonomyEditor(_CreatePrims):
-    def setStage(self, stage):
-        pass
 
     def __init__(self, *args, **kwargs):
         # 1. Read only list of existing taxonomy
@@ -134,7 +134,7 @@ class TaxonomyEditor(_CreatePrims):
                 button_box.rejected.connect(self.reject)
                 layout.addWidget(button_box)
                 self.setLayout(layout)
-                self.setWindowTitle("Extend Taxon From...")
+                self.setWindowTitle("Extend From...")
 
             def showEvent(self, *args, **kwargs):
                 result = super().showEvent(*args, **kwargs)
@@ -144,49 +144,92 @@ class TaxonomyEditor(_CreatePrims):
 
             def property(self, name):  # override ourselves yeahhh
                 if name == 'value':
-                    return "YESSS"
-                res = super().property(*args, **kwargs)
-                print(locals())
-                return res
+                    return self._value()
+                return super().property(*args, **kwargs)
 
-        def _taxon_combobox(parent, option, index):
+            def _value(self):
+                return [
+                    each.text()
+                    for each in self._options.findItems("*", QtCore.Qt.MatchWildcard)
+                    if each.checkState() == QtCore.Qt.Checked
+                ]
+
+        def _reference_selector(parent, option, index):
             inter = ReferenceSelection(parent=parent)
             inter.setModal(True)
-            # for taxon in self._taxon_options:
             idata = index.data()
             checked_items = set()
             if idata:
                 checked_items.update(idata.split("\n"))
 
-            for taxon in range(10):
+            for taxon in self._taxon_options:
                 item = QtWidgets.QListWidgetItem(inter._options)
-                # item.setText(taxon.GetName())
-                name = f"Hi {taxon}"
-                item.setText(name)
+                item.setText(taxon)
                 item.setCheckState(QtCore.Qt.Checked if taxon in checked_items else QtCore.Qt.Unchecked)
 
             return inter
 
-        # def taxon_setter(editor, model, index):
-        #     # pprint(locals())
-        #
-        #     # super().setModelData(editor, model, index)
-        def fun(editor: ReferenceSelection, model: _sheets._ProxyModel, index:QtCore.QModelIndex):
-            names = (
-                each.text()
-                for each in editor._options.findItems("*", QtCore.Qt.MatchWildcard)
-                if each.checkState() == QtCore.Qt.Checked
-            )
-            data = model.setData(index, "\n".join(names))
-            print(locals())
+        def _reference_setter(editor: ReferenceSelection, model: _sheets._ProxyModel, index:QtCore.QModelIndex):
+            return model.setData(index, "\n".join(editor._value()))
 
         identity = lambda x: x
         _columns = (
-            _sheets._Column("🧬 Taxon Name", identity),
-            # _sheets._Column("🔗 References", identity, editor=_taxon_combobox, model_data_setter=taxon_setter),
-            # _sheets._Column("🔗 References", identity, editor=_taxon_combobox),
-            _sheets._Column("🔗 References", identity, editor=_taxon_combobox, setter=fun),
+            _sheets._Column("🧬 New Name", identity),
+            _sheets._Column(
+                "🔗 References",
+                identity,
+                editor=_reference_selector,
+                model_setter=_reference_setter
+            ),
             _sheets._Column("🕵 ID Fields", identity),
         )
         super().__init__(_columns, *args, **kwargs)
         self.setWindowTitle("Taxonomy Editor")
+
+        self._existing = existing = _sheets._Spreadsheet(
+            # Existing label just a bit to the right (Above the search bar)
+            (_sheets._Column("        🧬 Existing", identity),),
+            _sheets._ColumnOptions.SEARCH
+        )
+        existing.layout().setContentsMargins(0, 0, 0, 0)
+        self._splitter.insertWidget(0, existing)
+        self._splitter.setStretchFactor(0, 2)
+        self._splitter.setStretchFactor(1, 3)
+
+        self.accepted.connect(self._create)
+
+    def setStage(self, stage):
+        self._stage = stage
+        root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
+        self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
+        existing_model = self._existing.model
+        existing_model.setHorizontalHeaderLabels([''])
+        existing_model.setRowCount(len(self._taxon_options))
+        existing_model.blockSignals(True)
+        for row_index, taxon in enumerate(self._taxon_options):
+            item = QtGui.QStandardItem()
+            item.setData(taxon, QtCore.Qt.DisplayRole)
+            item.setData(taxon, QtCore.Qt.UserRole)
+            existing_model.setItem(row_index, 0, item)
+        existing_model.blockSignals(False)
+        self._existing._setColumnLocked(0, True)
+
+    @_sheets.wait()
+    def _create(self):
+        if not write.repo.get(None):
+            if not self._setRepositoryPath(self, "Select a repository path to create assets on"):
+                msg = "A repository path must be selected in order to create assets."
+                QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
+                return
+        # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
+        root = self._stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
+        model = self.sheet.table.model()
+        for row in range(model.rowCount()):
+            taxon_name = model.data(model.index(row, 0))
+            if not taxon_name:
+                # TODO: validate and raise error dialog to user. For now we ignore.
+                print(f"An asset name is required! Missing on row: {row}")
+                continue
+            reference_names = (model.data(model.index(row, 1)) or '').split("\n")
+            references = (root.GetPrimAtPath(ref_name) for ref_name in reference_names)
+            write.define_taxon(self._stage, taxon_name, references=references)

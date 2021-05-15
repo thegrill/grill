@@ -104,9 +104,8 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
             setter(obj, value)
         else:
             print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
-            setModelData = getattr(self, "_setter") or super().setModelData
-            setModelData(editor, model, index)
-            # return setModelData(editor, model, index)
+        setModelData = getattr(self, "_model_setter") or super().setModelData
+        return setModelData(editor, model, index)
 
 
 class _ColumnOptions(enum.Flag):
@@ -346,7 +345,7 @@ class _Spreadsheet(QtWidgets.QDialog):
 
             delegate = _ColumnItemDelegate()
             delegate._editor = column_data.editor
-            delegate._setter = column_data.setter
+            delegate._model_setter = column_data.model_setter
             # delegate._model_data_setter = column_data.model_data_setter
             table.setItemDelegateForColumn(column_index, delegate)
             # for custom delegates we need to keep a reference, otherwise they're
@@ -542,7 +541,14 @@ class _Column(NamedTuple):
     getter: callable
     setter: callable = _read_only  # "Read-only" by default
     editor: callable = None
-    model_data_setter: callable = None
+    model_setter: callable = None
+    # createEditor() returns the widget used to change data from the model and can be reimplemented to customize editing behavior.
+    #
+    # setEditorData() provides the widget with data to manipulate.
+    #
+    # updateEditorGeometry() ensures that the editor is displayed correctly with respect to the item view.
+    #
+    # setModelData() returns updated data to the model.
 
 
 class SpreadsheetEditor(_Spreadsheet):
@@ -557,8 +563,6 @@ class SpreadsheetEditor(_Spreadsheet):
     )
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
-        - Per column control on context menu on all vis button
-        - Add row creates an anonymous prim
     """
     def __init__(self, stage=None, parent=None, **kwargs):
         columns = self._COLUMNS
@@ -592,8 +596,6 @@ class SpreadsheetEditor(_Spreadsheet):
         layout = self.layout()
         layout.addLayout(options_layout)
         layout.addWidget(self.table)
-        insert_row = QtWidgets.QPushButton("Add Row")
-        layout.addWidget(insert_row)
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Spreadsheet Editor")
 
