@@ -603,7 +603,6 @@ class SpreadsheetEditor(_Spreadsheet):
             column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
             column_options._lock_button.clicked.connect(self._conformLockSwitch)
 
-
     def _connectProxyModel(self, proxy_model):
         super()._connectProxyModel(proxy_model)
         self._model_hierarchy.toggled.connect(proxy_model._setModelHierarchyEnabled)

@@ -8,12 +8,11 @@ import functools
 import itertools
 import contextvars
 import collections
-
-from pprint import pformat
 from pathlib import Path
-from pxr import UsdUtils, Usd, Sdf, Ar, Kind
+from pprint import pformat
 
 import naming
+from pxr import UsdUtils, Usd, Sdf, Ar, Kind
 from grill import names
 from grill.tokens import ids
 
@@ -22,6 +21,8 @@ logger = logging.getLogger(__name__)
 repo = contextvars.ContextVar('repo')
 
 # Taxonomy rank handles the grill classification and grouping of assets.
+_PRIM_GRILL_KEY = 'grill'
+_PRIM_FIELDS_KEY = 'fields'
 _TAXONOMY_NAME = 'Taxonomy'
 _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
 _TAXONOMY_UNIQUE_ID = ids.CGAsset.kingdom
@@ -79,6 +80,21 @@ def fetch_stage(root_id) -> Usd.Stage:
     return stage
 
 
+def _get_id_fields(prim, strict=False):
+    grill_key = _PRIM_GRILL_KEY
+    custom_data = prim.GetCustomDataByKey(grill_key) or {}
+    if not custom_data and strict:
+        raise ValueError(f"No data found on key {grill_key} for {prim}")
+    fields = custom_data.get(_PRIM_FIELDS_KEY, {})
+    if not fields and strict:
+        raise ValueError(f"No '{_PRIM_FIELDS_KEY}' key found on grill data for {prim}. Available keys: {pformat(custom_data.keys())}")
+    return fields
+
+
+def _set_id_fields(prim, fields):
+    prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: fields})
+
+
 def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: typing.Mapping=types.MappingProxyType({})) -> Usd.Prim:
     """Define a new taxon group for asset taxonomy.
 
@@ -108,17 +124,14 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
         prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
-        current = (prim.GetCustomDataByKey('grill') or {}).get('fields', {})
-        prim.SetCustomDataByKey(
-            "grill",
-            dict(fields={**fields, **current, _TAXONOMY_UNIQUE_ID.name: name})
-        )
+        current = _get_id_fields(prim)
+        _set_id_fields(prim, {**fields, **current, _TAXONOMY_UNIQUE_ID.name: name})
     return prim
 
 
 def create(taxon: Usd.Prim, name, label=""):
     stage = taxon.GetStage()
-    new_tokens = {**taxon.GetCustomDataByKey('grill')['fields'], ids.CGAsset.item.name: name}
+    new_tokens = {**_get_id_fields(taxon, strict=True), ids.CGAsset.item.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
@@ -183,7 +196,7 @@ def taxonomy_context(stage):
 
 
 def asset_context(prim: Usd.Prim):
-    fields = {**prim.GetCustomDataByKey("grill")["fields"], ids.CGAsset.item: prim.GetName()}
+    fields = {**_get_id_fields(prim, strict=True), ids.CGAsset.item: prim.GetName()}
     return context(prim, fields)
 
 
