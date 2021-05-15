@@ -15,6 +15,7 @@ from pxr import UsdUtils, Usd, Sdf, Ar, Kind
 
 import naming
 from grill import names
+from grill.tokens import ids
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,8 @@ repo = contextvars.ContextVar('repo')
 # Taxonomy rank handles the grill classification and grouping of assets.
 _TAXONOMY_NAME = 'Taxonomy'
 _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
-_TAXONOMY_UNIQUE_ID_FIELD = 'kingdom'
-_TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID_FIELD: _TAXONOMY_NAME})
+_TAXONOMY_UNIQUE_ID = ids.CGAsset.kingdom
+_TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
 
 
 @functools.lru_cache(maxsize=None)
@@ -92,8 +93,16 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
         #  (e.g. Windows considers both the same but Linux does not)
         raise ValueError(f"Can not define a taxon with reserved name {_TAXONOMY_NAME}.")
 
-    if _TAXONOMY_UNIQUE_ID_FIELD in id_fields:
-        raise ValueError(f"Can not provide id field {_TAXONOMY_UNIQUE_ID_FIELD} since it is automatically set. Got: {pformat(id_fields)}")
+    if {_TAXONOMY_UNIQUE_ID, _TAXONOMY_UNIQUE_ID.name}.intersection(id_fields):
+        raise ValueError(f"Can not provide id field {_TAXONOMY_UNIQUE_ID.name} since it is automatically set. Got: {pformat(id_fields)}")
+
+    fields = {
+        (token.name if isinstance(token, ids.CGAsset) else token): value
+        for token, value in id_fields.items()
+    }
+    invalid_fields = set(fields).difference(ids.CGAsset.__members__)
+    if invalid_fields:
+        raise ValueError(f"Got invalid id_field keys: {invalid_fields}. Allowed: {ids.CGAsset.__members__}")
 
     with taxonomy_context(stage):
         prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
@@ -102,14 +111,14 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
         current = (prim.GetCustomDataByKey('grill') or {}).get('fields', {})
         prim.SetCustomDataByKey(
             "grill",
-            dict(fields={**id_fields, **current, _TAXONOMY_UNIQUE_ID_FIELD: name})
+            dict(fields={**fields, **current, _TAXONOMY_UNIQUE_ID.name: name})
         )
     return prim
 
 
 def create(taxon: Usd.Prim, name, label=""):
     stage = taxon.GetStage()
-    new_tokens = dict(taxon.GetCustomDataByKey('grill')['fields'], item=name)
+    new_tokens = {**taxon.GetCustomDataByKey('grill')['fields'], ids.CGAsset.item.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
@@ -174,7 +183,7 @@ def taxonomy_context(stage):
 
 
 def asset_context(prim: Usd.Prim):
-    fields = dict(prim.GetCustomDataByKey("grill")["fields"], item=prim.GetName())
+    fields = {**prim.GetCustomDataByKey("grill")["fields"], ids.CGAsset.item: prim.GetName()}
     return context(prim, fields)
 
 
@@ -183,7 +192,10 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
 
     :raises ValueError: If none of the given layers match the provided tokens.
     """
-    tokens = set(tokens.items())
+    tokens = {
+        ((token.name if isinstance(token, ids.CGAsset) else token), value)
+        for token, value in tokens.items()
+    }
     seen = set()
     for layer in layers:
         # anonymous layers realPath defaults to an empty string
