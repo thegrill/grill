@@ -1,3 +1,4 @@
+import uuid
 import logging
 import unittest
 import tempfile
@@ -34,13 +35,13 @@ class TestWrite(unittest.TestCase):
         root_asset = self.root_asset
 
         root_stage = write.fetch_stage(root_asset)
-        # fetching stage outside of AR context should resolve to same stage
+        # fetching stage outside of AR _context should resolve to same stage
         self.assertIs(root_stage, write.fetch_stage(root_asset))
 
         repo_path = write.repo.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
         with Ar.ResolverContextBinder(resolver_ctx):
-            # inside an AR resolver context, a new layer and custom stage should end up
+            # inside an AR resolver _context, a new layer and custom stage should end up
             # in that stage not resolving to the same as the one from write.fetch_stage
             usd_opened = str(write.UsdAsset.get_anonymous(item='usd_opened'))
             Sdf.Layer.CreateNew(str(repo_path / usd_opened))
@@ -64,25 +65,62 @@ class TestWrite(unittest.TestCase):
     def test_match(self):
         root_stage = write.fetch_stage(self.root_asset)
         with self.assertRaises(ValueError):
-            write.find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
+            write._find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
+
+    def test_invalid_stack(self):
+        with self.assertRaises(TypeError):
+            write._layer_stack(object())
 
     def test_edit_context(self):
         with self.assertRaises(TypeError):
-            write.edit_context(object(), write.fetch_stage(self.root_asset))
+            write._edit_context(object(), write.fetch_stage(self.root_asset))
 
-    def test_define_category(self):
+    def test_define_taxon(self):
         root_stage = write.fetch_stage(self.root_asset)
-        displayable_type = write.define_category(root_stage, "DisplayableName")
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, write._TAXONOMY_NAME)
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={write._TAXONOMY_UNIQUE_ID: "by_id_value"})
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={write._TAXONOMY_UNIQUE_ID.name: "by_id_name"})
+
+        with self.assertRaises(ValueError):
+            write.define_taxon(root_stage, "nonexistingfield", id_fields={str(uuid.uuid4()): "by_id_name"})
+
+        displayable = write.define_taxon(root_stage, "DisplayableName")
         # idempotent call should keep previously created prim
-        self.assertEqual(displayable_type, write.define_category(root_stage, "DisplayableName"))
+        self.assertEqual(displayable, write.define_taxon(root_stage, "DisplayableName"))
 
-        person_type = write.define_category(root_stage, "Person", (displayable_type,))
+        person = write.define_taxon(root_stage, "Person", references=(displayable,))
 
-        with write.category_context(root_stage):
-            displayable_type.CreateAttribute("display_name", Sdf.ValueTypeNames.String)
+        with write.taxonomy_context(root_stage):
+            displayable.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
-        emil = write.create(person_type, "EmilSinclair", display_name="Emil Sinclair")
-        self.assertEqual(emil, write.create(person_type, "EmilSinclair"))
+        not_taxon = root_stage.DefinePrim("/not/a/taxon")
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
 
-        with write.asset_context(emil):
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {})
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
+
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {'invalid': 42})
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
+
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: 42})
+        with self.assertRaises(TypeError):
+            write.create(not_taxon, "WillFail")
+
+        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: {}})
+        with self.assertRaises(ValueError):
+            write.create(not_taxon, "WillFail")
+
+        emil = write.create(person, "EmilSinclair", label="Emil Sinclair")
+        self.assertEqual(emil, write.create(person, "EmilSinclair"))
+
+        with write.unit_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")

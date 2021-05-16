@@ -1,23 +1,26 @@
 import io
 import csv
+import shutil
 import tempfile
 import unittest
 
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
+from grill import write
 from grill.views import description, sheets, create
 
 
 class TestViews(unittest.TestCase):
     def setUp(self):
+        self._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
         sphere = Usd.Stage.CreateInMemory()
         UsdGeom.Sphere.Define(sphere, "/sph")
         root_path = "/root"
         sphere_root = sphere.DefinePrim(root_path)
         sphere_root.CreateAttribute("greet", Sdf.ValueTypeNames.String).Set("hello")
         sphere.SetDefaultPrim(sphere_root)
-        # print(sphere.GetRootLayer().ExportToString())
 
         capsule = Usd.Stage.CreateInMemory()
         UsdGeom.Capsule.Define(capsule, "/cap")
@@ -25,27 +28,30 @@ class TestViews(unittest.TestCase):
         capsule_root = capsule.DefinePrim(root_path)
         capsule_root.CreateAttribute("who", Sdf.ValueTypeNames.String).Set("world")
         capsule.SetDefaultPrim(capsule_root)
-        # print(capsule.GetRootLayer().ExportToString())
 
         merge = Usd.Stage.CreateInMemory()
         for i in (capsule, sphere):
             merge.GetRootLayer().subLayerPaths.append(i.GetRootLayer().identifier)
         merge.SetDefaultPrim(merge.GetPrimAtPath(root_path))
-        # print(merge.GetRootLayer().ExportToString())
 
         world = Usd.Stage.CreateInMemory()
         self.nested = world.DefinePrim("/nested/child")
         self.nested.GetReferences().AddReference(merge.GetRootLayer().identifier)
-        # print(world.GetRootLayer().ExportToString())
 
         self.capsule = capsule
         self.sphere = sphere
         self.merge = merge
         self.world = world
 
-    def test_layer_composition(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        self._tmpf = tempfile.mkdtemp()
+        self._token = write.repo.set(write.Path(self._tmpf) / "repo")
+        self.rootf = write.UsdAsset.get_anonymous()
 
+    def tearDown(self) -> None:
+        write.repo.reset(self._token)
+        shutil.rmtree(self._tmpf)
+
+    def test_layer_composition(self):
         widget = description.LayersComposition()
         widget.setStage(self.world)
 
@@ -64,8 +70,6 @@ class TestViews(unittest.TestCase):
         widget.deleteLater()
 
     def test_prim_composition(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
         widget = description.PrimComposition()
         widget.setPrim(self.nested)
 
@@ -77,15 +81,10 @@ class TestViews(unittest.TestCase):
         widget.clear()
 
     def test_create_assets(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
-        tmpf = tempfile.mkdtemp()
-        token = create.write.repo.set(create.write.Path(tmpf) / "repo")
-        rootf = create.write.UsdAsset.get_default(stream='testestest')
-        stage = create.write.fetch_stage(str(rootf))
+        stage = write.fetch_stage(str(self.rootf))
 
         for each in range(1, 6):
-            create.write.define_category(stage, f"Option{each}")
+            write.define_taxon(stage, f"Option{each}")
 
         widget = create.CreateAssets()
         widget.setStage(stage)
@@ -108,10 +107,55 @@ class TestViews(unittest.TestCase):
         widget.sheet.table.selectAll()
         widget.sheet._pasteClipboard()
         widget._create()
+        taxon_editor = widget.sheet._columns_spec[0].editor(widget, None, None)
+        self.assertIsInstance(taxon_editor, QtWidgets.QComboBox)
+
+    def test_taxonomy_editor(self):
+        stage = write.fetch_stage(str(self.rootf))
+
+        for each in range(1, 6):
+            write.define_taxon(stage, f"Option{each}")
+
+        widget = create.TaxonomyEditor()
+        widget.setStage(stage)
+
+        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
+
+        valid_data = (
+            ['NewType1', 'Option1', 'Id1', ],
+            ['NewType2', '', 'Id2', ],
+        )
+        data = valid_data + (
+            ['',         'Option1', 'Id3', ],
+        )
+
+        QtWidgets.QApplication.instance().clipboard().setText('')
+        widget.sheet._pasteClipboard()
+
+        stream = io.StringIO()
+        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
+        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
+
+        widget.sheet.table.selectAll()
+        widget.sheet._pasteClipboard()
+        widget._create()
+
+        for name, __, __ in valid_data:
+            created = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH).GetPrimAtPath(name)
+            self.assertTrue(created.IsValid())
+
+        sheet_model = widget.sheet.model
+        index = sheet_model.index(0, 1)
+        editor = widget.sheet._columns_spec[1].editor(None, None, index)
+        self.assertIsInstance(editor, QtWidgets.QDialog)
+        self.assertEqual(editor.property('value'), [valid_data[0][1]])
+        widget.sheet._columns_spec[1].model_setter(editor, sheet_model, index)
+        editor._options.selectAll()
+        menu = editor._create_context_menu()
+        menu.actions()[0].trigger()
+        self.assertIsNone(editor.property('text'))
 
     def test_spreadsheet_editor(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
         widget = sheets.SpreadsheetEditor()
         widget.setStage(self.world)
         widget.table.scrollContentsBy(10, 10)

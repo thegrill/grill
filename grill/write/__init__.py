@@ -8,45 +8,27 @@ import functools
 import itertools
 import contextvars
 import collections
-
-from pprint import pformat
 from pathlib import Path
-from pxr import UsdUtils, Usd, Sdf, Ar, Kind
+from pprint import pformat
 
 import naming
+from pxr import UsdUtils, Usd, Sdf, Ar, Kind
 from grill import names
+from grill.tokens import ids
 
 logger = logging.getLogger(__name__)
 
 repo = contextvars.ContextVar('repo')
-_ASSET_TOKENS = types.MappingProxyType(dict(kingdom="asset"))
-_CATEGORY_TOKENS = types.MappingProxyType(dict(kingdom="category",))
-_CATEGORY_ROOT_PATH = Sdf.Path("/Category")
 
+_PRIM_GRILL_KEY = 'grill'
+_PRIM_FIELDS_KEY = 'fields'
 
-class UsdAsset(names.CGAssetFile):
-    DEFAULT_SUFFIX = 'usda'
-    file_config = naming.NameConfig(
-        {'suffix': "|".join(Sdf.FileFormat.FindAllFileFormatExtensions())}
-    )
-
-    @classmethod
-    def get_anonymous(cls, **values) -> UsdAsset:
-        """Get an anonymous USD file name with optional field overrides.
-
-        Generally useful for situation where a temporary but valid identifier is needed.
-
-        :param values: Variable keyword arguments with the keys referring to the name's
-            fields which will use the given values.
-
-        Example:
-            >>> UsdAsset.get_anonymous(stream='test')
-            UsdAsset("4209091047-34604-19646-169-123-test-4209091047-34604-19646-169.1.usda")
-
-        """
-        keys = cls.get_default().get_pattern_list()
-        anon = itertools.cycle(uuid.uuid4().fields)
-        return cls.get_default(**collections.ChainMap(values, dict(zip(keys, anon))))
+# Taxonomy rank handles the grill classification and grouping of assets.
+_TAXONOMY_NAME = 'Taxonomy'
+_TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
+_TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster  # High level organization of our assets.
+_TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
+_UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 
 
 @functools.lru_cache(maxsize=None)
@@ -100,48 +82,51 @@ def fetch_stage(root_id) -> Usd.Stage:
     return stage
 
 
-def define_category(stage: Usd.Stage, name: str, references=tuple()) -> Usd.Prim:
-    db_type_path = _CATEGORY_ROOT_PATH.AppendChild(name)
-    db_type = stage.GetPrimAtPath(db_type_path)
-    if db_type:
-        return db_type
+def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: typing.Mapping=types.MappingProxyType({})) -> Usd.Prim:
+    """Define a new taxon group for asset taxonomy.
 
-    # Use class prims since we want db types to be abstract.
-    with category_context(stage):
-        db_type = stage.CreateClassPrim(db_type_path)
-        for reference in references:
-            db_type.GetReferences().AddInternalReference(reference.GetPath())
+    If an existing taxon with the provided name already exists, it is returned.
 
-    return stage.GetPrimAtPath(db_type_path)
+    If id_fields is provided, it is set on the prim.
 
-
-def find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
-    """Find the first layer matching the given identifier tokens.
-
-    :raises ValueError: If none of the given layers match the provided tokens.
+    If references are passed, they are added.
     """
-    tokens = set(tokens.items())
-    seen = set()
-    for layer in layers:
-        # anonymous layers realPath defaults to an empty string
-        name = UsdAsset(Path(layer.realPath).name)
-        if tokens.difference(name.values.items()):
-            seen.add(layer)
-            continue
-        return layer
-    raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
+    if name == _TAXONOMY_NAME:
+        # TODO: prevent upper case lower case mismatch handle between multiple OS?
+        #  (e.g. Windows considers both the same but Linux does not)
+        raise ValueError(f"Can not define a taxon with reserved name: '{_TAXONOMY_NAME}'.")
+
+    reserved_fields = {_TAXONOMY_UNIQUE_ID, _UNIT_UNIQUE_ID}
+    reserved_fields.update([i.name for i in reserved_fields])
+    intersection = reserved_fields.intersection(id_fields)
+    if intersection:
+        raise ValueError(f"Can not provide reserved id fields: {', '.join(map(str, intersection))}. Got fields: {', '.join(map(str, id_fields))}")
+
+    fields = {
+        (token.name if isinstance(token, ids.CGAsset) else token): value
+        for token, value in id_fields.items()
+    }
+    invalid_fields = set(fields).difference(ids.CGAsset.__members__)
+    if invalid_fields:
+        raise ValueError(f"Got invalid id_field keys: {', '.join(invalid_fields)}. Allowed: {', '.join(ids.CGAsset.__members__)}")
+
+    with taxonomy_context(stage):
+        prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
+        for reference in references:
+            prim.GetReferences().AddInternalReference(reference.GetPath())
+        current = _get_id_fields(prim)
+        _set_id_fields(prim, {**fields, **current, _TAXONOMY_UNIQUE_ID.name: name})
+    return prim
 
 
-def create(category: Usd.Prim, name, display_name=""):
-    """Whenever we create a new item from the database, make it it's own entity"""
-    stage = category.GetStage()
-    new_tokens = dict(_ASSET_TOKENS, cluster=category.GetName(), item=name)
-    # contract: all categorys have a display_name
+def create(taxon: Usd.Prim, name, label=""):
+    stage = taxon.GetStage()
+    new_tokens = {**_get_id_fields(taxon, strict=True), _UNIT_UNIQUE_ID.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
     # Scope collecting all assets of the same type
-    scope_path = stage.GetPseudoRoot().GetPath().AppendPath(category.GetName())
+    scope_path = stage.GetPseudoRoot().GetPath().AppendPath(taxon.GetName())
     scope = stage.GetPrimAtPath(scope_path)
     if not scope:
         scope = stage.DefinePrim(scope_path)
@@ -153,74 +138,147 @@ def create(category: Usd.Prim, name, display_name=""):
 
     asset_stage = fetch_stage(new_asset_name)
     asset_origin_path = Sdf.Path("/Origin")
-    asset_origin = asset_stage.GetPrimAtPath(asset_origin_path)
-    if not asset_origin:
-        asset_origin = asset_stage.DefinePrim(asset_origin_path)
-        category_layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
-        category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
-        asset_origin.GetReferences().AddReference(category_layer_id, category.GetPath())
-
+    asset_origin = asset_stage.DefinePrim(asset_origin_path)
+    category_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
+    category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
+    asset_origin.GetReferences().AddReference(category_layer_id, taxon.GetPath())
     asset_stage.SetDefaultPrim(asset_origin)
 
-    if display_name:
-        display_attr = asset_origin.GetAttribute("display_name")
-        if not display_attr.IsValid():
+    if label:
+        label_attr = asset_origin.GetAttribute("label")
+        if not label_attr.IsValid():
             # TODO: enforce this always?
-            logger.debug(f"Invalid attribute: {display_attr}. Creating a new one on {asset_origin}")
-            display_attr = asset_origin.CreateAttribute("display_name", Sdf.ValueTypeNames.String)
+            logger.debug(f"Invalid attribute: {label_attr}. Creating a new one on {asset_origin}")
+            label_attr = asset_origin.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
-        display_attr.Set(display_name)
+        label_attr.Set(label)
 
     over_prim = stage.OverridePrim(path)
     over_prim.GetPayloads().AddPayload(asset_stage.GetRootLayer().identifier)
     return over_prim
 
 
+def taxonomy_context(stage):
+    try:
+        return _context(stage, _TAXONOMY_FIELDS)
+    except ValueError:
+        # Our layer is not yet on the current layer stack. Let's bring it.
+        # TODO: root is ok? or should it be current edit target?
+        root_layer = stage.GetRootLayer()
+        root_asset = UsdAsset(Path(stage.GetRootLayer().identifier).name)
+        taxonomy_asset = root_asset.get(**_TAXONOMY_FIELDS)
+        taxonomy_stage = fetch_stage(taxonomy_asset)
+        taxonomy_layer = taxonomy_stage.GetRootLayer()
+        # Use paths relative to our repository to guarantee portability
+        taxonomy_reference = str(Path(taxonomy_layer.realPath).relative_to(repo.get()))
+        root_layer.subLayerPaths.append(taxonomy_reference)
+
+        if not taxonomy_stage.GetDefaultPrim():
+            taxonomy_stage.SetDefaultPrim(taxonomy_stage.DefinePrim(_TAXONOMY_ROOT_PATH))
+
+        return _context(stage, _TAXONOMY_FIELDS)
+
+
+def unit_context(prim: Usd.Prim):
+    fields = {**_get_id_fields(prim, strict=True), _UNIT_UNIQUE_ID: prim.GetName()}
+    return _context(prim, fields)
+
+
+def _get_id_fields(prim, strict=False):
+    grill_key = _PRIM_GRILL_KEY
+    data = prim.GetCustomDataByKey(grill_key) or {}
+    if not data and strict:
+        raise ValueError(f"No data found on '{grill_key}' key for {prim}")
+    fields = data.get(_PRIM_FIELDS_KEY, {})
+    if not fields and strict:
+        raise ValueError(f"Missing or empty '{_PRIM_FIELDS_KEY}' found on '{_PRIM_GRILL_KEY}' custom data for {prim}. Custom data: {pformat(data)}")
+    if not isinstance(fields, typing.Mapping):
+        raise TypeError(f"Expected mapping on key '{_PRIM_FIELDS_KEY}' from {prim} on custom data key '{grill_key}'. Got instead {fields} with type: {type(fields)}")
+    return fields
+
+
+def _set_id_fields(prim, fields):
+    prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: fields})
+
+
+def _context(obj, tokens):
+    layers = reversed(list(_layer_stack(obj)))
+    asset_layer = _find_layer_matching(tokens, layers)
+    return _edit_context(obj, asset_layer)
+
+
+def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
+    """Find the first layer matching the given identifier tokens.
+
+    :raises ValueError: If none of the given layers match the provided tokens.
+    """
+    tokens = {
+        ((token.name if isinstance(token, ids.CGAsset) else token), value)
+        for token, value in tokens.items()
+    }
+    seen = set()
+    for layer in layers:
+        # anonymous layers realPath defaults to an empty string
+        name = UsdAsset(Path(layer.realPath).name)
+        if tokens.difference(name.values.items()):
+            seen.add(layer)
+            continue
+        return layer
+    raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
+
+
 @functools.singledispatch
-def edit_context(obj, stage):
+def _edit_context(obj, stage):
     raise TypeError(f"Not implemented: {locals()}")  # lazy
 
 
-@edit_context.register
-def _(obj: Sdf.Layer, stage):
-    return Usd.EditContext(stage, obj)
+@_edit_context.register
+def _(obj: Usd.Stage, layer):
+    return Usd.EditContext(obj, layer)
 
 
-@edit_context.register
-def _(obj: Usd.Prim, layer, stage):
+@_edit_context.register
+def _(obj: Usd.Prim, layer):
     # We need to explicitely construct our edit target since our layer is not on the layer stack of the stage.
     target = Usd.EditTarget(layer, obj.GetPrimIndex().rootNode.children[0])
-    return Usd.EditContext(stage, target)
+    return Usd.EditContext(obj.GetStage(), target)
 
 
-def category_context(stage):
-    """Edits go to the category root stage."""
-    try:
-        layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
-    except ValueError:
-        # Our layer is not yet on the current layer stack. Let's bring it.
-        stage_layer = stage.GetRootLayer()
-        current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
-        # TODO: this is probably incorrect, should we get a category name for all the project?
-        category_name = current_asset_name.get(**_CATEGORY_TOKENS)
-        category_stage = fetch_stage(category_name)
-        category_layer = category_stage.GetRootLayer()
-        # TODO: There's a slight chance that the identifier is not a relative one.
-        #   Ensure we don't author absolute paths here. It should all be relative
-        #   to a path in our search path from the current resolver context.
-        #   If it's not happening, we need to manually create a relative asset path
-        #   str(Path(category_layer.identifier).relative_to(repo))
-        # category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
-        category_layer_id = category_layer.identifier
-        stage_layer.subLayerPaths.append(category_layer_id)
-
-        if not category_stage.GetDefaultPrim():
-            category_stage.SetDefaultPrim(category_stage.DefinePrim(_CATEGORY_ROOT_PATH))
-        layer = find_layer_matching(_CATEGORY_TOKENS, stage.GetLayerStack())
-    return edit_context(layer, stage)
+@functools.singledispatch
+def _layer_stack(obj):
+    raise TypeError(f"Not implemented: {obj}")  # lazy
 
 
-def asset_context(prim: Usd.Prim):
-    layerstack = (stack.layer for stack in reversed(prim.GetPrimStack()))
-    asset_layer = find_layer_matching(_ASSET_TOKENS, layerstack)
-    return edit_context(prim, asset_layer, prim.GetStage())
+@_layer_stack.register
+def _(obj: Usd.Stage):
+    return obj.GetLayerStack()
+
+
+@_layer_stack.register
+def _(obj: Usd.Prim):
+    return (spec.layer for spec in obj.GetPrimStack())
+
+
+class UsdAsset(names.CGAssetFile):
+    DEFAULT_SUFFIX = 'usda'
+    file_config = naming.NameConfig(
+        {'suffix': "|".join(Sdf.FileFormat.FindAllFileFormatExtensions())}
+    )
+
+    @classmethod
+    def get_anonymous(cls, **values) -> UsdAsset:
+        """Get an anonymous USD file name with optional field overrides.
+
+        Generally useful for situation where a temporary but valid identifier is needed.
+
+        :param values: Variable keyword arguments with the keys referring to the name's
+            fields which will use the given values.
+
+        Example:
+            >>> UsdAsset.get_anonymous(stream='test')
+            UsdAsset("4209091047-34604-19646-169-123-test-4209091047-34604-19646-169.1.usda")
+
+        """
+        keys = cls.get_default().get_pattern_list()
+        anon = itertools.cycle(uuid.uuid4().fields)
+        return cls.get_default(**collections.ChainMap(values, dict(zip(keys, anon))))

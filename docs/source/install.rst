@@ -4,40 +4,41 @@ Installation
 Pip Install
 ~~~~~~~~~~~
 
-The ``grill`` package includes install options for situations where other core
-libraries have been installed outside of ``pip`` (e.g. ``USD`` & ``PySide2`` exist
-via DCC applications). This is the default option.
+By default, ``grill`` won't install ``USD``, ``PySide2`` & ``PyOpenGL``. This is because
+DCC apps and other environments bundle them outside of ``pip``. To include them, use the ``[full]`` option.
 
-.. code:: bash
+.. tab:: Default
 
-   python -m pip install grill
+    .. code-block:: bash
+
+        python -m pip install grill
+
+.. tab:: Full
+
+    .. code-block:: bash
+
+        python -m pip install grill[full]
 
 .. note::
 
-   For some DCC applications (e.g. **Maya**, **Houdini**) their corresponding python
-   interpreters need to run ``pip``:
+    For some DCC applications (e.g. **Maya**, **Houdini**) ``pip`` needs to run
+    from their corresponding python interpreters:
 
-   **Maya** (`official docs <https://help.autodesk.com/view/MAYAUL/2022/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_):
+    .. tab:: Maya
 
-   .. code:: bash
+        Visit the `official docs <https://help.autodesk.com/view/MAYAUL/2022/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_ for more details.
 
-      mayapy -m pip install grill
+        .. code-block:: bash
 
-   **Houdini** (if ``pip`` is missing, it can be downloaded `from this guide
-   <https://wordpress.discretization.de/houdini/home/advanced-2/installing-and-using-scipy-in-houdini/>`_
-   ), then:
+            mayapy -m pip install grill
 
-   .. code:: bash
+    .. tab:: Houdini
 
-      hython3.7 -m pip install grill
+        If ``pip`` is missing, it can be downloaded `from this guide <https://wordpress.discretization.de/houdini/home/advanced-2/installing-and-using-scipy-in-houdini/>`_, then:
 
-The ``[full]`` option will install the ``USD`` core libraries, as well as ``PySide2``
-and ``PyOpenGL``, so use it if those are missing from the current environment.
+        .. code-block:: bash
 
-.. code:: bash
-
-   python -m pip install grill[full]
-
+            hython3.7 -m pip install grill
 
 Extra Dependencies
 ~~~~~~~~~~~~~~~~~~

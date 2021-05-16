@@ -42,8 +42,14 @@ extensions = ['sphinx.ext.autodoc',
               # 'sphinx.ext.githubpages',
               'sphinx.ext.graphviz',
               'm2r2',
+              'sphinx_copybutton',
+              'sphinx_toggleprompt',
               'sphinx.ext.inheritance_diagram',
+              'sphinx_inline_tabs',
               'sphinx_autodoc_typehints']
+
+# Offset to play well with copybutton
+toggleprompt_offset_right = 25
 
 autodoc_member_order = 'groupwise'
 autodoc_default_flags = ['members', 'show-inheritance']

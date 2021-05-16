@@ -66,6 +66,7 @@ class GrillPlugin(PluginContainer):
             _menu_item(title, launcher)
             for (title, launcher) in (
                 ("Create Assets", _stage_on_widget(_create.CreateAssets)),
+                ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
                 ("Prim Composition", prim_composition),
                 ("Layer Stack Composition", _stage_on_widget(_description.LayersComposition)),

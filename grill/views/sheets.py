@@ -75,7 +75,10 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
         editor._property_name = _property_name_from_option_type(option.type)
         return editor
 
+    # def setEditorData(self, editor:QtWidgets.QWidget, index:QtCore.QModelIndex) -> None:
+
     def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        # setModelData = getattr(self, "_model_data_setter") or super().setModelData
         # we would always fallback to _property_name but it looks like there's no
         # consistency, so we always prefer to check for "value" and only if it's None
         # we check the property name found from the option when the editor was created.
@@ -101,7 +104,8 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
             setter(obj, value)
         else:
             print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
-        return super().setModelData(editor, model, index)
+        setModelData = getattr(self, "_model_setter") or super().setModelData
+        return setModelData(editor, model, index)
 
 
 class _ColumnOptions(enum.Flag):
@@ -341,6 +345,8 @@ class _Spreadsheet(QtWidgets.QDialog):
 
             delegate = _ColumnItemDelegate()
             delegate._editor = column_data.editor
+            delegate._model_setter = column_data.model_setter
+            # delegate._model_data_setter = column_data.model_data_setter
             table.setItemDelegateForColumn(column_index, delegate)
             # for custom delegates we need to keep a reference, otherwise they're
             # garbage collected and might cause crashes.
@@ -535,6 +541,14 @@ class _Column(NamedTuple):
     getter: callable
     setter: callable = _read_only  # "Read-only" by default
     editor: callable = None
+    model_setter: callable = None  # TODO: reconcile this with the object data flags (object vs model data getter / setter)
+    # createEditor() returns the widget used to change data from the model and can be reimplemented to customize editing behavior.
+    #
+    # setEditorData() provides the widget with data to manipulate.
+    #
+    # updateEditorGeometry() ensures that the editor is displayed correctly with respect to the item view.
+    #
+    # setModelData() returns updated data to the model.
 
 
 class SpreadsheetEditor(_Spreadsheet):
@@ -549,8 +563,6 @@ class SpreadsheetEditor(_Spreadsheet):
     )
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
-        - Per column control on context menu on all vis button
-        - Add row creates an anonymous prim
     """
     def __init__(self, stage=None, parent=None, **kwargs):
         columns = self._COLUMNS
@@ -584,15 +596,12 @@ class SpreadsheetEditor(_Spreadsheet):
         layout = self.layout()
         layout.addLayout(options_layout)
         layout.addWidget(self.table)
-        insert_row = QtWidgets.QPushButton("Add Row")
-        layout.addWidget(insert_row)
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Spreadsheet Editor")
 
         for column_index, column_options in self._column_options.items():
             column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
             column_options._lock_button.clicked.connect(self._conformLockSwitch)
-
 
     def _connectProxyModel(self, proxy_model):
         super()._connectProxyModel(proxy_model)

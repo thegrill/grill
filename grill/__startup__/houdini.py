@@ -33,4 +33,4 @@ def install_package():
     pkg_tgt = Path(user_pref_dir) / "packages" / "grill.json"
     pkg_tgt.parent.mkdir(parents=True, exist_ok=True)
     pkg_tgt.write_text(json.dumps(pkg_data, indent=4))
-    logger.info(f"Successfully installed menu on {pkg_tgt}")
+    print(f"Successfully installed package on {pkg_tgt}")
