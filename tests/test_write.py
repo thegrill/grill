@@ -122,5 +122,5 @@ class TestWrite(unittest.TestCase):
         emil = write.create(person, "EmilSinclair", label="Emil Sinclair")
         self.assertEqual(emil, write.create(person, "EmilSinclair"))
 
-        with write.asset_context(emil):
+        with write.unit_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")

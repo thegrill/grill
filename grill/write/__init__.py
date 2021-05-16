@@ -26,11 +26,9 @@ _PRIM_FIELDS_KEY = 'fields'
 # Taxonomy rank handles the grill classification and grouping of assets.
 _TAXONOMY_NAME = 'Taxonomy'
 _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
-_TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster
+_TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster  # High level organization of our assets.
 _TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
-
-_ASSET_UNIQUE_ID = ids.CGAsset.item
-_ASSET_TAXON_FIELDS = types.MappingProxyType({ids.CGAsset.kingdom.name: "Asset"})
+_UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 
 
 @functools.lru_cache(maxsize=None)
@@ -96,10 +94,13 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
     if name == _TAXONOMY_NAME:
         # TODO: prevent upper case lower case mismatch handle between multiple OS?
         #  (e.g. Windows considers both the same but Linux does not)
-        raise ValueError(f"Can not define a taxon with reserved name {_TAXONOMY_NAME}.")
+        raise ValueError(f"Can not define a taxon with reserved name: '{_TAXONOMY_NAME}'.")
 
-    if {_TAXONOMY_UNIQUE_ID, _TAXONOMY_UNIQUE_ID.name}.intersection(id_fields):
-        raise ValueError(f"Can not provide id field {_TAXONOMY_UNIQUE_ID.name} since it is automatically set. Got: {pformat(id_fields)}")
+    reserved_fields = {_TAXONOMY_UNIQUE_ID, _UNIT_UNIQUE_ID}
+    reserved_fields.update([i.name for i in reserved_fields])
+    intersection = reserved_fields.intersection(id_fields)
+    if intersection:
+        raise ValueError(f"Can not provide reserved id fields: {', '.join(map(str, intersection))}. Got fields: {', '.join(map(str, id_fields))}")
 
     fields = {
         (token.name if isinstance(token, ids.CGAsset) else token): value
@@ -120,7 +121,7 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
 
 def create(taxon: Usd.Prim, name, label=""):
     stage = taxon.GetStage()
-    new_tokens = {**_get_id_fields(taxon, strict=True), **_ASSET_TAXON_FIELDS, _ASSET_UNIQUE_ID.name: name}
+    new_tokens = {**_get_id_fields(taxon, strict=True), _UNIT_UNIQUE_ID.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
@@ -178,8 +179,8 @@ def taxonomy_context(stage):
         return _context(stage, _TAXONOMY_FIELDS)
 
 
-def asset_context(prim: Usd.Prim):
-    fields = {**_get_id_fields(prim, strict=True), **_ASSET_TAXON_FIELDS, _ASSET_UNIQUE_ID: prim.GetName()}
+def unit_context(prim: Usd.Prim):
+    fields = {**_get_id_fields(prim, strict=True), _UNIT_UNIQUE_ID: prim.GetName()}
     return _context(prim, fields)
 
 
