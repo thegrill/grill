@@ -541,7 +541,7 @@ class _Column(NamedTuple):
     getter: callable
     setter: callable = _read_only  # "Read-only" by default
     editor: callable = None
-    model_setter: callable = None
+    model_setter: callable = None  # TODO: reconcile this with the object data flags (object vs model data getter / setter)
     # createEditor() returns the widget used to change data from the model and can be reimplemented to customize editing behavior.
     #
     # setEditorData() provides the widget with data to manipulate.
