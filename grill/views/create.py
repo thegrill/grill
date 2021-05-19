@@ -1,11 +1,15 @@
+import tempfile
 from pathlib import Path
-from functools import partial
+from itertools import chain
+from functools import partial, lru_cache
 
+import networkx
 from pxr import Usd
 from grill import write
 from PySide2 import QtWidgets, QtCore, QtGui
+from networkx.drawing import nx_pydot
 
-from . import sheets as _sheets
+from . import sheets as _sheets, description as _description
 
 
 class _CreatePrims(QtWidgets.QDialog):
@@ -95,7 +99,6 @@ class CreateAssets(_CreatePrims):
         self._stage = stage
         root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
         self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
-
 
 class TaxonomyEditor(_CreatePrims):
 
@@ -190,17 +193,59 @@ class TaxonomyEditor(_CreatePrims):
         super().__init__(_columns, *args, **kwargs)
         self.setWindowTitle("Taxonomy Editor")
 
+        existing_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self._existing = existing = _sheets._Spreadsheet(
             # Existing label just a bit to the right (Above the search bar)
             (_sheets._Column("        🧬 Existing", identity),),
             _sheets._ColumnOptions.SEARCH
         )
         existing.layout().setContentsMargins(0, 0, 0, 0)
-        self._splitter.insertWidget(0, existing)
+        existing_splitter.addWidget(existing)
+
+        self._dot_view = _description._DotViewer(parent=self)
+        self._dot_view.urlChanged.connect(self._graph_url_changed)
+
+        existing_splitter.addWidget(self._dot_view)
+
+        selectionModel = existing.table.selectionModel()
+        selectionModel.selectionChanged.connect(self._selectionChanged)
+
+        self._splitter.insertWidget(0, existing_splitter)
         self._splitter.setStretchFactor(0, 2)
         self._splitter.setStretchFactor(1, 3)
 
         self.accepted.connect(self._create)
+
+    def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
+        node_ids = [index.data() for index in self._existing.table.selectedIndexes()]
+        # node_indices = [self._node_index_by_id[i] for i in node_ids]
+        self._update_node_graph_view(node_ids)
+
+    def _graph_url_changed(self, url: QtCore.QUrl):
+        node_uri = url.toString()
+        node_uri_stem = node_uri.split("/")[-1]
+        if node_uri_stem.startswith("node_id_"):
+            node_index = node_uri_stem.split("node_id_")[-1]
+            self._update_node_graph_view([node_index])
+
+    def _update_node_graph_view(self, node_indices: list):
+        dot_path = self._subgraph_dot_path(tuple(node_indices))
+        self._dot_view.setDotPath(dot_path)
+
+    @lru_cache(maxsize=None)
+    def _subgraph_dot_path(self, node_indices: tuple):
+        print(f"Getting subgraph for: {node_indices}")
+        successors = chain.from_iterable(
+            self._graph.successors(index) for index in node_indices)
+        predecessors = chain.from_iterable(
+            self._graph.predecessors(index) for index in node_indices)
+        nodes_of_interest = list(range(10))  # needs to be label nodes
+        nodes_of_interest.extend(chain(node_indices, successors, predecessors))
+        subgraph = self._graph.subgraph(nodes_of_interest)
+
+        fd, fp = tempfile.mkstemp()
+        nx_pydot.write_dot(subgraph, fp)
+        return fp
 
     def setStage(self, stage):
         self._stage = stage
@@ -217,6 +262,20 @@ class TaxonomyEditor(_CreatePrims):
             existing_model.setItem(row_index, 0, item)
         existing_model.blockSignals(False)
         self._existing._setColumnLocked(0, True)
+
+        self._graph = graph = networkx.DiGraph(tooltip="My label")
+        graph.graph['graph'] = {'rankdir': 'LR'}
+        for taxon in stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH).GetFilteredChildren(Usd.PrimIsAbstract):
+            taxon_name = taxon.GetName()
+            taxa = taxon.GetCustomDataByKey(write._PRIM_GRILL_KEY)['taxa']
+            for node_name in taxa:
+                if not graph.has_node(node_name):
+                    graph.add_node(node_name, style='rounded', shape='record',
+                                   label=node_name, tooltip=node_name, title=node_name,
+                                   href=f"node_id_{node_name}")
+            taxa.pop(taxon_name)
+            for edge in taxa:
+                graph.add_edge(edge, taxon_name)
 
     @_sheets.wait()
     def _create(self):

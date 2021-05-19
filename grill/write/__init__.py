@@ -83,7 +83,7 @@ def fetch_stage(root_id) -> Usd.Stage:
 
 
 def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: typing.Mapping=types.MappingProxyType({})) -> Usd.Prim:
-    """Define a new taxon group for asset taxonomy.
+    """Define a new taxon group for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing taxon with the provided name already exists, it is returned.
 
@@ -114,8 +114,11 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
         prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
+        prim.CreateAttribute("label", Sdf.ValueTypeNames.String)
         current = _get_id_fields(prim)
-        _set_id_fields(prim, {**fields, **current, _TAXONOMY_UNIQUE_ID.name: name})
+        taxon_fields = {**fields, **current, _TAXONOMY_UNIQUE_ID.name: name}
+        prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: taxon_fields, "taxa": {name: 0}})
+
     return prim
 
 
@@ -146,11 +149,6 @@ def create(taxon: Usd.Prim, name, label=""):
 
     if label:
         label_attr = asset_origin.GetAttribute("label")
-        if not label_attr.IsValid():
-            # TODO: enforce this always?
-            logger.debug(f"Invalid attribute: {label_attr}. Creating a new one on {asset_origin}")
-            label_attr = asset_origin.CreateAttribute("label", Sdf.ValueTypeNames.String)
-
         label_attr.Set(label)
 
     over_prim = stage.OverridePrim(path)
@@ -185,20 +183,15 @@ def unit_context(prim: Usd.Prim):
 
 
 def _get_id_fields(prim, strict=False):
-    grill_key = _PRIM_GRILL_KEY
-    data = prim.GetCustomDataByKey(grill_key) or {}
+    data = prim.GetCustomDataByKey(_PRIM_GRILL_KEY) or {}
     if not data and strict:
-        raise ValueError(f"No data found on '{grill_key}' key for {prim}")
+        raise ValueError(f"No data found on '{_PRIM_GRILL_KEY}' key for {prim}")
     fields = data.get(_PRIM_FIELDS_KEY, {})
     if not fields and strict:
         raise ValueError(f"Missing or empty '{_PRIM_FIELDS_KEY}' found on '{_PRIM_GRILL_KEY}' custom data for {prim}. Custom data: {pformat(data)}")
     if not isinstance(fields, typing.Mapping):
-        raise TypeError(f"Expected mapping on key '{_PRIM_FIELDS_KEY}' from {prim} on custom data key '{grill_key}'. Got instead {fields} with type: {type(fields)}")
+        raise TypeError(f"Expected mapping on key '{_PRIM_FIELDS_KEY}' from {prim} on custom data key '{_PRIM_GRILL_KEY}'. Got instead {fields} with type: {type(fields)}")
     return fields
-
-
-def _set_id_fields(prim, fields):
-    prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: fields})
 
 
 def _context(obj, tokens):
