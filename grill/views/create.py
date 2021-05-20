@@ -100,6 +100,7 @@ class CreateAssets(_CreatePrims):
         root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
         self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
 
+
 class TaxonomyEditor(_CreatePrims):
 
     def __init__(self, *args, **kwargs):
@@ -202,10 +203,8 @@ class TaxonomyEditor(_CreatePrims):
         existing.layout().setContentsMargins(0, 0, 0, 0)
         existing_splitter.addWidget(existing)
 
-        self._dot_view = _description._DotViewer(parent=self)
-        self._dot_view.urlChanged.connect(self._graph_url_changed)
-
-        existing_splitter.addWidget(self._dot_view)
+        self._graph_view = _description._GraphViewer(parent=self)
+        existing_splitter.addWidget(self._graph_view)
 
         selectionModel = existing.table.selectionModel()
         selectionModel.selectionChanged.connect(self._selectionChanged)
@@ -217,65 +216,43 @@ class TaxonomyEditor(_CreatePrims):
         self.accepted.connect(self._create)
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
-        node_ids = [index.data() for index in self._existing.table.selectedIndexes()]
-        # node_indices = [self._node_index_by_id[i] for i in node_ids]
-        self._update_node_graph_view(node_ids)
-
-    def _graph_url_changed(self, url: QtCore.QUrl):
-        node_uri = url.toString()
-        node_uri_stem = node_uri.split("/")[-1]
-        if node_uri_stem.startswith("node_id_"):
-            node_index = node_uri_stem.split("node_id_")[-1]
-            self._update_node_graph_view([node_index])
-
-    def _update_node_graph_view(self, node_indices: list):
-        dot_path = self._subgraph_dot_path(tuple(node_indices))
-        self._dot_view.setDotPath(dot_path)
-
-    @lru_cache(maxsize=None)
-    def _subgraph_dot_path(self, node_indices: tuple):
-        print(f"Getting subgraph for: {node_indices}")
-        successors = chain.from_iterable(
-            self._graph.successors(index) for index in node_indices)
-        predecessors = chain.from_iterable(
-            self._graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = list(range(10))  # needs to be label nodes
-        nodes_of_interest.extend(chain(node_indices, successors, predecessors))
-        subgraph = self._graph.subgraph(nodes_of_interest)
-
-        fd, fp = tempfile.mkstemp()
-        nx_pydot.write_dot(subgraph, fp)
-        return fp
+        node_ids = [index.data(QtCore.Qt.UserRole) for index in self._existing.table.selectedIndexes()]
+        self._graph_view.view(node_ids)
 
     def setStage(self, stage):
         self._stage = stage
         root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
-        self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
+        self._taxon_options = [child for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
         existing_model = self._existing.model
         existing_model.setHorizontalHeaderLabels([''])
         existing_model.setRowCount(len(self._taxon_options))
         existing_model.blockSignals(True)
-        for row_index, taxon in enumerate(self._taxon_options):
+
+        graph = networkx.DiGraph(tooltip="My label")
+        graph.graph['graph'] = {'rankdir': 'LR'}
+        _ids_by_taxa = dict()  # {"taxon1": 42}
+        for index, taxon in enumerate(self._taxon_options):
+            taxon_name = taxon.GetName()
             item = QtGui.QStandardItem()
-            item.setData(taxon, QtCore.Qt.DisplayRole)
-            item.setData(taxon, QtCore.Qt.UserRole)
-            existing_model.setItem(row_index, 0, item)
+            item.setData(taxon_name, QtCore.Qt.DisplayRole)
+            # item.setData(taxon, QtCore.Qt.UserRole)
+            item.setData(index, QtCore.Qt.UserRole)
+            existing_model.setItem(index, 0, item)
+            graph.add_node(index, style='rounded', shape='record',
+                       label=taxon_name, tooltip=taxon_name, title=taxon_name,
+                       href=f"node_id_{index}")
+            _ids_by_taxa[taxon_name] = index
+
+        # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
+        for row_index, taxon in enumerate(self._taxon_options):
+            taxa = taxon.GetCustomDataByKey(write._PRIM_GRILL_KEY)['taxa']
+            taxa.pop(taxon.GetName())
+            for ref_taxon in taxa:
+                graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon.GetName()])
+
         existing_model.blockSignals(False)
         self._existing._setColumnLocked(0, True)
-
-        self._graph = graph = networkx.DiGraph(tooltip="My label")
-        graph.graph['graph'] = {'rankdir': 'LR'}
-        for taxon in stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH).GetFilteredChildren(Usd.PrimIsAbstract):
-            taxon_name = taxon.GetName()
-            taxa = taxon.GetCustomDataByKey(write._PRIM_GRILL_KEY)['taxa']
-            for node_name in taxa:
-                if not graph.has_node(node_name):
-                    graph.add_node(node_name, style='rounded', shape='record',
-                                   label=node_name, tooltip=node_name, title=node_name,
-                                   href=f"node_id_{node_name}")
-            taxa.pop(taxon_name)
-            for edge in taxa:
-                graph.add_edge(edge, taxon_name)
+        self._graph_view.setGraph(graph)
 
     @_sheets.wait()
     def _create(self):

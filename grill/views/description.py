@@ -94,6 +94,54 @@ class _DotViewer(QtWidgets.QFrame):
         self._graph_view.load(QtCore.QUrl.fromLocalFile(filepath))
 
 
+class _GraphViewer(_DotViewer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.urlChanged.connect(self._graph_url_changed)
+        self._sticky_nodes = set()
+
+    def _graph_url_changed(self, url: QtCore.QUrl):
+        node_uri = url.toString()
+        node_uri_stem = node_uri.split("/")[-1]
+        if node_uri_stem.startswith("node_id_"):
+            # node_index = node_uri_stem.split("node_id_")[-1]
+            node_index = int(node_uri_stem.split("node_id_")[-1])
+            self.view([node_index])
+
+    @lru_cache(maxsize=None)
+    def _subgraph_dot_path(self, node_indices: tuple):
+        print(f"Getting subgraph for: {node_indices}")
+        successors = chain.from_iterable(
+            self._graph.successors(index) for index in node_indices)
+        predecessors = chain.from_iterable(
+            self._graph.predecessors(index) for index in node_indices)
+        nodes_of_interest = sorted(self._sticky_nodes)  # sticky nodes are always visible
+        nodes_of_interest.extend(chain(node_indices, successors, predecessors))
+        subgraph = self._graph.subgraph(nodes_of_interest)
+
+        fd, fp = tempfile.mkstemp()
+        nx_pydot.write_dot(subgraph, fp)
+
+        return fp
+
+    def view(self, node_indices: list):
+        dot_path = self._subgraph_dot_path(tuple(node_indices))
+        self.setDotPath(dot_path)
+
+    def setGraph(self, graph):
+        self._subgraph_dot_path.cache_clear()
+        self._sticky_nodes.clear()
+        self._graph = graph
+
+    @property
+    def sticky_nodes(self):
+        return self._sticky_nodes
+
+    @sticky_nodes.setter
+    def sticky_nodes(self, value):
+        self._sticky_nodes = set(value)
+
+
 class PrimComposition(QtWidgets.QDialog):
     _COLUMNS = {
         "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
@@ -178,16 +226,15 @@ class LayersComposition(QtWidgets.QDialog):
             each.layout().setContentsMargins(0,0,0,0)
             each.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        self._dot_view = _DotViewer(parent=self)
-        self._dot_view.urlChanged.connect(self._graph_url_changed)
-
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(self._layers)
         horizontal.addWidget(self._prims)
 
+        self._graph_view = _GraphViewer(parent=self)
+
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(horizontal)
-        vertical.addWidget(self._dot_view)
+        vertical.addWidget(self._graph_view)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(vertical)
@@ -219,35 +266,7 @@ class LayersComposition(QtWidgets.QDialog):
         prims_model.blockSignals(False)
         self._prims.table.resizeColumnsToContents()
         self._prims.table.horizontalHeader()._updateVisualSections(0)
-        self._update_node_graph_view(node_indices)
-
-    def _graph_url_changed(self, url: QtCore.QUrl):
-        node_uri = url.toString()
-        node_uri_stem = node_uri.split("/")[-1]
-        node_index = node_uri_stem.split("node_id_")[-1]
-        if node_index.isdigit():
-            node_index = int(node_index)
-            self._update_node_graph_view([node_index])
-
-    @lru_cache(maxsize=None)
-    def _subgraph_dot_path(self, node_indices: tuple):
-        print(f"Getting subgraph for: {node_indices}")
-        successors = chain.from_iterable(
-            self._graph.successors(index) for index in node_indices)
-        predecessors = chain.from_iterable(
-            self._graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = list(range(10))  # needs to be label nodes
-        nodes_of_interest.extend(chain(node_indices, successors, predecessors))
-        subgraph = self._graph.subgraph(nodes_of_interest)
-
-        fd, fp = tempfile.mkstemp()
-        nx_pydot.write_dot(subgraph, fp)
-
-        return fp
-
-    def _update_node_graph_view(self, node_indices: list):
-        dot_path = self._subgraph_dot_path(tuple(node_indices))
-        self._dot_view.setDotPath(dot_path)
+        self._graph_view.view(node_indices)
 
     @_sheets.wait()
     def setStage(self, stage):
@@ -261,7 +280,7 @@ class LayersComposition(QtWidgets.QDialog):
         self._layers.model.setHorizontalHeaderLabels([''] * len(self._LAYERS_COLUMNS))
         self._prims.model.setHorizontalHeaderLabels([''] * len(self._PRIM_COLUMNS))
 
-        self._graph = graph = networkx.DiGraph(tooltip="My label")
+        graph = networkx.DiGraph(tooltip="LayerStack Composition")
         # legend
         arcs_to_display = {  # should include all?
             Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),  # purple
@@ -362,3 +381,6 @@ class LayersComposition(QtWidgets.QDialog):
         layers_model.blockSignals(False)
         for table in self._layers, self._prims:
             table.table.setSortingEnabled(True)
+
+        self._graph_view.setGraph(graph)
+        self._graph_view.sticky_nodes = legend_node_ids  # we always want to "see these nodes"
