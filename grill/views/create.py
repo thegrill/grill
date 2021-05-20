@@ -171,6 +171,7 @@ class TaxonomyEditor(_CreatePrims):
                 checked_items.update(idata.split("\n"))
 
             for taxon in self._taxon_options:
+                taxon = taxon.GetName()
                 item = QtWidgets.QListWidgetItem(inter._options)
                 item.setText(taxon)
                 item.setCheckState(QtCore.Qt.Checked if taxon in checked_items else QtCore.Qt.Unchecked)

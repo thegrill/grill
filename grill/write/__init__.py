@@ -115,8 +115,7 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
         prim.CreateAttribute("label", Sdf.ValueTypeNames.String)
-        current = _get_id_fields(prim)
-        taxon_fields = {**fields, **current, _TAXONOMY_UNIQUE_ID.name: name}
+        taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
         prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: taxon_fields, "taxa": {name: 0}})
 
     return prim
@@ -124,7 +123,7 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
 
 def create(taxon: Usd.Prim, name, label=""):
     stage = taxon.GetStage()
-    new_tokens = {**_get_id_fields(taxon, strict=True), _UNIT_UNIQUE_ID.name: name}
+    new_tokens = {**_get_id_fields(taxon), _UNIT_UNIQUE_ID.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
     new_asset_name = current_asset_name.get(**new_tokens)
 
@@ -178,16 +177,16 @@ def taxonomy_context(stage):
 
 
 def unit_context(prim: Usd.Prim):
-    fields = {**_get_id_fields(prim, strict=True), _UNIT_UNIQUE_ID: prim.GetName()}
+    fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
     return _context(prim, fields)
 
 
-def _get_id_fields(prim, strict=False):
+def _get_id_fields(prim):
     data = prim.GetCustomDataByKey(_PRIM_GRILL_KEY) or {}
-    if not data and strict:
+    if not data:
         raise ValueError(f"No data found on '{_PRIM_GRILL_KEY}' key for {prim}")
     fields = data.get(_PRIM_FIELDS_KEY, {})
-    if not fields and strict:
+    if not fields:
         raise ValueError(f"Missing or empty '{_PRIM_FIELDS_KEY}' found on '{_PRIM_GRILL_KEY}' custom data for {prim}. Custom data: {pformat(data)}")
     if not isinstance(fields, typing.Mapping):
         raise TypeError(f"Expected mapping on key '{_PRIM_FIELDS_KEY}' from {prim} on custom data key '{_PRIM_GRILL_KEY}'. Got instead {fields} with type: {type(fields)}")
