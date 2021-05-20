@@ -1,13 +1,10 @@
-import tempfile
 from pathlib import Path
-from itertools import chain
-from functools import partial, lru_cache
+from functools import partial
 
 import networkx
 from pxr import Usd
 from grill import write
 from PySide2 import QtWidgets, QtCore, QtGui
-from networkx.drawing import nx_pydot
 
 from . import sheets as _sheets, description as _description
 
