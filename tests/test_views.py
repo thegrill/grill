@@ -162,6 +162,8 @@ class TestViews(unittest.TestCase):
         widget._existing.table.selectAll()
         selected_items = widget._existing.table.selectedIndexes()
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
+        valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{len(existing)}")
+        widget._graph_view._graph_url_changed(valid_url)
         # sometimes, a race condition deletes the dot2svg object before the runnable
         # events complete. Error is:
         # RuntimeError: Internal C++ object (_Dot2SvgSignals) already deleted.

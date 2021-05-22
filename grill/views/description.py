@@ -117,13 +117,14 @@ class _GraphViewer(_DotViewer):
     @lru_cache(maxsize=None)
     def _subgraph_dot_path(self, node_indices: tuple):
         print(f"Getting subgraph for: {node_indices}")
+        graph = self.graph
         successors = chain.from_iterable(
-            self._graph.successors(index) for index in node_indices)
+            graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(
-            self._graph.predecessors(index) for index in node_indices)
+            graph.predecessors(index) for index in node_indices)
         nodes_of_interest = list(self.sticky_nodes)  # sticky nodes are always visible
         nodes_of_interest.extend(chain(node_indices, successors, predecessors))
-        subgraph = self._graph.subgraph(nodes_of_interest)
+        subgraph = graph.subgraph(nodes_of_interest)
 
         fd, fp = tempfile.mkstemp()
         nx_pydot.write_dot(subgraph, fp)
