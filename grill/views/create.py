@@ -233,7 +233,6 @@ class TaxonomyEditor(_CreatePrims):
             taxon_name = taxon.GetName()
             item = QtGui.QStandardItem()
             item.setData(taxon_name, QtCore.Qt.DisplayRole)
-            # item.setData(taxon, QtCore.Qt.UserRole)
             item.setData(index, QtCore.Qt.UserRole)
             existing_model.setItem(index, 0, item)
             graph.add_node(index, style='rounded', shape='record',
