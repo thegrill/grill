@@ -8,7 +8,7 @@ from itertools import chain
 from functools import lru_cache
 from collections import defaultdict
 
-import networkx
+import networkx as nx
 from pxr import Usd, Pcp, Sdf
 from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
@@ -98,7 +98,8 @@ class _GraphViewer(_DotViewer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.urlChanged.connect(self._graph_url_changed)
-        self._sticky_nodes = set()
+        self.sticky_nodes = list()
+        self._graph = None
 
     def _graph_url_changed(self, url: QtCore.QUrl):
         node_uri = url.toString()
@@ -115,7 +116,7 @@ class _GraphViewer(_DotViewer):
             self._graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(
             self._graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = sorted(self._sticky_nodes)  # sticky nodes are always visible
+        nodes_of_interest = list(self.sticky_nodes)  # sticky nodes are always visible
         nodes_of_interest.extend(chain(node_indices, successors, predecessors))
         subgraph = self._graph.subgraph(nodes_of_interest)
 
@@ -128,18 +129,15 @@ class _GraphViewer(_DotViewer):
         dot_path = self._subgraph_dot_path(tuple(node_indices))
         self.setDotPath(dot_path)
 
-    def setGraph(self, graph):
-        self._subgraph_dot_path.cache_clear()
-        self._sticky_nodes.clear()
-        self._graph = graph
-
     @property
-    def sticky_nodes(self):
-        return self._sticky_nodes
+    def graph(self):
+        return self._graph
 
-    @sticky_nodes.setter
-    def sticky_nodes(self, value):
-        self._sticky_nodes = set(value)
+    @graph.setter
+    def graph(self, graph):
+        self._subgraph_dot_path.cache_clear()
+        self.sticky_nodes.clear()
+        self._graph = graph
 
 
 class PrimComposition(QtWidgets.QDialog):
@@ -280,7 +278,9 @@ class LayersComposition(QtWidgets.QDialog):
         self._layers.model.setHorizontalHeaderLabels([''] * len(self._LAYERS_COLUMNS))
         self._prims.model.setHorizontalHeaderLabels([''] * len(self._PRIM_COLUMNS))
 
-        graph = networkx.DiGraph(tooltip="LayerStack Composition")
+        self._graph_view.graph = graph = nx.DiGraph(tooltip="LayerStack Composition")
+        # we always want to see the legend nodes, so mark them as sticky
+        self._graph_view.sticky_nodes = legend_node_ids = list()
         # legend
         arcs_to_display = {  # should include all?
             Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),  # purple
@@ -289,13 +289,13 @@ class LayersComposition(QtWidgets.QDialog):
             Pcp.ArcTypeSpecialize: dict(color=12, colorscheme="paired12", fontcolor=12),  # brown
             Pcp.ArcTypeInherit: dict(color=4, colorscheme="paired12", fontcolor=4),  # green
         }
-        legend_node_ids = set()
+
         for arc_type, edge_attrs in arcs_to_display.items():
             label = f" {arc_type.displayName}"
-            arc_node_indices = {len(legend_node_ids), len(legend_node_ids)+1}
+            arc_node_indices = (len(legend_node_ids), len(legend_node_ids)+1)
             graph.add_nodes_from(arc_node_indices, style='invis')
             graph.add_edge(*arc_node_indices, label=label, **edge_attrs)
-            legend_node_ids.update(arc_node_indices)
+            legend_node_ids.extend(arc_node_indices)
 
         layer_stacks_by_node_idx = dict()
         stack_id_by_node_idx = dict.fromkeys(legend_node_ids)  # {42: layer.identifier}
@@ -370,7 +370,7 @@ class LayersComposition(QtWidgets.QDialog):
         items_to_add = [
             # QtGui.QStandardItem(layer.identifier)
             _createItem(layer)
-            for node_id in sorted(set(graph.nodes) - legend_node_ids)
+            for node_id in sorted(set(graph.nodes).difference(legend_node_ids))
             for layer in layer_stacks_by_node_idx[node_id]
         ]
         layers_model.setRowCount(len(items_to_add))
@@ -381,6 +381,3 @@ class LayersComposition(QtWidgets.QDialog):
         layers_model.blockSignals(False)
         for table in self._layers, self._prims:
             table.table.setSortingEnabled(True)
-
-        self._graph_view.setGraph(graph)
-        self._graph_view.sticky_nodes = legend_node_ids  # we always want to "see these nodes"

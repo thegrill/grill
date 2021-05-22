@@ -226,7 +226,7 @@ class TaxonomyEditor(_CreatePrims):
         existing_model.setRowCount(len(self._taxon_options))
         existing_model.blockSignals(True)
 
-        graph = networkx.DiGraph(tooltip="My label")
+        self._graph_view.graph = graph = networkx.DiGraph(tooltip="Taxonomy Graph")
         graph.graph['graph'] = {'rankdir': 'LR'}
         _ids_by_taxa = dict()  # {"taxon1": 42}
         for index, taxon in enumerate(self._taxon_options):
@@ -250,7 +250,6 @@ class TaxonomyEditor(_CreatePrims):
 
         existing_model.blockSignals(False)
         self._existing._setColumnLocked(0, True)
-        self._graph_view.setGraph(graph)
 
     @_sheets.wait()
     def _create(self):
