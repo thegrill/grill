@@ -101,13 +101,18 @@ class _GraphViewer(_DotViewer):
         self.sticky_nodes = list()
         self._graph = None
 
+    @property
+    def url_id_prefix(self):
+        return "_node_id_"
+
     def _graph_url_changed(self, url: QtCore.QUrl):
         node_uri = url.toString()
         node_uri_stem = node_uri.split("/")[-1]
-        if node_uri_stem.startswith("node_id_"):
-            # node_index = node_uri_stem.split("node_id_")[-1]
-            node_index = int(node_uri_stem.split("node_id_")[-1])
-            self.view([node_index])
+        if node_uri_stem.startswith(self.url_id_prefix):
+            index = node_uri_stem.split(self.url_id_prefix)[-1]
+            if not index.isdigit():
+                raise ValueError(f"Expected suffix of node URL ID to be a digit. Got instead '{index}' of type: {type(index)}.")
+            self.view([int(index)])
 
     @lru_cache(maxsize=None)
     def _subgraph_dot_path(self, node_indices: tuple):
@@ -337,7 +342,7 @@ class LayersComposition(QtWidgets.QDialog):
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip = tooltip.replace('\n', '&#10;')
             graph.add_node(stack_index, style='rounded', shape='record', label=label,
-                       tooltip=tooltip, title='world', href=f"node_id_{stack_index}")
+                       tooltip=tooltip, title='world', href=f"{self._graph_view.url_id_prefix}{stack_index}")
 
         # only query composition arcs that have specs on our prims.
         qFilter = Usd.PrimCompositionQuery.Filter()

@@ -238,7 +238,7 @@ class TaxonomyEditor(_CreatePrims):
             existing_model.setItem(index, 0, item)
             graph.add_node(index, style='rounded', shape='record',
                        label=taxon_name, tooltip=taxon_name, title=taxon_name,
-                       href=f"node_id_{index}")
+                       href=f"{self._graph_view.url_id_prefix}{index}")
             _ids_by_taxa[taxon_name] = index
 
         # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
