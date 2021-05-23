@@ -254,9 +254,16 @@ class TaxonomyEditor(_CreatePrims):
             item.setData(taxon_name, QtCore.Qt.DisplayRole)
             item.setData(index, QtCore.Qt.UserRole)
             existing_model.setItem(index, 0, item)
-            graph.add_node(index, style='rounded', shape='record',
-                       label=taxon_name, tooltip=taxon_name, title=taxon_name,
-                       href=f"{self._graph_view.url_id_prefix}{index}")
+            graph.add_node(
+                index,
+                label=taxon_name,
+                tooltip=taxon_name,
+                href=f"{self._graph_view.url_id_prefix}{index}",
+                shape="box",
+                fillcolor="lightskyblue1",
+                color="dodgerblue4",
+                style='"filled,rounded"',
+            )
             _ids_by_taxa[taxon_name] = index
 
         # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
