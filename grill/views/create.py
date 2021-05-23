@@ -21,9 +21,14 @@ class _CreatePrims(QtWidgets.QDialog):
         self._amount = QtWidgets.QSpinBox()
         self._display_le = QtWidgets.QLineEdit()
         form_l.addRow('📚 Amount:', self._amount)
-        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Apply | QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
+
+        apply_btn = button_box.button(QtWidgets.QDialogButtonBox.Apply)
+        self._applied = apply_btn.clicked
 
         self.sheet = sheet = _sheets._Spreadsheet(columns, _sheets._ColumnOptions.NONE)
         sheet.model.setHorizontalHeaderLabels([''] * len(columns))
@@ -69,6 +74,7 @@ class CreateAssets(_CreatePrims):
         )
         super().__init__(_columns, *args, **kwargs)
         self.accepted.connect(self._create)
+        self._applied.connect(self._apply)
         self.setWindowTitle("Create Assets")
 
     @_sheets.wait()
@@ -96,6 +102,12 @@ class CreateAssets(_CreatePrims):
         self._stage = stage
         root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
         self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
+
+    def _apply(self):
+        """Apply current changes and keep dialog open."""
+        # TODO: move this to the base _CreatePrims class
+        self._create()
+        self.setStage(self._stage)
 
 
 class TaxonomyEditor(_CreatePrims):
@@ -212,6 +224,13 @@ class TaxonomyEditor(_CreatePrims):
         self._splitter.setStretchFactor(1, 3)
 
         self.accepted.connect(self._create)
+        self._applied.connect(self._apply)
+
+    def _apply(self):
+        """Apply current changes and keep dialog open."""
+        # TODO: move this to the base _CreatePrims class
+        self._create()
+        self.setStage(self._stage)
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         node_ids = [index.data(QtCore.Qt.UserRole) for index in self._existing.table.selectedIndexes()]

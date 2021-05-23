@@ -109,6 +109,7 @@ class TestViews(unittest.TestCase):
         widget._create()
         taxon_editor = widget.sheet._columns_spec[0].editor(widget, None, None)
         self.assertIsInstance(taxon_editor, QtWidgets.QComboBox)
+        widget._apply()
 
     def test_taxonomy_editor(self):
         stage = write.fetch_stage(str(self.rootf))
@@ -158,17 +159,19 @@ class TestViews(unittest.TestCase):
         self.assertIsNone(editor.property('text'))
 
         # after creation, set stage again to test existing column
-        widget.setStage(stage)
+        widget._apply()
         widget._existing.table.selectAll()
         selected_items = widget._existing.table.selectedIndexes()
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
         valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{len(existing)}")
         widget._graph_view._graph_url_changed(valid_url)
-        # sometimes, a race condition deletes the dot2svg object before the runnable
-        # events complete. Error is:
+        # Nitpick, wait for dot 2 svg conversions to finish
+        # This does not crash the program but an exception is logged when race
+        # conditions apply (e.g. the object is deleted before the runnable completes).
+        # This logged exception comes in the form of:
         # RuntimeError: Internal C++ object (_Dot2SvgSignals) already deleted.
-        # QtConcurrent should allow to avoid this without qthread objects.
-        # However, the tests do not fail and I didn't find support for QtConcurrent atm
+        # Solution seems to be to block and wait for all runnables to complete.
+        widget._graph_view._threadpool.waitForDone(10_000)
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
