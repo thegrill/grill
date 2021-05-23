@@ -1,11 +1,12 @@
 from pathlib import Path
 from functools import partial
 
+import networkx
 from pxr import Usd
 from grill import write
 from PySide2 import QtWidgets, QtCore, QtGui
 
-from . import sheets as _sheets
+from . import sheets as _sheets, description as _description
 
 
 class _CreatePrims(QtWidgets.QDialog):
@@ -20,9 +21,14 @@ class _CreatePrims(QtWidgets.QDialog):
         self._amount = QtWidgets.QSpinBox()
         self._display_le = QtWidgets.QLineEdit()
         form_l.addRow('📚 Amount:', self._amount)
-        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Apply | QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
+
+        apply_btn = button_box.button(QtWidgets.QDialogButtonBox.Apply)
+        self._applied = apply_btn.clicked
 
         self.sheet = sheet = _sheets._Spreadsheet(columns, _sheets._ColumnOptions.NONE)
         sheet.model.setHorizontalHeaderLabels([''] * len(columns))
@@ -68,6 +74,7 @@ class CreateAssets(_CreatePrims):
         )
         super().__init__(_columns, *args, **kwargs)
         self.accepted.connect(self._create)
+        self._applied.connect(self._apply)
         self.setWindowTitle("Create Assets")
 
     @_sheets.wait()
@@ -95,6 +102,12 @@ class CreateAssets(_CreatePrims):
         self._stage = stage
         root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
         self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
+
+    def _apply(self):
+        """Apply current changes and keep dialog open."""
+        # TODO: move this to the base _CreatePrims class
+        self._create()
+        self.setStage(self._stage)
 
 
 class TaxonomyEditor(_CreatePrims):
@@ -167,6 +180,7 @@ class TaxonomyEditor(_CreatePrims):
                 checked_items.update(idata.split("\n"))
 
             for taxon in self._taxon_options:
+                taxon = taxon.GetName()
                 item = QtWidgets.QListWidgetItem(inter._options)
                 item.setText(taxon)
                 item.setCheckState(QtCore.Qt.Checked if taxon in checked_items else QtCore.Qt.Unchecked)
@@ -190,31 +204,75 @@ class TaxonomyEditor(_CreatePrims):
         super().__init__(_columns, *args, **kwargs)
         self.setWindowTitle("Taxonomy Editor")
 
+        existing_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self._existing = existing = _sheets._Spreadsheet(
             # Existing label just a bit to the right (Above the search bar)
             (_sheets._Column("        🧬 Existing", identity),),
             _sheets._ColumnOptions.SEARCH
         )
         existing.layout().setContentsMargins(0, 0, 0, 0)
-        self._splitter.insertWidget(0, existing)
+        existing_splitter.addWidget(existing)
+
+        self._graph_view = _description._GraphViewer(parent=self)
+        existing_splitter.addWidget(self._graph_view)
+
+        selectionModel = existing.table.selectionModel()
+        selectionModel.selectionChanged.connect(self._selectionChanged)
+
+        self._splitter.insertWidget(0, existing_splitter)
         self._splitter.setStretchFactor(0, 2)
         self._splitter.setStretchFactor(1, 3)
 
         self.accepted.connect(self._create)
+        self._applied.connect(self._apply)
+
+    def _apply(self):
+        """Apply current changes and keep dialog open."""
+        # TODO: move this to the base _CreatePrims class
+        self._create()
+        self.setStage(self._stage)
+
+    def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
+        node_ids = [index.data(QtCore.Qt.UserRole) for index in self._existing.table.selectedIndexes()]
+        self._graph_view.view(node_ids)
 
     def setStage(self, stage):
         self._stage = stage
         root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
-        self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
+        self._taxon_options = [child for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
         existing_model = self._existing.model
         existing_model.setHorizontalHeaderLabels([''])
         existing_model.setRowCount(len(self._taxon_options))
         existing_model.blockSignals(True)
-        for row_index, taxon in enumerate(self._taxon_options):
+
+        self._graph_view.graph = graph = networkx.DiGraph(tooltip="Taxonomy Graph")
+        graph.graph['graph'] = {'rankdir': 'LR'}
+        _ids_by_taxa = dict()  # {"taxon1": 42}
+        for index, taxon in enumerate(self._taxon_options):
+            taxon_name = taxon.GetName()
             item = QtGui.QStandardItem()
-            item.setData(taxon, QtCore.Qt.DisplayRole)
-            item.setData(taxon, QtCore.Qt.UserRole)
-            existing_model.setItem(row_index, 0, item)
+            item.setData(taxon_name, QtCore.Qt.DisplayRole)
+            item.setData(index, QtCore.Qt.UserRole)
+            existing_model.setItem(index, 0, item)
+            graph.add_node(
+                index,
+                label=taxon_name,
+                tooltip=taxon_name,
+                href=f"{self._graph_view.url_id_prefix}{index}",
+                shape="box",
+                fillcolor="lightskyblue1",
+                color="dodgerblue4",
+                style='"filled,rounded"',
+            )
+            _ids_by_taxa[taxon_name] = index
+
+        # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
+        for row_index, taxon in enumerate(self._taxon_options):
+            taxa = taxon.GetCustomDataByKey(write._PRIM_GRILL_KEY)['taxa']
+            taxa.pop(taxon.GetName())
+            for ref_taxon in taxa:
+                graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon.GetName()])
+
         existing_model.blockSignals(False)
         self._existing._setColumnLocked(0, True)
 

@@ -109,14 +109,17 @@ class TestViews(unittest.TestCase):
         widget._create()
         taxon_editor = widget.sheet._columns_spec[0].editor(widget, None, None)
         self.assertIsInstance(taxon_editor, QtWidgets.QComboBox)
+        widget._apply()
 
     def test_taxonomy_editor(self):
         stage = write.fetch_stage(str(self.rootf))
 
-        for each in range(1, 6):
-            write.define_taxon(stage, f"Option{each}")
+        existing = [write.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
 
         widget = create.TaxonomyEditor()
+        with self.assertRaises(ValueError):
+            invalid_uril = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}not_a_digit")
+            widget._graph_view._graph_url_changed(invalid_uril)
         widget.setStage(stage)
 
         widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
@@ -154,6 +157,21 @@ class TestViews(unittest.TestCase):
         menu = editor._create_context_menu()
         menu.actions()[0].trigger()
         self.assertIsNone(editor.property('text'))
+
+        # after creation, set stage again to test existing column
+        widget._apply()
+        widget._existing.table.selectAll()
+        selected_items = widget._existing.table.selectedIndexes()
+        self.assertEqual(len(selected_items), len(valid_data) + len(existing))
+        valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{len(existing)}")
+        widget._graph_view._graph_url_changed(valid_url)
+        # Nitpick, wait for dot 2 svg conversions to finish
+        # This does not crash the program but an exception is logged when race
+        # conditions apply (e.g. the object is deleted before the runnable completes).
+        # This logged exception comes in the form of:
+        # RuntimeError: Internal C++ object (_Dot2SvgSignals) already deleted.
+        # Solution seems to be to block and wait for all runnables to complete.
+        widget._graph_view._threadpool.waitForDone(10_000)
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()

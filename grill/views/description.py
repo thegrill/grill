@@ -8,7 +8,7 @@ from itertools import chain
 from functools import lru_cache
 from collections import defaultdict
 
-import networkx
+import networkx as nx
 from pxr import Usd, Pcp, Sdf
 from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
@@ -92,6 +92,58 @@ class _DotViewer(QtWidgets.QFrame):
         self._error_view.setVisible(False)
         self._graph_view.setVisible(True)
         self._graph_view.load(QtCore.QUrl.fromLocalFile(filepath))
+
+
+class _GraphViewer(_DotViewer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.urlChanged.connect(self._graph_url_changed)
+        self.sticky_nodes = list()
+        self._graph = None
+
+    @property
+    def url_id_prefix(self):
+        return "_node_id_"
+
+    def _graph_url_changed(self, url: QtCore.QUrl):
+        node_uri = url.toString()
+        node_uri_stem = node_uri.split("/")[-1]
+        if node_uri_stem.startswith(self.url_id_prefix):
+            index = node_uri_stem.split(self.url_id_prefix)[-1]
+            if not index.isdigit():
+                raise ValueError(f"Expected suffix of node URL ID to be a digit. Got instead '{index}' of type: {type(index)}.")
+            self.view([int(index)])
+
+    @lru_cache(maxsize=None)
+    def _subgraph_dot_path(self, node_indices: tuple):
+        print(f"Getting subgraph for: {node_indices}")
+        graph = self.graph
+        successors = chain.from_iterable(
+            graph.successors(index) for index in node_indices)
+        predecessors = chain.from_iterable(
+            graph.predecessors(index) for index in node_indices)
+        nodes_of_interest = list(self.sticky_nodes)  # sticky nodes are always visible
+        nodes_of_interest.extend(chain(node_indices, successors, predecessors))
+        subgraph = graph.subgraph(nodes_of_interest)
+
+        fd, fp = tempfile.mkstemp()
+        nx_pydot.write_dot(subgraph, fp)
+
+        return fp
+
+    def view(self, node_indices: list):
+        dot_path = self._subgraph_dot_path(tuple(node_indices))
+        self.setDotPath(dot_path)
+
+    @property
+    def graph(self):
+        return self._graph
+
+    @graph.setter
+    def graph(self, graph):
+        self._subgraph_dot_path.cache_clear()
+        self.sticky_nodes.clear()
+        self._graph = graph
 
 
 class PrimComposition(QtWidgets.QDialog):
@@ -178,16 +230,15 @@ class LayersComposition(QtWidgets.QDialog):
             each.layout().setContentsMargins(0,0,0,0)
             each.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        self._dot_view = _DotViewer(parent=self)
-        self._dot_view.urlChanged.connect(self._graph_url_changed)
-
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(self._layers)
         horizontal.addWidget(self._prims)
 
+        self._graph_view = _GraphViewer(parent=self)
+
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(horizontal)
-        vertical.addWidget(self._dot_view)
+        vertical.addWidget(self._graph_view)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(vertical)
@@ -219,35 +270,7 @@ class LayersComposition(QtWidgets.QDialog):
         prims_model.blockSignals(False)
         self._prims.table.resizeColumnsToContents()
         self._prims.table.horizontalHeader()._updateVisualSections(0)
-        self._update_node_graph_view(node_indices)
-
-    def _graph_url_changed(self, url: QtCore.QUrl):
-        node_uri = url.toString()
-        node_uri_stem = node_uri.split("/")[-1]
-        node_index = node_uri_stem.split("node_id_")[-1]
-        if node_index.isdigit():
-            node_index = int(node_index)
-            self._update_node_graph_view([node_index])
-
-    @lru_cache(maxsize=None)
-    def _subgraph_dot_path(self, node_indices: tuple):
-        print(f"Getting subgraph for: {node_indices}")
-        successors = chain.from_iterable(
-            self._graph.successors(index) for index in node_indices)
-        predecessors = chain.from_iterable(
-            self._graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = list(range(10))  # needs to be label nodes
-        nodes_of_interest.extend(chain(node_indices, successors, predecessors))
-        subgraph = self._graph.subgraph(nodes_of_interest)
-
-        fd, fp = tempfile.mkstemp()
-        nx_pydot.write_dot(subgraph, fp)
-
-        return fp
-
-    def _update_node_graph_view(self, node_indices: list):
-        dot_path = self._subgraph_dot_path(tuple(node_indices))
-        self._dot_view.setDotPath(dot_path)
+        self._graph_view.view(node_indices)
 
     @_sheets.wait()
     def setStage(self, stage):
@@ -261,7 +284,9 @@ class LayersComposition(QtWidgets.QDialog):
         self._layers.model.setHorizontalHeaderLabels([''] * len(self._LAYERS_COLUMNS))
         self._prims.model.setHorizontalHeaderLabels([''] * len(self._PRIM_COLUMNS))
 
-        self._graph = graph = networkx.DiGraph(tooltip="My label")
+        self._graph_view.graph = graph = nx.DiGraph(tooltip="LayerStack Composition")
+        # we always want to see the legend nodes, so mark them as sticky
+        self._graph_view.sticky_nodes = legend_node_ids = list()
         # legend
         arcs_to_display = {  # should include all?
             Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),  # purple
@@ -270,13 +295,13 @@ class LayersComposition(QtWidgets.QDialog):
             Pcp.ArcTypeSpecialize: dict(color=12, colorscheme="paired12", fontcolor=12),  # brown
             Pcp.ArcTypeInherit: dict(color=4, colorscheme="paired12", fontcolor=4),  # green
         }
-        legend_node_ids = set()
+
         for arc_type, edge_attrs in arcs_to_display.items():
             label = f" {arc_type.displayName}"
-            arc_node_indices = {len(legend_node_ids), len(legend_node_ids)+1}
+            arc_node_indices = (len(legend_node_ids), len(legend_node_ids)+1)
             graph.add_nodes_from(arc_node_indices, style='invis')
             graph.add_edge(*arc_node_indices, label=label, **edge_attrs)
-            legend_node_ids.update(arc_node_indices)
+            legend_node_ids.extend(arc_node_indices)
 
         layer_stacks_by_node_idx = dict()
         stack_id_by_node_idx = dict.fromkeys(legend_node_ids)  # {42: layer.identifier}
@@ -318,7 +343,7 @@ class LayersComposition(QtWidgets.QDialog):
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip = tooltip.replace('\n', '&#10;')
             graph.add_node(stack_index, style='rounded', shape='record', label=label,
-                       tooltip=tooltip, title='world', href=f"node_id_{stack_index}")
+                       tooltip=tooltip, title='world', href=f"{self._graph_view.url_id_prefix}{stack_index}")
 
         # only query composition arcs that have specs on our prims.
         qFilter = Usd.PrimCompositionQuery.Filter()
@@ -351,7 +376,7 @@ class LayersComposition(QtWidgets.QDialog):
         items_to_add = [
             # QtGui.QStandardItem(layer.identifier)
             _createItem(layer)
-            for node_id in sorted(set(graph.nodes) - legend_node_ids)
+            for node_id in sorted(set(graph.nodes).difference(legend_node_ids))
             for layer in layer_stacks_by_node_idx[node_id]
         ]
         layers_model.setRowCount(len(items_to_add))
