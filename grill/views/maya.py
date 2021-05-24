@@ -69,6 +69,7 @@ def _stage_on_widget(widget_creator):
 
 
 create_assets = _stage_on_widget(_create.CreateAssets)
+taxonomy_editor = _stage_on_widget(_create.TaxonomyEditor)
 spreadsheet = _stage_on_widget(_sheets.SpreadsheetEditor)
 layerstack_composition = _stage_on_widget(_description.LayersComposition)
 
@@ -102,6 +103,7 @@ def _create_menu():
 
     for title, launcher in (
             ("Create Assets", create_assets),
+            ("Taxonomy Editor", taxonomy_editor),
             ("Spreadsheet Editor", spreadsheet),
             ("Prim Composition", prim_composition),
             ("LayerStack Composition", layerstack_composition),
