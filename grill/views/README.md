@@ -103,33 +103,3 @@ houdini.layerstack_composition()
 ```
 
 ![grill_maya_layerstack01](https://user-images.githubusercontent.com/8294116/115137947-6668fa00-a06c-11eb-8ec6-3fce8d92627f.gif)
-
-## Creating Assets
-
-#### USD View
-
-Creating assets requires a repository path to be set. If not set, a dialog to set it will be prompted upon creation request.
-
-To set the repository path at any point, go to `Grill -> Preferences -> Repository Path`:
-
-![grill_select_repopath_4](https://user-images.githubusercontent.com/8294116/114215808-681a2a00-99a9-11eb-85c2-04d45d5a3aef.gif)
-
-
-With a repository path set, assets can be created via the `Create Assets` menu. The default is one, but any number of assets can be created at the same time by changing the `Amount` value.
-
-For asset organization, `The Grill` uses the concept of asset [taxonomy](https://en.wikipedia.org/wiki/Taxonomy). This is a hierarchy for organizing assets into groups (`Taxa`) where each individual group (`Taxon`) share high level characteristics (e.g. `Characters`, `Props` and `Shots` are common organizational groups on `Film` and `Animation`).
-To define new `taxa`, the `Taxonomy Editor` provides basic functionality.
-
-On the left, existing `taxa` will be displayed. On the right, fields to create new ones are provided.
-Every new `taxon` can extend (reference) existing `taxa` on the `References` column:
-
-![grill_tax_editor03](https://user-images.githubusercontent.com/8294116/119262723-94b79780-bc1f-11eb-89bb-2eddb63ca2e5.gif)
-
- 
-With `taxa` defined, asset units for each `taxon` can be created.
-
-In the example below, 240 "City" assets are created, copied from a CSV file and pasted directly on the "Create Assets" table.
-
-All created assets are saved to disk on the current repository path.
-
-![grill_create_cities](https://user-images.githubusercontent.com/8294116/112751505-263ccb80-901a-11eb-8a64-d46ef43dd087.gif)

@@ -50,6 +50,12 @@ Views (Inspecting / Authoring)
 
 The ``production`` area is the one that defines everything that exists, from shows to areas, code names and organizational groups for assets.
 
+
+End to End Example
+==================
+
+.. include:: creating_assets.rst
+
 Indices and tables
 ==================
 
