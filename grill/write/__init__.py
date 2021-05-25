@@ -18,7 +18,7 @@ from grill.tokens import ids
 
 logger = logging.getLogger(__name__)
 
-repo = contextvars.ContextVar('repo')
+Repository = repo = contextvars.ContextVar('Repository')
 
 _PRIM_GRILL_KEY = 'grill'
 _PRIM_FIELDS_KEY = 'fields'
