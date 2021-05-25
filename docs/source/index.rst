@@ -46,9 +46,15 @@ At the highest level, all asset data, from creation to finish, goes through the 
 Views (Inspecting / Authoring)
 ==============================
 
-.. mdinclude:: ../../grill/views/README.md
+The ``grill.views`` package provides Qt widgets to author and inspect USD scene graphs.
 
-The ``production`` area is the one that defines everything that exists, from shows to areas, code names and organizational groups for assets.
+Convenience launchers and menus for **USDView**, **Houdini** and **Maya** are provided (appearing under the ``👨‍🍳 Grill`` menu), but any DCC or environment with ``USD`` and ``PySide2`` should be able to use the widgets.
+
+.. include:: spreadsheet_editor.rst
+
+.. include:: prim_composition.rst
+
+.. include:: layerstack_composition.rst
 
 
 End to End Example
