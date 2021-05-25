@@ -7,9 +7,7 @@ from pxr.Usdviewq.plugin import PluginContainer
 
 from PySide2 import QtWidgets
 
-from . import sheets as _sheets
-from . import description as _description
-from . import create as _create
+from . import sheets as _sheets, description as _description, create as _create
 
 
 def _stage_on_widget(widget_creator):
