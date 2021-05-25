@@ -21,16 +21,8 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
 .. note::
 
-    For some DCC applications (e.g. **Maya**, **Houdini**) ``pip`` needs to run
+    For some DCC applications (e.g. **Houdini**, **Maya**) ``pip`` needs to run
     from their corresponding python interpreters:
-
-    .. tab:: Maya
-
-        Visit the `official docs <https://help.autodesk.com/view/MAYAUL/2022/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_ for more details.
-
-        .. code-block:: bash
-
-            mayapy -m pip install grill
 
     .. tab:: Houdini
 
@@ -39,6 +31,14 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
         .. code-block:: bash
 
             hython3.7 -m pip install grill
+
+    .. tab:: Maya
+
+        Visit the `official docs <https://help.autodesk.com/view/MAYAUL/2022/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_ for more details.
+
+        .. code-block:: bash
+
+            mayapy -m pip install grill
 
 Extra Dependencies
 ~~~~~~~~~~~~~~~~~~
@@ -94,22 +94,30 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
       (grilldemo01) C:\>conda install -c anaconda graphviz
 
-7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView** as well as **Maya**.
+7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView**, **Maya** and **Houdini***.
 
-   .. image:: https://user-images.githubusercontent.com/8294116/114263497-2d57d680-9a29-11eb-8992-6b443f942263.gif
+   .. tab:: USDView
 
-   .. image:: https://user-images.githubusercontent.com/8294116/115981668-bdc11a00-a5d8-11eb-9897-6061639d1c39.gif
+        .. image:: https://user-images.githubusercontent.com/8294116/114263497-2d57d680-9a29-11eb-8992-6b443f942263.gif
 
-   .. important::
-      To see the menu in **Houdini**, run this additional step (which installs the grill `houdini package <https://www.sidefx.com/docs/houdini/ref/plugins.html>`_ on the **Houdini's** user preferences):
+   .. tab:: Houdini
 
-      .. code:: bash
+        .. image:: https://user-images.githubusercontent.com/8294116/115981745-68d1d380-a5d9-11eb-8033-979d72ca0e6b.gif
 
-         hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
+        .. important::
 
-      The manual execution of this step might be removed in the future.
+            To see the menu in **Houdini**, run this additional step (which installs the grill `houdini package <https://www.sidefx.com/docs/houdini/ref/plugins.html>`_ on the **Houdini's** user preferences):
 
-   .. image:: https://user-images.githubusercontent.com/8294116/115981745-68d1d380-a5d9-11eb-8033-979d72ca0e6b.gif
+            .. code:: bash
+
+                hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
+
+            The manual execution of this step might be removed in the future.
+
+   .. tab:: Maya
+
+        .. image:: https://user-images.githubusercontent.com/8294116/115981668-bdc11a00-a5d8-11eb-9897-6061639d1c39.gif
+
 
 .. _miniconda: https://docs.conda.io/en/latest/miniconda.html
 .. _Anaconda: https://docs.anaconda.com/anaconda/user-guide/getting-started/
