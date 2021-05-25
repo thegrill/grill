@@ -81,8 +81,8 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
       (base) C:\>conda activate grilldemo01
 
-5. Install ``grill`` via pip; use the ``full`` option to use standalone.
-   For more details, refer to the `pip install instructions above <#pip-install>`_.
+5. Install ``grill`` via ``pip``; use the ``full`` option to use standalone.
+   Refer to the `pip install instructions <#pip-install>`_ for more details.
 
    .. code:: bash
 
@@ -104,20 +104,19 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
         .. image:: https://user-images.githubusercontent.com/8294116/115981745-68d1d380-a5d9-11eb-8033-979d72ca0e6b.gif
 
-        .. important::
-
-            To see the menu in **Houdini**, run this additional step (which installs the grill `houdini package <https://www.sidefx.com/docs/houdini/ref/plugins.html>`_ on the **Houdini's** user preferences):
-
-            .. code:: bash
-
-                hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
-
-            The manual execution of this step might be removed in the future.
-
    .. tab:: Maya
 
         .. image:: https://user-images.githubusercontent.com/8294116/115981668-bdc11a00-a5d8-11eb-9897-6061639d1c39.gif
 
+   .. important::
+
+        To see the menu in **Houdini**, run this additional step (which installs the grill `houdini package <https://www.sidefx.com/docs/houdini/ref/plugins.html>`_ on the **Houdini's** user preferences):
+
+        .. code:: bash
+
+            hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
+
+        The manual execution of this step might be removed in the future.
 
 .. _miniconda: https://docs.conda.io/en/latest/miniconda.html
 .. _Anaconda: https://docs.anaconda.com/anaconda/user-guide/getting-started/
