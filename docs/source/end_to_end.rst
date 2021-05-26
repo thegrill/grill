@@ -1,3 +1,6 @@
+End to End Example
+==================
+
 Creating Assets
 ---------------
 
@@ -6,7 +9,7 @@ Repository Path
 
 Creating assets requires a repository path to be set. This change lasts during the duration of the current application (or python process), so it is needed only once.
 
-**API:**  ``grill.write.Repository``
+**API:** :py:data:`grill.write.Repository`
 
 .. code-block::  python
 
@@ -31,11 +34,15 @@ Defining Taxonomy
 
 For asset organization, ``The Grill`` uses the concept of asset `taxonomy`_. This is a hierarchy for organizing assets into groups (``Taxa``) where members of each individual group (``Taxon``) share characteristics (e.g. ``Characters``, ``Props`` and ``Shots`` are common organizational groups found on ``Film`` and ``Animation`` projects).
 
-**API:**  ``grill.write.define_taxon``
+**API:** :py:func:`grill.write.define_taxon`
+
+.. hint::
+
+   For quick prototyping, :py:meth:`grill.write.UsdAsset.get_anonymous` can be used to get temporary but valid ``grill`` identifiers.
 
 .. code-block::  python
 
-    >>> from grill import write
+    >>> stage = write.fetch_stage(write.UsdAsset.get_anonymous())
     >>> character = write.define_taxon(stage, "Character")
     >>> character
     Usd.Prim(</Taxonomy/Character>)
@@ -57,6 +64,15 @@ Creating Asset Units
 ~~~~~~~~~~~~~~~~~~~~
 
 An ``Asset Unit`` is considered to be a meaningful, unique member for each ``taxon``. A ``taxon`` can contain any number of individual ``units``.
+
+**API:** :py:func:`grill.write.create`
+
+.. code-block::  python
+
+    >>> write.create(character, "Hero01", label="Hero 01 🦸")
+    Usd.Prim(</Character/Hero01>)
+
+**GUI:** Create Assets
 
 In the example below, 240 ``City`` assets are created, copied from a CSV file and pasted directly on the ``Create Assets`` table.
 

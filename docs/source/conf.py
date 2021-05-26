@@ -50,7 +50,7 @@ extensions = ['sphinx.ext.autodoc',
 
 # Offset to play well with copybutton
 toggleprompt_offset_right = 25
-
+always_document_param_types = True
 autodoc_member_order = 'groupwise'
 autodoc_default_flags = ['members', 'show-inheritance']
 # graphviz_dot = r'B:\__appdata__\graphviz\bin\dot.exe'
@@ -124,7 +124,20 @@ html_static_path = ['_static']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'grilldoc'
+html_sidebars = {
+    '**': [
+        'logo.html',
+        'github.html',
+        'globaltoc.html',
+        'searchbox.html',
+    ]
+}
 
+html_theme_options = {
+    'color': '#E8371A',
+    'description': 'Cook digital',
+    'logo_name': '👨‍🍳 The Grill',
+}
 
 # -- Options for LaTeX output ---------------------------------------------
 

@@ -1,3 +1,28 @@
+"""
+Authoring and editing utilities that follow `grill` expectations and conventions.
+
+.. data:: Repository
+
+    :class:`contextvars.ContextVar` for the global asset repository location.
+
+    It's value must always be set to a :class:`pathlib.Path` object.
+    By default, no value has been set.
+    Ensure to set it before performing any creation operation.
+
+    Example:
+        >>> Repository.get()  # not set
+        Traceback (most recent call last):
+          File "<input>", line 1, in <module>
+        LookupError: <ContextVar name='Repository' at 0x00000207F0A12B88>
+        >>> import tempfile
+        >>> from pathlib import Path
+        >>> Repository.set(Path(tempfile.mkdtemp()))
+        <Token var=<ContextVar name='Repository' at 0x00000213A46FF900> at 0x00000213C6A9F0C0>
+        >>> Repository.get()
+        WindowsPath('C:/Users/CHRIST~1/AppData/Local/Temp/tmp767wqaya')
+
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -32,16 +57,13 @@ _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets
 
 
 @functools.lru_cache(maxsize=None)
-def fetch_stage(root_id) -> Usd.Stage:
+def fetch_stage(root_id: str) -> Usd.Stage:
     """For the given root layer identifier, get a corresponding stage.
 
     If layer does not exist, it is created in the repository.
 
     If a stage for the corresponding layer is found on the global cache, return it.
     Otherwise open it, populate the cache and return it.
-
-    :param root_id:
-    :return:
     """
     rootf = UsdAsset(root_id)
     cache = UsdUtils.StageCache.Get()
@@ -82,14 +104,14 @@ def fetch_stage(root_id) -> Usd.Stage:
     return stage
 
 
-def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: typing.Mapping=types.MappingProxyType({})) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name: str, *, references: tuple = tuple(), id_fields: typing.Mapping = types.MappingProxyType({})) -> Usd.Prim:
     """Define a new taxon group for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing taxon with the provided name already exists, it is returned.
 
-    If id_fields is provided, it is set on the prim.
+    The new taxon can extend from existing taxa via the references argument.
 
-    If references are passed, they are added.
+    Optional key value identifier fields can be provided for identification purposes.
     """
     if name == _TAXONOMY_NAME:
         # TODO: prevent upper case lower case mismatch handle between multiple OS?
@@ -121,7 +143,8 @@ def define_taxon(stage: Usd.Stage, name:str, *, references=tuple(), id_fields: t
     return prim
 
 
-def create(taxon: Usd.Prim, name, label=""):
+def create(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
+    """Create a unit member of the given taxon, with an optional display label."""
     stage = taxon.GetStage()
     new_tokens = {**_get_id_fields(taxon), _UNIT_UNIQUE_ID.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
@@ -155,7 +178,8 @@ def create(taxon: Usd.Prim, name, label=""):
     return over_prim
 
 
-def taxonomy_context(stage):
+def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
+    """Get an edit context where edits will target this stage's taxonomy layer."""
     try:
         return _context(stage, _TAXONOMY_FIELDS)
     except ValueError:
@@ -176,7 +200,8 @@ def taxonomy_context(stage):
         return _context(stage, _TAXONOMY_FIELDS)
 
 
-def unit_context(prim: Usd.Prim):
+def unit_context(prim: Usd.Prim) -> Usd.EditContext:
+    """Get an edit context where edits will target this prim's unit root layer."""
     fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
     return _context(prim, fields)
 

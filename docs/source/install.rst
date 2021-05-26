@@ -1,8 +1,8 @@
 Installation
-------------
+============
 
 Pip Install
-~~~~~~~~~~~
+-----------
 
 By default, ``grill`` won't install ``USD``, ``PySide2`` & ``PyOpenGL``. This is because
 DCC apps and other environments bundle them outside of ``pip``. To include them, use the ``[full]`` option.
@@ -26,7 +26,7 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
     .. tab:: Houdini
 
-        If ``pip`` is missing, it can be downloaded `from this guide <https://wordpress.discretization.de/houdini/home/advanced-2/installing-and-using-scipy-in-houdini/>`_, then:
+        If ``pip`` is missing, `follow this guide <https://wordpress.discretization.de/houdini/home/advanced-2/installing-and-using-scipy-in-houdini/>`_.
 
         .. code-block:: bash
 
@@ -41,7 +41,7 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
             mayapy -m pip install grill
 
 Extra Dependencies
-~~~~~~~~~~~~~~~~~~
+------------------
 
 The following optional dependencies should be installed separately.
 
