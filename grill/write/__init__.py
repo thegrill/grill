@@ -105,14 +105,14 @@ def fetch_stage(identifier: str) -> Usd.Stage:
     return stage
 
 
-def define_taxon(stage: Usd.Stage, name: str, *, references: tuple = tuple(), id_fields: typing.Mapping = types.MappingProxyType({})) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name: str, *, references: typing.Tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
     """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
 
     The new ``taxon`` can extend from existing ``taxa`` via the ``references`` argument.
 
-    Optional key value identifier fields can be provided for identification purposes via ``id_fields``.
+    Optional ``field=value`` items can be provided for identification purposes via ``id_fields``.
 
     :returns: `Prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ representing the ``taxon`` group.
     """
