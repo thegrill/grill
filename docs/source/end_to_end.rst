@@ -82,7 +82,7 @@ All created asset units are saved to disk on the current repository path.
 
 
 Modifying Assets
-~~~~~~~~~~~~~~~~
+----------------
 
 Any USD application should be able to modify the grill assets.
 
