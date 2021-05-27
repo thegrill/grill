@@ -44,14 +44,29 @@ extensions = ['sphinx.ext.autodoc',
               'm2r2',
               'sphinx_copybutton',
               'sphinx_toggleprompt',
+              'sphinx_togglebutton',
               'sphinx.ext.inheritance_diagram',
               'sphinx_inline_tabs',
               'sphinx_autodoc_typehints']
 
 # Offset to play well with copybutton
 toggleprompt_offset_right = 25
+togglebutton_hint = " "
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
+
+inheritance_graph_attrs = dict(rankdir="TB", bgcolor='transparent')
+
+inheritance_node_attrs = dict(
+    shape='Mrecord',
+    color='"#088d91"',
+    style='filled',
+    fillcolor='"#ecf8f9"',
+    size='"6.0, 8.0"'
+)
+
+inheritance_edge_attrs = dict(color='"#088d91"')
+
 autodoc_default_flags = ['members', 'show-inheritance']
 # graphviz_dot = r'B:\__appdata__\graphviz\bin\dot.exe'
 graphviz_output_format = 'svg'
@@ -212,5 +227,9 @@ epub_copyright = copyright
 epub_exclude_files = ['search.html']
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None,
-                       'http://naming.readthedocs.io': None}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'naming': ('http://naming.readthedocs.io/en/latest/', None),
+    'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
+
+}

@@ -5,9 +5,10 @@ Authoring and editing utilities that follow `grill` expectations and conventions
 
     :class:`contextvars.ContextVar` for the global asset repository location.
 
-    It's value must always be set to a :class:`pathlib.Path` object.
-    By default, no value has been set.
-    Ensure to set it before performing any creation operation.
+    It's value must always be set to a :class:`pathlib.Path`.
+
+    .. attention::
+        By default, no value has been set. Ensure to set it before performing any creation operation.
 
     Example:
         >>> Repository.get()  # not set
@@ -57,15 +58,15 @@ _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets
 
 
 @functools.lru_cache(maxsize=None)
-def fetch_stage(root_id: str) -> Usd.Stage:
-    """For the given root layer identifier, get a corresponding stage.
+def fetch_stage(identifier: str) -> Usd.Stage:
+    """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
-    If layer does not exist, it is created in the repository.
+    If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
 
-    If a stage for the corresponding layer is found on the global cache, return it.
-    Otherwise open it, populate the cache and return it.
+    If an open matching `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ is found on the `global cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_, return it.
+    Otherwise open it, populate the `cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_ and return it.
     """
-    rootf = UsdAsset(root_id)
+    rootf = UsdAsset(identifier)
     cache = UsdUtils.StageCache.Get()
     repo_path = repo.get()
     resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
@@ -105,13 +106,15 @@ def fetch_stage(root_id: str) -> Usd.Stage:
 
 
 def define_taxon(stage: Usd.Stage, name: str, *, references: tuple = tuple(), id_fields: typing.Mapping = types.MappingProxyType({})) -> Usd.Prim:
-    """Define a new taxon group for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
+    """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
-    If an existing taxon with the provided name already exists, it is returned.
+    If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
 
-    The new taxon can extend from existing taxa via the references argument.
+    The new ``taxon`` can extend from existing ``taxa`` via the ``references`` argument.
 
-    Optional key value identifier fields can be provided for identification purposes.
+    Optional key value identifier fields can be provided for identification purposes via ``id_fields``.
+
+    :returns: `Prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ representing the ``taxon`` group.
     """
     if name == _TAXONOMY_NAME:
         # TODO: prevent upper case lower case mismatch handle between multiple OS?
@@ -144,7 +147,12 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple = tuple(), id
 
 
 def create(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
-    """Create a unit member of the given taxon, with an optional display label."""
+    """Create a unit member of the given ``taxon``, with an optional display label.
+
+    The new member will be created as a `prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ on the given ``taxon``'s `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
+
+    .. seealso:: :func:`define_taxon`
+    """
     stage = taxon.GetStage()
     new_tokens = {**_get_id_fields(taxon), _UNIT_UNIQUE_ID.name: name}
     current_asset_name = UsdAsset(Path(stage.GetRootLayer().identifier).name)
@@ -179,7 +187,11 @@ def create(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
 
 
 def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
-    """Get an edit context where edits will target this stage's taxonomy layer."""
+    """Get an `edit context <https://graphics.pixar.com/usd/docs/api/class_usd_edit_context.html>`_ where edits will target this `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_'s taxonomy `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_.
+
+    .. attention::
+        If a valid taxonomy `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ is not found on the `layer stack <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack>`_, one is added to the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
+    """
     try:
         return _context(stage, _TAXONOMY_FIELDS)
     except ValueError:
@@ -201,7 +213,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
 
 
 def unit_context(prim: Usd.Prim) -> Usd.EditContext:
-    """Get an edit context where edits will target this prim's unit root layer."""
+    """Get an `edit context <https://graphics.pixar.com/usd/docs/api/class_usd_edit_context.html>`_ where edits will target this `prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_'s unit root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_."""
     fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
     return _context(prim, fields)
 
@@ -277,6 +289,31 @@ def _(obj: Usd.Prim):
 
 
 class UsdAsset(names.CGAssetFile):
+    """
+    .. admonition:: Inheritance Diagram
+        :class: dropdown, hint
+
+        .. inheritance-diagram:: grill.write.UsdAsset
+
+    Specialized :class:`grill.names.CGAssetFile` name object for USD asset resources.
+    This is the currency for "identifiers" in the pipeline.
+
+    Examples:
+        >>> asset_id = UsdAsset.get_default()
+        >>> asset_id
+        UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
+        >>> asset_id.suffix = 'usdc'
+        >>> asset_id.version = 42
+        >>> asset_id
+        UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.usdc")
+        >>> asset_id.suffix = 'abc'
+        Traceback (most recent call last):
+        ...
+        ValueError: Can't set invalid name 'demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.abc' on UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.usdc"). Valid convention is: '{code}-{media}-{kingdom}-{cluster}-{area}-{stream}-{item}-{step}-{variant}-{part}.{pipe}.{suffix}' with pattern: '^(?P<code>\w+)\-(?P<media>\w+)\-(?P<kingdom>\w+)\-(?P<cluster>\w+)\-(?P<area>\w+)\-(?P<stream>\w+)\-(?P<item>\w+)\-(?P<step>\w+)\-(?P<variant>\w+)\-(?P<part>\w+)(?P<pipe>(\.(?P<output>\w+))?\.(?P<version>\d+)(\.(?P<index>\d+))?)(\.(?P<suffix>sdf|usd|usda|usdc|usdz))$'
+
+    .. seealso:: :class:`grill.names.CGAsset` for a description of available fields.
+
+    """
     DEFAULT_SUFFIX = 'usda'
     file_config = naming.NameConfig(
         {'suffix': "|".join(Sdf.FileFormat.FindAllFileFormatExtensions())}
@@ -284,9 +321,9 @@ class UsdAsset(names.CGAssetFile):
 
     @classmethod
     def get_anonymous(cls, **values) -> UsdAsset:
-        """Get an anonymous USD file name with optional field overrides.
+        """Get an anonymous :class:`UsdAsset` name with optional field overrides.
 
-        Generally useful for situation where a temporary but valid identifier is needed.
+        Useful for situations where a temporary but valid identifier is needed.
 
         :param values: Variable keyword arguments with the keys referring to the name's
             fields which will use the given values.
