@@ -50,6 +50,8 @@ The following optional dependencies should be installed separately.
   (hopefully will be available soon via `pypi <https://pypi.org/>`_). In the meantime, it can be built from USD source
   (`conda recipe <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888>`_).
 
+  .. important::
+     For ``python-3.8+`` versions on ``Windows``, an extra check needs to be disabled before build (see `USD/issues/1260 <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-826273007>`_ for more details)
 
 Conda Environment Example
 -------------------------
