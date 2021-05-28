@@ -288,14 +288,16 @@ def _(obj: Usd.Prim):
 
 
 class UsdAsset(names.CGAssetFile):
-    """
+    """Specialized :class:`grill.names.CGAssetFile` name object for USD asset resources.
+
     .. admonition:: Inheritance Diagram
         :class: dropdown, hint
 
         .. inheritance-diagram:: grill.write.UsdAsset
 
-    Specialized :class:`grill.names.CGAssetFile` name object for USD asset resources.
     This is the currency for "identifiers" in the pipeline.
+
+    See also :py:class:`grill.names.CGAsset` for a description of available fields and :py:class:`naming.Name` for a description of the core API.
 
     Examples:
         >>> asset_id = UsdAsset.get_default()
@@ -310,7 +312,8 @@ class UsdAsset(names.CGAssetFile):
         ...
         ValueError: Can't set invalid name 'demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.abc' on UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.usdc"). Valid convention is: '{code}-{media}-{kingdom}-{cluster}-{area}-{stream}-{item}-{step}-{variant}-{part}.{pipe}.{suffix}' with pattern: '^(?P<code>\w+)\-(?P<media>\w+)\-(?P<kingdom>\w+)\-(?P<cluster>\w+)\-(?P<area>\w+)\-(?P<stream>\w+)\-(?P<item>\w+)\-(?P<step>\w+)\-(?P<variant>\w+)\-(?P<part>\w+)(?P<pipe>(\.(?P<output>\w+))?\.(?P<version>\d+)(\.(?P<index>\d+))?)(\.(?P<suffix>sdf|usd|usda|usdc|usdz))$'
 
-    .. seealso:: :class:`grill.names.CGAsset` for a description of available fields.
+    .. seealso::
+        :py:class:`grill.names.CGAsset` for a description of available fields and :py:class:`naming.Name` for a description of the core API.
 
     """
     DEFAULT_SUFFIX = 'usda'
