@@ -62,6 +62,10 @@ hoverxref_auto_ref = True
 #     'mod': 'tooltip',  # for Python Sphinx Domain
 #     'class': 'tooltip',  # for Python Sphinx Domain
 # }
+hoverxref_intersphinx = [
+  'grill.names',
+  'naming',
+]
 hoverxref_domains = ['py']
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
