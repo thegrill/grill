@@ -22,4 +22,4 @@ Foundational tools:
 - [USD](https://graphics.pixar.com/usd/docs/index.html)
 - [EdgeDB](https://edgedb.com)
 
-Please [read the docs](https://grill.rtfd.io) for a full walk-through!
+Please [visit the docs](https://grill.rtfd.io) for a full walk-through!
