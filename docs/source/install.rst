@@ -1,8 +1,8 @@
 Installation
-------------
+============
 
 Pip Install
-~~~~~~~~~~~
+-----------
 
 By default, ``grill`` won't install ``USD``, ``PySide2`` & ``PyOpenGL``. This is because
 DCC apps and other environments bundle them outside of ``pip``. To include them, use the ``[full]`` option.
@@ -21,8 +21,16 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
 .. note::
 
-    For some DCC applications (e.g. **Maya**, **Houdini**) ``pip`` needs to run
+    For some DCC applications (e.g. **Houdini**, **Maya**) ``pip`` needs to run
     from their corresponding python interpreters:
+
+    .. tab:: Houdini
+
+        If ``pip`` is missing, `follow this guide <https://wordpress.discretization.de/houdini/home/advanced-2/installing-and-using-scipy-in-houdini/>`_.
+
+        .. code-block:: bash
+
+            hython3.7 -m pip install grill
 
     .. tab:: Maya
 
@@ -32,16 +40,8 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
             mayapy -m pip install grill
 
-    .. tab:: Houdini
-
-        If ``pip`` is missing, it can be downloaded `from this guide <https://wordpress.discretization.de/houdini/home/advanced-2/installing-and-using-scipy-in-houdini/>`_, then:
-
-        .. code-block:: bash
-
-            hython3.7 -m pip install grill
-
 Extra Dependencies
-~~~~~~~~~~~~~~~~~~
+------------------
 
 The following optional dependencies should be installed separately.
 
@@ -50,6 +50,8 @@ The following optional dependencies should be installed separately.
   (hopefully will be available soon via `pypi <https://pypi.org/>`_). In the meantime, it can be built from USD source
   (`conda recipe <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888>`_).
 
+  .. important::
+     For ``python-3.8+`` versions on ``Windows``, an extra check needs to be disabled before build (see `USD/issues/1260 <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-826273007>`_ for more details)
 
 Conda Environment Example
 -------------------------
@@ -81,8 +83,8 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
       (base) C:\>conda activate grilldemo01
 
-5. Install ``grill`` via pip; use the ``full`` option to use standalone.
-   For more details, refer to the `pip install instructions above <#pip-install>`_.
+5. Install ``grill`` via ``pip``; use the ``full`` option to use standalone.
+   Refer to the `pip install instructions <#pip-install>`_ for more details.
 
    .. code:: bash
 
@@ -94,22 +96,29 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
       (grilldemo01) C:\>conda install -c anaconda graphviz
 
-7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView** as well as **Maya**.
+7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView**, **Maya** and **Houdini***.
 
-   .. image:: https://user-images.githubusercontent.com/8294116/114263497-2d57d680-9a29-11eb-8992-6b443f942263.gif
+   .. tab:: USDView
 
-   .. image:: https://user-images.githubusercontent.com/8294116/115981668-bdc11a00-a5d8-11eb-9897-6061639d1c39.gif
+        .. image:: https://user-images.githubusercontent.com/8294116/114263497-2d57d680-9a29-11eb-8992-6b443f942263.gif
+
+   .. tab:: Houdini
+
+        .. image:: https://user-images.githubusercontent.com/8294116/115981745-68d1d380-a5d9-11eb-8033-979d72ca0e6b.gif
+
+   .. tab:: Maya
+
+        .. image:: https://user-images.githubusercontent.com/8294116/115981668-bdc11a00-a5d8-11eb-9897-6061639d1c39.gif
 
    .. important::
-      To see the menu in **Houdini**, run this additional step (which installs the grill `houdini package <https://www.sidefx.com/docs/houdini/ref/plugins.html>`_ on the **Houdini's** user preferences):
 
-      .. code:: bash
+        To see the menu in **Houdini**, run this additional step (which installs the grill `houdini package <https://www.sidefx.com/docs/houdini/ref/plugins.html>`_ on the **Houdini's** user preferences):
 
-         hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
+        .. code:: bash
 
-      The manual execution of this step might be removed in the future.
+            hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
 
-   .. image:: https://user-images.githubusercontent.com/8294116/115981745-68d1d380-a5d9-11eb-8033-979d72ca0e6b.gif
+        The manual execution of this step might be removed in the future.
 
 .. _miniconda: https://docs.conda.io/en/latest/miniconda.html
 .. _Anaconda: https://docs.anaconda.com/anaconda/user-guide/getting-started/

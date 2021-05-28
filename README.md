@@ -4,8 +4,8 @@
 [![Documentation Status](https://readthedocs.org/projects/grill/badge/?version=latest)](https://grill.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/grill.svg)](https://badge.fury.io/py/grill)
 [![PyPI](https://img.shields.io/pypi/pyversions/grill.svg)](https://pypi.python.org/pypi/grill)
----
-Cook digital.
+
+> Cook digital.
 
 `The Grill` is a toolset that helps with digital content creation. This is the `grill` namespace, a meta-package with core tools and philosophy guidelines.
 
@@ -22,4 +22,4 @@ Foundational tools:
 - [USD](https://graphics.pixar.com/usd/docs/index.html)
 - [EdgeDB](https://edgedb.com)
 
-Please [read the docs](https://grill.rtfd.io) for a full walk-through!
+Please [visit the docs](https://grill.rtfd.io) for a full walk-through!

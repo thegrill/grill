@@ -44,14 +44,46 @@ extensions = ['sphinx.ext.autodoc',
               'm2r2',
               'sphinx_copybutton',
               'sphinx_toggleprompt',
+              'sphinx_togglebutton',
               'sphinx.ext.inheritance_diagram',
               'sphinx_inline_tabs',
+              'hoverxref.extension',
               'sphinx_autodoc_typehints']
 
 # Offset to play well with copybutton
 toggleprompt_offset_right = 25
+togglebutton_hint = " "
+hoverxref_auto_ref = True
+# hoverxref_default_type = 'tooltip'
+# hoverxref_role_types = {
+#     'hoverxref': 'modal',
+#     'ref': 'modal',  # for hoverxref_auto_ref config
+#     'confval': 'tooltip',  # for custom object
+#     'mod': 'tooltip',  # for Python Sphinx Domain
+#     'class': 'tooltip',  # for Python Sphinx Domain
+# }
+hoverxref_intersphinx = [
+  'grill.names',
+  'naming',
+]
+hoverxref_intersphinx_type = 'modal'
 
+hoverxref_domains = ['py']
+always_document_param_types = True
 autodoc_member_order = 'groupwise'
+
+inheritance_graph_attrs = dict(rankdir="TB", bgcolor='transparent')
+
+inheritance_node_attrs = dict(
+    shape='Mrecord',
+    color='"#088d91"',
+    style='filled',
+    fillcolor='"#ecf8f9"',
+    size='"6.0, 8.0"'
+)
+
+inheritance_edge_attrs = dict(color='"#088d91"')
+
 autodoc_default_flags = ['members', 'show-inheritance']
 # graphviz_dot = r'B:\__appdata__\graphviz\bin\dot.exe'
 graphviz_output_format = 'svg'
@@ -124,7 +156,20 @@ html_static_path = ['_static']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'grilldoc'
+html_sidebars = {
+    '**': [
+        'logo.html',
+        'github.html',
+        'globaltoc.html',
+        'searchbox.html',
+    ]
+}
 
+html_theme_options = {
+    'color': '#E8371A',
+    'description': 'Cook digital',
+    'logo_name': '👨‍🍳 The Grill',
+}
 
 # -- Options for LaTeX output ---------------------------------------------
 
@@ -199,5 +244,9 @@ epub_copyright = copyright
 epub_exclude_files = ['search.html']
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None,
-                       'http://naming.readthedocs.io': None}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'naming': ('http://naming.readthedocs.io/en/latest/', None),
+    'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
+
+}

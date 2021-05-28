@@ -3,54 +3,24 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-.. mdinclude:: ../../README.md
+👨‍🍳 The Grill
+===============
+
+ | Cook digital.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
+   :caption: Contents:
 
-----
-
-.. include:: install.rst
-
-Pipeline
-========
-
-Core Concepts
--------------
-.. graphviz:: pipeline_concepts.dot
-
-Relationships
--------------
-.. graphviz:: pipeline_relationships.dot
-
-Data Flow
----------
-.. graphviz:: pipeline_flow.dot
-
-Workflow Charts Legend
-----------------------
-
-``The Grill`` flow charts will use the following symbol legend:
-
-.. graphviz:: flowchart_legend.dot
-
-Data Creation
--------------
-
-At the highest level, all asset data, from creation to finish, goes through the same life cycle:
-
-.. graphviz:: data_creation.dot
-
-----
-
-Views (Inspecting / Authoring)
-==============================
-
-.. mdinclude:: ../../grill/views/README.md
-
-The ``production`` area is the one that defines everything that exists, from shows to areas, code names and organizational groups for assets.
+   Intro  <intro.rst>
+   install
+   pipeline
+   views
+   end_to_end
+   api
 
 Indices and tables
 ==================
 
 * :ref:`genindex`
+* :ref:`search`

@@ -1,8 +1,7 @@
 import hou
 import toolutils
 
-from . import sheets as _sheets
-from . import description as _description
+from . import sheets as _sheets, description as _description
 
 
 def spreadsheet():
