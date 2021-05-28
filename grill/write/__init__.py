@@ -297,8 +297,6 @@ class UsdAsset(names.CGAssetFile):
 
     This is the currency for "identifiers" in the pipeline.
 
-    See also :py:class:`grill.names.CGAsset` for a description of available fields and :py:class:`naming.Name` for a description of the core API.
-
     Examples:
         >>> asset_id = UsdAsset.get_default()
         >>> asset_id
@@ -313,7 +311,7 @@ class UsdAsset(names.CGAssetFile):
         ValueError: Can't set invalid name 'demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.abc' on UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.usdc"). Valid convention is: '{code}-{media}-{kingdom}-{cluster}-{area}-{stream}-{item}-{step}-{variant}-{part}.{pipe}.{suffix}' with pattern: '^(?P<code>\w+)\-(?P<media>\w+)\-(?P<kingdom>\w+)\-(?P<cluster>\w+)\-(?P<area>\w+)\-(?P<stream>\w+)\-(?P<item>\w+)\-(?P<step>\w+)\-(?P<variant>\w+)\-(?P<part>\w+)(?P<pipe>(\.(?P<output>\w+))?\.(?P<version>\d+)(\.(?P<index>\d+))?)(\.(?P<suffix>sdf|usd|usda|usdc|usdz))$'
 
     .. seealso::
-        :py:class:`grill.names.CGAsset` for a description of available fields and :py:class:`naming.Name` for a description of the core API.
+        :class:`grill.names.CGAsset` for a description of available fields, :class:`naming.Name` for an overview of the core API.
 
     """
     DEFAULT_SUFFIX = 'usda'
