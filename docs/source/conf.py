@@ -66,6 +66,8 @@ hoverxref_intersphinx = [
   'grill.names',
   'naming',
 ]
+hoverxref_intersphinx_type = 'modal'
+
 hoverxref_domains = ['py']
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
