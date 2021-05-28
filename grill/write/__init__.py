@@ -1,5 +1,4 @@
-"""
-Authoring and editing utilities that follow `grill` expectations and conventions.
+"""Authoring and editing foundational tools for the pipeline.
 
 .. data:: Repository
 
@@ -105,7 +104,7 @@ def fetch_stage(identifier: str) -> Usd.Stage:
     return stage
 
 
-def define_taxon(stage: Usd.Stage, name: str, *, references: typing.Tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
     """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
