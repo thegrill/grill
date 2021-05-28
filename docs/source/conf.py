@@ -47,11 +47,22 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx_togglebutton',
               'sphinx.ext.inheritance_diagram',
               'sphinx_inline_tabs',
+              'hoverxref.extension',
               'sphinx_autodoc_typehints']
 
 # Offset to play well with copybutton
 toggleprompt_offset_right = 25
 togglebutton_hint = " "
+hoverxref_auto_ref = True
+# hoverxref_default_type = 'tooltip'
+hoverxref_role_types = {
+    'hoverxref': 'modal',
+    'ref': 'modal',  # for hoverxref_auto_ref config
+    'confval': 'tooltip',  # for custom object
+    'mod': 'tooltip',  # for Python Sphinx Domain
+    'class': 'tooltip',  # for Python Sphinx Domain
+}
+hoverxref_domains = ['py']
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
 
