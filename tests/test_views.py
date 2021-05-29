@@ -52,7 +52,7 @@ class TestViews(unittest.TestCase):
         shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
-        widget = description.LayersComposition()
+        widget = description.LayerStackComposition()
         widget.setStage(self.world)
 
         # cheap. All these layers affect a single prim
