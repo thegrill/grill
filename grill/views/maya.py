@@ -69,7 +69,7 @@ def _stage_on_widget(widget_creator):
 
 
 @lru_cache(maxsize=None)
-def prim_composition():
+def _prim_composition():
     print("Launching PRIM COMP!")
     widget = _description.PrimComposition(parent=_main_window())
 
@@ -88,7 +88,7 @@ def prim_composition():
 
 
 @lru_cache(maxsize=None)
-def _create_menu():
+def create_menu():
     print(f"Creating The Grill menu.")
     menu = cmds.menu("grill", label="👨‍🍳 Grill", tearOff=True, parent="MayaWindow")
 
@@ -99,8 +99,8 @@ def _create_menu():
             ("Create Assets", _stage_on_widget(_create.CreateAssets)),
             ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
             ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
-            ("Prim Composition", prim_composition),
-            ("LayerStack Composition", _stage_on_widget(_description.LayersComposition)),
+            ("Prim Composition", _prim_composition),
+            ("LayerStack Composition", _stage_on_widget(_description.LayerStackComposition)),
     ):
         cmds.menuItem(title, command=partial(show, launcher), parent=menu)
 

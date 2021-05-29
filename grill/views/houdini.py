@@ -1,32 +1,60 @@
 import hou
 import toolutils
+from functools import lru_cache, partial
 
-from . import sheets as _sheets, description as _description
+from . import sheets as _sheets, description as _description, create as _create
 
 
-def spreadsheet():
+def _stage_on_widget(widget_creator):
+    @lru_cache(maxsize=None)
+    def _launcher():
+        print(f"Launching {widget_creator}!")
+        widget = widget_creator(parent=hou.qt.mainWindow())
+        # TODO: Get stage from current node or from current viewport?
+        #       Investigate pros & cons and decide.
+        viewer = toolutils.sceneViewer()
+        stage = viewer.stage()
+        if stage:
+            widget.setStage(stage)
+
+        return widget
+
+    return _launcher
+
+
+@lru_cache(maxsize=None)
+def _creator(widget_creator):
+    widget = _stage_on_widget(widget_creator)()
+    print(widget)
+    def refresh_ui():
+        viewer = toolutils.sceneViewer()
+        node = viewer.currentNode()
+        node.cook(force=True)
+
+    widget.accepted.connect(refresh_ui)
+    # widget._applied.connect(refresh_ui)  # TODO: fix, errors with PySide Qt 5.12 (houdini)
+    return widget
+
+
+@lru_cache(maxsize=None)
+def _spreadsheet():
     """This is meant to be run under a solaris desktop in houdini.
 
     :return:
     """
-    print("Launching Spreadsheet Editor!")
-    viewer = toolutils.sceneViewer()
-    stage = viewer.stage()
-    import importlib
-    importlib.reload(_sheets)
-    editor = _sheets.SpreadsheetEditor(parent=hou.qt.mainWindow())
-    editor.setStage(stage)
+    widget = _stage_on_widget(_sheets.SpreadsheetEditor)()
+    print("Connecting Spreadsheet Editor Updates")
 
     def refresh_ui():
         viewer = toolutils.sceneViewer()
         node = viewer.currentNode()
         node.cook(force=True)
 
-    editor.model.itemChanged.connect(refresh_ui)
-    editor.show()
+    widget.model.itemChanged.connect(refresh_ui)
+    return widget
 
 
-def prim_composition():
+def _prim_composition():
     print("Launching Prim Composition!")
     import importlib
     importlib.reload(_description)
@@ -54,15 +82,9 @@ def prim_composition():
                 editor._prim = prim
 
     hou.ui.addEventLoopCallback(_updatePrim)
-    editor.show()
+    return editor
 
 
-def layerstack_composition():
-    print("Launching Layer Stack Composition!")
-    import importlib
-    importlib.reload(_description)
-    editor = _description.LayersComposition(parent=hou.qt.mainWindow())
-    viewer = toolutils.sceneViewer()
-    stage = viewer.stage()
-    editor.setStage(stage)
-    editor.show()
+_create_assets = partial(_creator, _create.CreateAssets)
+_taxonomy_editor = partial(_creator, _create.TaxonomyEditor)
+_layerstack_composition = _stage_on_widget(_description.LayerStackComposition)
