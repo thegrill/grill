@@ -8,25 +8,31 @@
             <scriptItem id="create_assets">
                 <label>Create Assets</label>
                 <scriptCode><![CDATA[from grill.views import houdini
-houdini.create_assets()]]></scriptCode>
+houdini._create_assets().show()]]></scriptCode>
+            </scriptItem>
+
+            <scriptItem id="taxonomy_editor">
+                <label>Taxonomy Editor</label>
+                <scriptCode><![CDATA[from grill.views import houdini
+houdini._taxonomy_editor().show()]]></scriptCode>
             </scriptItem>
 
             <scriptItem id="spreadsheet_editor">
                 <label>Spreadsheet Editor</label>
                 <scriptCode><![CDATA[from grill.views import houdini
-houdini.spreadsheet()]]></scriptCode>
+houdini._spreadsheet().show()]]></scriptCode>
             </scriptItem>
 
             <scriptItem id="prim_composition">
                 <label>Prim Composition</label>
                 <scriptCode><![CDATA[from grill.views import houdini
-houdini.prim_composition()]]></scriptCode>
+houdini._prim_composition().show()]]></scriptCode>
             </scriptItem>
 
             <scriptItem id="layerstack_composition">
                 <label>LayerStack Composition</label>
                 <scriptCode><![CDATA[from grill.views import houdini
-houdini.layer_stack_composition()]]></scriptCode>
+houdini._layerstack_composition().show()]]></scriptCode>
             </scriptItem>
 
         </subMenu>

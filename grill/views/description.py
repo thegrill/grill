@@ -211,7 +211,7 @@ class PrimComposition(QtWidgets.QDialog):
         self._dot_view.setDotPath(fp)
 
 
-class LayersComposition(QtWidgets.QDialog):
+class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
         _sheets._Column("Layer Identifier", Sdf.Layer.identifier.getter),
     )
