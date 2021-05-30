@@ -84,12 +84,25 @@ All created asset units are saved to disk on the current repository path.
 Modifying Assets
 ----------------
 
-Any USD application should be able to modify the grill assets.
+.. Attention::
 
-In the example below, an asset defined on USDView (on the right) is opened and modified in Maya (on the left). Once Maya changes are saved, USDView can pickup the edits.
-In a similar way, asset taxonomy is modified in Maya, then USDView loads the updates.
+   Creation of assets on **Houdini** via the GUIs should be considered experimental at the moment.
+
+Any ``USD`` application should be able to modify the ``grill`` assets.
+
+In the example below, an asset defined on **USDView** (on the right) is opened and modified in **Maya** (on the left). Once **Maya** changes are saved, **USDView** can pickup the edits.
+In a similar way, asset taxonomy is modified in **Maya**, then **USDView** loads the updates.
 
 .. image:: https://user-images.githubusercontent.com/8294116/119356500-d6147980-bce9-11eb-946e-486986071ef8.gif
+
+
+Following the above, both a new ``taxon`` and new ``asset units`` are created, this time in **Houdini**:
+
+.. image:: https://user-images.githubusercontent.com/8294116/120095527-da1d1d00-c169-11eb-9408-4bcfc08e421c.gif
+
+.. Important::
+
+   Note how same rules apply (e.g. the ``Repository`` path must be set before any creation action).
 
 .. _taxonomy: https://en.wikipedia.org/wiki/Taxonomy
 .. _stage: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Stage
