@@ -76,6 +76,16 @@ class TestWrite(unittest.TestCase):
             write._edit_context(object(), write.fetch_stage(self.root_asset))
 
     def test_define_taxon(self):
+        # An anonymous stage (non grill anonymous) should fail to define taxon.
+        anon_stage = Usd.Stage.CreateInMemory()
+        with self.assertRaises(ValueError):
+            write.define_taxon(anon_stage, "ShouldFail")
+        # Same stage containing a grill anon layer on its stack should succeed.
+        anon_pipeline = write.fetch_stage(write.UsdAsset.get_anonymous())
+        anon_stage.GetRootLayer().subLayerPaths.append(anon_pipeline.GetRootLayer().realPath)
+        self.assertTrue(write.define_taxon(anon_stage, "ShouldSucceed").IsValid())
+
+        # Now, test stages fetched from the start via "common" pipeline calls.
         root_stage = write.fetch_stage(self.root_asset)
 
         with self.assertRaises(ValueError):
