@@ -72,7 +72,7 @@ hoverxref_intersphinx = [
   'grill.names',
   'naming',
 ]
-hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, 'modal')
+hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, 'tooltip')
 
 hoverxref_domains = ['py']
 always_document_param_types = True
