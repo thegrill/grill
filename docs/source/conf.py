@@ -53,6 +53,12 @@ extensions = ['sphinx.ext.autodoc',
 # Offset to play well with copybutton
 toggleprompt_offset_right = 25
 togglebutton_hint = " "
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'naming': ('http://naming.readthedocs.io/en/latest/', None),
+    'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
+
+}
 hoverxref_auto_ref = True
 # hoverxref_default_type = 'tooltip'
 # hoverxref_role_types = {
@@ -66,7 +72,7 @@ hoverxref_intersphinx = [
   'grill.names',
   'naming',
 ]
-hoverxref_intersphinx_type = 'modal'
+hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, 'modal')
 
 hoverxref_domains = ['py']
 always_document_param_types = True
@@ -242,11 +248,3 @@ epub_copyright = copyright
 
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
-
-# Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {
-    'python': ('https://docs.python.org/3', None),
-    'naming': ('http://naming.readthedocs.io/en/latest/', None),
-    'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
-
-}
