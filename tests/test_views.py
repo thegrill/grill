@@ -221,7 +221,7 @@ class TestViews(unittest.TestCase):
         widget._pasteClipboard()
 
     def test_dot_call(self):
-        """Test execution of function by mocking dot with echo"""
+        """Test execution of function by mocking dot with python call"""
         with mock.patch("grill.views.description._dot_exe") as patch:
             patch.return_value = 'python'
             error, targetpath = description._dot_2_svg('nonexisting_path')
