@@ -10,11 +10,10 @@ def install(sitedir):
 
     if "MAYA_PLUG_IN_PATH" in os.environ:  # Quick check for maya plugins
         try:
-            from maya import cmds
-        except ImportError:  # Not a true Maya environment
+            from . import maya
+        except ImportError:  # Not a proper Maya environment
             pass
         else:
-            from . import maya
             maya.install()
 
 
