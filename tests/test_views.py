@@ -3,6 +3,7 @@ import csv
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
@@ -218,3 +219,11 @@ class TestViews(unittest.TestCase):
         widget._model_hierarchy.click()  # disables model hierarchy, which we don't have any
         widget.table.selectAll()
         widget._pasteClipboard()
+
+    def test_dot_call(self):
+        """Test execution of function by mocking dot with python call"""
+        with mock.patch("grill.views.description._dot_exe") as patch:
+            patch.return_value = 'python'
+            error, targetpath = description._dot_2_svg('nonexisting_path')
+            # an error would be reported back
+            self.assertIsNotNone(error)

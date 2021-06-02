@@ -26,7 +26,10 @@ def _dot_2_svg(sourcepath):
     print(f"Creating svg for: {sourcepath}")
     targetpath = f"{sourcepath}.svg"
     dotargs = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
-    result = subprocess.run(dotargs, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    kwargs = {}
+    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on linux
+        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
+    result = subprocess.run(dotargs, capture_output=True, **kwargs)
     error = result.stderr.decode() if result.returncode else None
     return error, targetpath
 
@@ -378,6 +381,7 @@ class LayerStackComposition(QtWidgets.QDialog):
             _createItem(layer)
             for node_id in sorted(set(graph.nodes).difference(legend_node_ids))
             for layer in layer_stacks_by_node_idx[node_id]
+            if layer  # ensure the layer is still valid, (e.g. not expired)
         ]
         layers_model.setRowCount(len(items_to_add))
         layers_model.blockSignals(True)  # prevent unneeded events from computing

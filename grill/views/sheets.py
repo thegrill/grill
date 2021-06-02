@@ -1,5 +1,4 @@
 import io
-import os
 import csv
 import enum
 import inspect
@@ -16,15 +15,19 @@ from PySide2 import QtCore, QtWidgets, QtGui
 
 logger = logging.getLogger(__name__)
 
-# Maya widgets strip the last character of widgets with emoji on them.
-# Remove this workaround when QtWidgets.QLabel("🔎 Hello") does not show as "🔎 Hell".
-_EMOJI_SUFFIX = " " if "MAYA_PLUG_IN_PATH" in os.environ else ""
-
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
 options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
 
 _read_only = lambda x, y: x
+
+
+@lru_cache(maxsize=None)
+def _emoji_suffix():
+    # Maya widgets strip the last character of widgets with emoji on them.
+    # Remove this workaround when QtWidgets.QLabel("🔎 Hello") does not show as "🔎 Hell".
+    text_test = "🔎 Hello"
+    return "" if QtWidgets.QLabel(text_test).text() == text_test else " "
 
 
 @contextlib.contextmanager
@@ -131,7 +134,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
 
         # Visibility
-        self._vis_button = vis_button = QtWidgets.QPushButton(f"👀{_EMOJI_SUFFIX}")
+        self._vis_button = vis_button = QtWidgets.QPushButton(f"👀{_emoji_suffix()}")
         vis_button.setCheckable(True)
         vis_button.setChecked(True)
         vis_button.setFlat(True)
@@ -149,7 +152,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         options_layout.addStretch()
         layout.addLayout(options_layout)
         self._filter_layout = filter_layout = QtWidgets.QFormLayout()
-        filter_layout.addRow(f"🔎{_EMOJI_SUFFIX}", line_filter)
+        filter_layout.addRow(f"🔎{_emoji_suffix()}", line_filter)
         if _ColumnOptions.SEARCH in options:
             layout.addLayout(filter_layout)
         self._options = options
@@ -191,7 +194,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         else:
             text = "🔓"
             tip = "Edits are allowed on this column (unlocked).\nClick to block edits."
-        button.setText(f"{text}{_EMOJI_SUFFIX}")
+        button.setText(f"{text}{_emoji_suffix()}")
         button.setToolTip(tip)
 
     def _setHidden(self, value):
@@ -260,7 +263,7 @@ class _Header(QtWidgets.QHeaderView):
             # we keep track of the column options label but our proxy will bypass clicks
             # allowing for UX when clicking on column headers
             proxy_label = QtWidgets.QLabel(parent=self)
-            proxy_label.setText(f"{column_options.label.text()}{_EMOJI_SUFFIX}")
+            proxy_label.setText(f"{column_options.label.text()}{_emoji_suffix()}")
             proxy_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             self._proxy_labels[column_options.label] = proxy_label
 
@@ -566,18 +569,18 @@ class SpreadsheetEditor(_Spreadsheet):
     """
     def __init__(self, stage=None, parent=None, **kwargs):
         columns = self._COLUMNS
-        self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox(f"🏡 Model Hierarchy{_EMOJI_SUFFIX}")
+        self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox(f"🏡 Model Hierarchy{_emoji_suffix()}")
         super().__init__(columns, parent=parent, **kwargs)
 
         hide_key = "👀 Hide All"
         self._vis_states = {"👀 Show All": True, hide_key: False}
         self._vis_key_by_value = {v: k for k, v in self._vis_states.items()}  # True: Show All
-        self._vis_all = vis_all = QtWidgets.QPushButton(f"{hide_key}{_EMOJI_SUFFIX}")
+        self._vis_all = vis_all = QtWidgets.QPushButton(f"{hide_key}{_emoji_suffix()}")
         vis_all.clicked.connect(self._conformVisibility)
         lock_key = "🔐 Lock All"
         self._lock_states = {lock_key: True, "🔓 Unlock All": False}
         self._lock_key_by_value = {v: k for k, v in self._lock_states.items()}  # True: Lock All
-        self._lock_all = lock_all = QtWidgets.QPushButton(f"{lock_key}{_EMOJI_SUFFIX}")
+        self._lock_all = lock_all = QtWidgets.QPushButton(f"{lock_key}{_emoji_suffix()}")
         lock_all.clicked.connect(self._conformLocked)
 
         # table options
@@ -612,14 +615,14 @@ class SpreadsheetEditor(_Spreadsheet):
         """Make vis option offer inverse depending on how much is currently hidden"""
         counter = Counter(self.table.isColumnHidden(i) for i in self._column_options)
         current, count = next(iter(counter.most_common(1)))
-        self._vis_all.setText(f"{self._vis_key_by_value[current]}{_EMOJI_SUFFIX}")
+        self._vis_all.setText(f"{self._vis_key_by_value[current]}{_emoji_suffix()}")
         return current
 
     def _conformLockSwitch(self):
         """Make lock option offer inverse depending on how much is currently locked"""
         counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
         current, count = next(iter(counter.most_common(1)))
-        self._lock_all.setText(f"{self._lock_key_by_value[not current]}{_EMOJI_SUFFIX}")
+        self._lock_all.setText(f"{self._lock_key_by_value[not current]}{_emoji_suffix()}")
         return current
 
     def _conformVisibility(self):
@@ -628,7 +631,7 @@ class SpreadsheetEditor(_Spreadsheet):
             self._setColumnVisibility(index, value)
             options._setHidden(not value)
 
-        self._vis_all.setText(f"{self._vis_key_by_value[not value]}{_EMOJI_SUFFIX}")
+        self._vis_all.setText(f"{self._vis_key_by_value[not value]}{_emoji_suffix()}")
         self.table.horizontalHeader()._handleSectionResized(0)
 
     @wait()
@@ -637,7 +640,7 @@ class SpreadsheetEditor(_Spreadsheet):
         for index, options in self._column_options.items():
             options._lock_button.setChecked(value)
             self._setColumnLocked(index, value)
-        self._lock_all.setText(f"{self._lock_key_by_value[not value]}{_EMOJI_SUFFIX}")
+        self._lock_all.setText(f"{self._lock_key_by_value[not value]}{_emoji_suffix()}")
 
     @wait()
     def setStage(self, stage):
