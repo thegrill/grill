@@ -31,9 +31,9 @@ import typing
 import logging
 import functools
 import itertools
+import contextlib
 import contextvars
 import collections
-from contextlib import suppress
 from pathlib import Path
 from pprint import pformat
 
@@ -55,6 +55,7 @@ _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
 _TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster  # High level organization of our assets.
 _TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
+_UNIT_ORIGIN_PATH = Sdf.Path("/Origin")
 
 
 @functools.lru_cache(maxsize=None)
@@ -66,18 +67,20 @@ def fetch_stage(identifier: str) -> Usd.Stage:
     If an open matching `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ is found on the `global cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_, return it.
     Otherwise open it, populate the `cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_ and return it.
     """
-    rootf = UsdAsset(identifier)
+    layer_id = UsdAsset(identifier).name
     cache = UsdUtils.StageCache.Get()
     repo_path = repo.get()
     resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
     with Ar.ResolverContextBinder(resolver_ctx):
-        layer_id = rootf.name
         logger.debug(f"Searching for {layer_id}")
+        # logger.debug("Searching for %s", layer_id)
         layer = Sdf.Layer.Find(layer_id)
         if not layer:
             logger.debug(f"Layer {layer_id} was not found open. Attempting to open it.")
+            # logger.debug("Layer %s was not found open. Attempting to open it.", layer_id)
             if not Sdf.Layer.FindOrOpen(layer_id):
-                logger.debug(f"Layer {layer_id} does not exist on repository path: {resolver_ctx.GetSearchPath()}. Creating a new one.")
+                logger.debug(f"Layer {layer_id} does not exist on repository path: {repo_path}. Creating a new one.")
+                # logger.debug("Layer %s does not exist on repository path: %s. Creating a new one.", layer_id, repo_path)
                 # we first create a layer under our repo
                 tmp_new_layer = Sdf.Layer.CreateNew(str(repo_path / layer_id))
                 # delete it since it will have an identifier with the full path,
@@ -87,19 +90,23 @@ def fetch_stage(identifier: str) -> Usd.Stage:
                 #   In the meantime, we need to create the layer first on disk.
                 del tmp_new_layer
             stage = Usd.Stage.Open(layer_id)
-            logger.debug(f"Root layer: {stage.GetRootLayer()}")
             logger.debug(f"Opened stage: {stage}")
+            # logger.debug("Opened stage: %s", stage)
             cache_id = cache.Insert(stage)
             logger.debug(f"Added stage for {layer_id} with cache ID: {cache_id.ToString()}.")
+            # logger.debug("Added stage for %s with cache ID: %s.", layer_id, cache_id.ToString())
         else:
             logger.debug(f"Layer was open. Found: {layer}")
+            # logger.debug("Layer was open. Found: %s", layer)
             stage = cache.FindOneMatching(layer)
             if not stage:
-                logger.debug(f"Could not find stage on the cache.")
+                logger.debug("Could not find stage on the cache.")
                 stage = Usd.Stage.Open(layer)
                 cache_id = cache.Insert(stage)
                 logger.debug(f"Added stage for {layer} with cache ID: {cache_id.ToString()}.")
+                # logger.debug("Added stage for %s with cache ID: %s.", layer, cache_id.ToString())
             else:
+                # logger.debug("Found stage: %s", stage)
                 logger.debug(f"Found stage: {stage}")
 
     return stage
@@ -139,11 +146,80 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
         prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
-        prim.CreateAttribute("label", Sdf.ValueTypeNames.String)
+        prim.CreateAttribute("label", Sdf.ValueTypeNames.String, custom=False)
         taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
         prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: taxon_fields, "taxa": {name: 0}})
 
     return prim
+
+
+def _iter_taxa(stage, taxon1, *taxonN, predicate=Usd.PrimDefaultPredicate):
+    """Iterate over prims that inherit from the given taxa."""
+    it = iter(Usd.PrimRange.Stage(stage, predicate=predicate))
+    taxa_names = {i if isinstance(i, str) else i.GetName() for i in (taxon1, *taxonN)}
+    for prim in it:
+        if prim.GetPath().HasPrefix(_TAXONOMY_ROOT_PATH):
+            # Ignore prims from the taxonomy hierarchy as they're not
+            # taxa members but the definition themselves.
+            it.PruneChildren()
+        elif taxa_names.intersection(prim.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:taxa') or {}):
+            yield prim
+
+
+def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
+    stage = taxon.GetStage()
+    taxon_path = taxon.GetPath()
+    taxon_fields = _get_id_fields(taxon)
+
+    current_asset_name, root_layer = _root_asset(stage)
+    new_asset_name = UsdAsset(current_asset_name.get(**taxon_fields))
+    # Edits will go to the first layer that matches a valid pipeline identifier
+    # TODO: Evaluate if this agreement is robust enough for different workflows.
+
+    # Some workflows like houdini might load layers without permissions to edit
+    # Since we know we are in a valid pipeline layer, temporarily allow edits
+    # for our operations, then restore original permissions.
+    current_permission = root_layer.permissionToEdit
+    root_layer.SetPermissionToEdit(True)
+
+    # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:taxa'))}
+    taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
+    # taxonomy_layer_id = str(Path(taxonomy_layer.realPath).relative_to(repo.get()))
+    taxonomy_layer_id = taxonomy_layer.identifier  # TODO: please ensure it's never absolute path
+
+    scope_path = stage.GetPseudoRoot().GetPath().AppendPath(taxon.GetName())
+    scope = stage.GetPrimAtPath(scope_path)
+
+    def _create(name, label):
+        path = scope_path.AppendChild(name)
+        prim = stage.GetPrimAtPath(path)
+        if prim:
+            return prim
+        assetid = new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name})
+        asset_stage = fetch_stage(assetid)
+        asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
+        asset_origin.GetReferences().AddReference(taxonomy_layer_id, taxon_path)
+        asset_stage.SetDefaultPrim(asset_origin)
+        if label:
+            label_attr = asset_origin.GetAttribute("label")
+            label_attr.Set(label)
+
+        over_prim = stage.OverridePrim(path)
+        over_prim.GetPayloads().AddPayload(
+            asset_stage.GetRootLayer().identifier)
+        return over_prim
+
+    labels = itertools.chain(labels, itertools.repeat(""))
+    with Usd.EditContext(stage, root_layer):
+        # Scope collecting all assets of the same type
+        if not scope:
+            scope = stage.DefinePrim(scope_path)
+        if not scope.IsModel():
+            Usd.ModelAPI(scope).SetKind(Kind.Tokens.assembly)
+        prims = [_create(name, label) for name, label in zip(names, labels)]
+
+    root_layer.SetPermissionToEdit(current_permission)
+    return prims
 
 
 def create(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
@@ -153,49 +229,7 @@ def create(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
 
     .. seealso:: :func:`define_taxon`
     """
-    stage = taxon.GetStage()
-    new_tokens = {**_get_id_fields(taxon), _UNIT_UNIQUE_ID.name: name}
-
-    # Edits will go to the first layer that matches a valid pipeline identifier
-    # TODO: Evaluate if this agreement is robust enough for different workflows.
-    current_asset_name, root_layer = _root_asset(stage)
-    # Some workflows like houdini might load layers without permissions to edit
-    # Since we know we are in a valid pipeline layer, temporarily allow edits
-    # for our operations, then restore original permissions.
-    current_permission = root_layer.permissionToEdit
-    root_layer.SetPermissionToEdit(True)
-
-    new_asset_name = current_asset_name.get(**new_tokens)
-
-    with Usd.EditContext(stage, root_layer):
-        # Scope collecting all assets of the same type
-        scope_path = stage.GetPseudoRoot().GetPath().AppendPath(taxon.GetName())
-        scope = stage.GetPrimAtPath(scope_path)
-        if not scope:
-            scope = stage.DefinePrim(scope_path)
-        if not scope.IsModel():
-            Usd.ModelAPI(scope).SetKind(Kind.Tokens.assembly)
-        path = scope_path.AppendChild(name)
-        if stage.GetPrimAtPath(path):
-            return stage.GetPrimAtPath(path)
-
-        asset_stage = fetch_stage(new_asset_name)
-        asset_origin_path = Sdf.Path("/Origin")
-        asset_origin = asset_stage.DefinePrim(asset_origin_path)
-        category_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
-        category_layer_id = str(Path(category_layer.realPath).relative_to(repo.get()))
-        asset_origin.GetReferences().AddReference(category_layer_id, taxon.GetPath())
-        asset_stage.SetDefaultPrim(asset_origin)
-
-        if label:
-            label_attr = asset_origin.GetAttribute("label")
-            label_attr.Set(label)
-
-        over_prim = stage.OverridePrim(path)
-        over_prim.GetPayloads().AddPayload(asset_stage.GetRootLayer().identifier)
-
-    root_layer.SetPermissionToEdit(current_permission)
-    return over_prim
+    return create_many(taxon, [name], [label])[0]
 
 
 def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
@@ -229,6 +263,11 @@ def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     return _context(prim, fields)
 
 
+def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
+    fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
+    return _find_layer_matching(fields, _layer_stack(prim))
+
+
 def _root_asset(stage):
     """From a give stage, find the first layer that matches a valid grill identifier.
 
@@ -237,7 +276,7 @@ def _root_asset(stage):
 
     This searches on the root layer first.
     """
-    with suppress(ValueError):
+    with contextlib.suppress(ValueError):
         root_layer = stage.GetRootLayer()
         return UsdAsset(Path(root_layer.identifier).name), root_layer
 
@@ -264,7 +303,9 @@ def _get_id_fields(prim):
 
 
 def _context(obj, tokens):
-    layers = reversed(list(_layer_stack(obj)))
+    # TODO: do we need to reverse the order of the layer stack?
+    #   at the moment, goes from strongest -> weakest layers
+    layers = _layer_stack(obj)
     asset_layer = _find_layer_matching(tokens, layers)
     return _edit_context(obj, asset_layer)
 
@@ -318,7 +359,13 @@ def _(obj: Usd.Stage):
 
 @_layer_stack.register
 def _(obj: Usd.Prim):
-    return (spec.layer for spec in obj.GetPrimStack())
+    seen = set()
+    for spec in obj.GetPrimStack():
+        layer = spec.layer
+        if layer in seen:
+            continue
+        seen.add(layer)
+        yield layer
 
 
 class UsdAsset(names.CGAssetFile):
