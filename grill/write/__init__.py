@@ -44,7 +44,7 @@ from grill.tokens import ids
 
 logger = logging.getLogger(__name__)
 
-Repository = repo = contextvars.ContextVar('Repository')
+Repository = contextvars.ContextVar('Repository')
 
 _PRIM_GRILL_KEY = 'grill'
 _PRIM_FIELDS_KEY = 'fields'
@@ -69,18 +69,15 @@ def fetch_stage(identifier: str) -> Usd.Stage:
     """
     layer_id = UsdAsset(identifier).name
     cache = UsdUtils.StageCache.Get()
-    repo_path = repo.get()
+    repo_path = Repository.get()
     resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
     with Ar.ResolverContextBinder(resolver_ctx):
         logger.debug(f"Searching for {layer_id}")
-        # logger.debug("Searching for %s", layer_id)
         layer = Sdf.Layer.Find(layer_id)
         if not layer:
             logger.debug(f"Layer {layer_id} was not found open. Attempting to open it.")
-            # logger.debug("Layer %s was not found open. Attempting to open it.", layer_id)
             if not Sdf.Layer.FindOrOpen(layer_id):
                 logger.debug(f"Layer {layer_id} does not exist on repository path: {repo_path}. Creating a new one.")
-                # logger.debug("Layer %s does not exist on repository path: %s. Creating a new one.", layer_id, repo_path)
                 # we first create a layer under our repo
                 tmp_new_layer = Sdf.Layer.CreateNew(str(repo_path / layer_id))
                 # delete it since it will have an identifier with the full path,
@@ -91,22 +88,17 @@ def fetch_stage(identifier: str) -> Usd.Stage:
                 del tmp_new_layer
             stage = Usd.Stage.Open(layer_id)
             logger.debug(f"Opened stage: {stage}")
-            # logger.debug("Opened stage: %s", stage)
             cache_id = cache.Insert(stage)
             logger.debug(f"Added stage for {layer_id} with cache ID: {cache_id.ToString()}.")
-            # logger.debug("Added stage for %s with cache ID: %s.", layer_id, cache_id.ToString())
         else:
             logger.debug(f"Layer was open. Found: {layer}")
-            # logger.debug("Layer was open. Found: %s", layer)
             stage = cache.FindOneMatching(layer)
             if not stage:
                 logger.debug("Could not find stage on the cache.")
                 stage = Usd.Stage.Open(layer)
                 cache_id = cache.Insert(stage)
                 logger.debug(f"Added stage for {layer} with cache ID: {cache_id.ToString()}.")
-                # logger.debug("Added stage for %s with cache ID: %s.", layer, cache_id.ToString())
             else:
-                # logger.debug("Found stage: %s", stage)
                 logger.debug(f"Found stage: {stage}")
 
     return stage
@@ -184,7 +176,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:taxa'))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
-    # taxonomy_layer_id = str(Path(taxonomy_layer.realPath).relative_to(repo.get()))
+    # taxonomy_layer_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
     taxonomy_layer_id = taxonomy_layer.identifier  # TODO: please ensure it's never absolute path
 
     scope_path = stage.GetPseudoRoot().GetPath().AppendPath(taxon.GetName())
@@ -248,7 +240,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
         taxonomy_stage = fetch_stage(taxonomy_asset)
         taxonomy_layer = taxonomy_stage.GetRootLayer()
         # Use paths relative to our repository to guarantee portability
-        taxonomy_reference = str(Path(taxonomy_layer.realPath).relative_to(repo.get()))
+        taxonomy_reference = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
         root_layer.subLayerPaths.append(taxonomy_reference)
 
         if not taxonomy_stage.GetDefaultPrim():
