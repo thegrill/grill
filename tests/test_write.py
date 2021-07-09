@@ -134,3 +134,8 @@ class TestWrite(unittest.TestCase):
 
         with write.unit_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")
+
+    def test_create_many(self):
+        stage = write.fetch_stage(self.root_asset)
+        taxon = write.define_taxon(stage, "Another")
+        write.create_many(taxon, (f"new_{x}" for x in range(10)))
