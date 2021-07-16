@@ -48,6 +48,7 @@ Repository = contextvars.ContextVar('Repository')
 
 _PRIM_GRILL_KEY = 'grill'
 _PRIM_FIELDS_KEY = 'fields'
+_PRIM_TAXA_KEY = 'taxa'
 
 # Taxonomy rank handles the grill classification and grouping of assets.
 _TAXONOMY_NAME = 'Taxonomy'
@@ -140,7 +141,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
             prim.GetReferences().AddInternalReference(reference.GetPath())
         prim.CreateAttribute("label", Sdf.ValueTypeNames.String, custom=False)
         taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
-        prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: taxon_fields, "taxa": {name: 0}})
+        prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: taxon_fields, _PRIM_TAXA_KEY: {name: 0}})
 
     return prim
 
@@ -154,7 +155,7 @@ def _iter_taxa(stage, taxon1, *taxonN, predicate=Usd.PrimDefaultPredicate):
             # Ignore prims from the taxonomy hierarchy as they're not
             # taxa members but the definition themselves.
             it.PruneChildren()
-        elif taxa_names.intersection(prim.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:taxa') or {}):
+        elif taxa_names.intersection(prim.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:{_PRIM_TAXA_KEY}') or {}):
             yield prim
 
 
@@ -184,7 +185,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     current_permission = root_layer.permissionToEdit
     root_layer.SetPermissionToEdit(True)
 
-    # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:taxa'))}
+    # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:{_PRIM_TAXA_KEY}'))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
     # taxonomy_layer_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
     taxonomy_layer_id = taxonomy_layer.identifier  # TODO: please ensure it's never absolute path
