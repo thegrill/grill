@@ -267,6 +267,7 @@ def unit_context(prim: Usd.Prim) -> Usd.EditContext:
 
 
 def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
+    """Get the asset layer that acts as the 'entry point' for the given prim."""
     fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
     return _find_layer_matching(fields, _layer_stack(prim))
 
