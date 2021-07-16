@@ -159,6 +159,16 @@ def _iter_taxa(stage, taxon1, *taxonN, predicate=Usd.PrimDefaultPredicate):
 
 
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
+    """Create a new taxon member for each of the provided names.
+
+    a unit member of the given ``taxon``, with an optional display label.
+
+    When creating hundreds of thousands of members, this provides a slight performance improvement (around 15% on average) over :func:`create`.
+
+    The new members will be created as `prims <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ on the given ``taxon``'s `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
+
+    .. seealso:: :func:`define_taxon` :func:`create`
+    """
     stage = taxon.GetStage()
     taxon_path = taxon.GetPath()
     taxon_fields = _get_id_fields(taxon)
@@ -219,7 +229,7 @@ def create(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
 
     The new member will be created as a `prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ on the given ``taxon``'s `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
 
-    .. seealso:: :func:`define_taxon`
+    .. seealso:: :func:`define_taxon` and :func:`create_many`
     """
     return create_many(taxon, [name], [label])[0]
 
