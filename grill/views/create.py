@@ -53,7 +53,7 @@ class _CreatePrims(QtWidgets.QDialog):
     def _setRepositoryPath(parent=None, caption="Select a repository path"):
         dirpath = QtWidgets.QFileDialog.getExistingDirectory(parent=parent, caption=caption)
         if dirpath:
-            token = write.repo.set(Path(dirpath))
+            token = write.Repository.set(Path(dirpath))
             print(f"Repository path set to: {dirpath}, token: {token}")
         return dirpath
 
@@ -79,7 +79,7 @@ class CreateAssets(_CreatePrims):
 
     @_sheets.wait()
     def _create(self):
-        if not write.repo.get(None):
+        if not write.Repository.get(None):
             if not self._setRepositoryPath(self, "Select a repository path to create assets on"):
                 msg = "A repository path must be selected in order to create assets."
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
@@ -278,7 +278,7 @@ class TaxonomyEditor(_CreatePrims):
 
     @_sheets.wait()
     def _create(self):
-        if not write.repo.get(None):
+        if not write.Repository.get(None):
             if not self._setRepositoryPath(self, "Select a repository path to create assets on"):
                 msg = "A repository path must be selected in order to create assets."
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
