@@ -26,10 +26,10 @@ class TestWrite(unittest.TestCase):
         tempdir = tempfile.mkdtemp()
         logger.debug(f"Repository root directory: {tempdir}")
         self.root_asset = write.UsdAsset.get_anonymous()
-        self.token = write.repo.set(Path(tempdir) / "repo")
+        self.token = write.Repository.set(Path(tempdir) / "repo")
 
     def tearDown(self) -> None:
-        write.repo.reset(self.token)
+        write.Repository.reset(self.token)
 
     def test_fetch_stage(self):
         root_asset = self.root_asset
@@ -38,7 +38,7 @@ class TestWrite(unittest.TestCase):
         # fetching stage outside of AR _context should resolve to same stage
         self.assertIs(root_stage, write.fetch_stage(root_asset))
 
-        repo_path = write.repo.get()
+        repo_path = write.Repository.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
         with Ar.ResolverContextBinder(resolver_ctx):
             # inside an AR resolver _context, a new layer and custom stage should end up

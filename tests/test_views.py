@@ -45,11 +45,11 @@ class TestViews(unittest.TestCase):
         self.world = world
 
         self._tmpf = tempfile.mkdtemp()
-        self._token = write.repo.set(write.Path(self._tmpf) / "repo")
+        self._token = write.Repository.set(write.Path(self._tmpf) / "repo")
         self.rootf = write.UsdAsset.get_anonymous()
 
     def tearDown(self) -> None:
-        write.repo.reset(self._token)
+        write.Repository.reset(self._token)
         shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
