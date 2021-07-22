@@ -6,7 +6,7 @@ from pxr import Usd
 from grill import write
 from PySide2 import QtWidgets, QtCore, QtGui
 
-from . import sheets as _sheets, description as _description
+from . import sheets as _sheets, description as _description, _core
 
 
 class _CreatePrims(QtWidgets.QDialog):
@@ -199,15 +199,14 @@ class TaxonomyEditor(_CreatePrims):
                 editor=_reference_selector,
                 model_setter=_reference_setter
             ),
-            _sheets._Column("🕵 ID Fields", identity),
+            _sheets._Column(f"{_core._EMOJI_ID} ID Fields", identity),
         )
         super().__init__(_columns, *args, **kwargs)
         self.setWindowTitle("Taxonomy Editor")
 
         existing_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self._existing = existing = _sheets._Spreadsheet(
-            # Existing label just a bit to the right (Above the search bar)
-            (_sheets._Column("        🧬 Existing", identity),),
+            (_sheets._Column("🧬 Existing", identity),),
             _sheets._ColumnOptions.SEARCH
         )
         existing.layout().setContentsMargins(0, 0, 0, 0)
