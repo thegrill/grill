@@ -7,7 +7,7 @@ from pxr.Usdviewq.plugin import PluginContainer
 
 from PySide2 import QtWidgets
 
-from . import sheets as _sheets, description as _description, create as _create
+from . import sheets as _sheets, description as _description, create as _create, _model
 
 
 def _stage_on_widget(widget_creator):
@@ -66,6 +66,7 @@ class GrillPlugin(PluginContainer):
                 ("Create Assets", _stage_on_widget(_create.CreateAssets)),
                 ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
+                ("Spreadsheet Editor 2.0", _stage_on_widget(_model.StageTable)),
                 ("Prim Composition", prim_composition),
                 ("LayerStack Composition", _stage_on_widget(_description.LayerStackComposition)),
                 ("Save Changes", save_changes),
