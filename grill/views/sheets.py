@@ -60,6 +60,30 @@ _VALUE_GETTER = QtCore.Qt.UserRole + 1
 _VALUE_SETTER = QtCore.Qt.UserRole + 2
 
 
+class _ColumnOptions(enum.Flag):
+    """Options that will be available on the header of a table."""
+    NONE = enum.auto()
+    SEARCH = enum.auto()
+    VISIBILITY = enum.auto()
+    LOCK = enum.auto()
+    ALL = SEARCH | VISIBILITY | LOCK
+
+
+class _Column(NamedTuple):
+    name: str
+    getter: callable
+    setter: callable = _read_only  # "Read-only" by default
+    editor: callable = None
+    model_setter: callable = None  # TODO: reconcile this with the object data flags (object vs model data getter / setter)
+    # createEditor() returns the widget used to change data from the model and can be reimplemented to customize editing behavior.
+    #
+    # setEditorData() provides the widget with data to manipulate.
+    #
+    # updateEditorGeometry() ensures that the editor is displayed correctly with respect to the item view.
+    #
+    # setModelData() returns updated data to the model.
+
+
 class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     https://doc.qt.io/qtforpython/overviews/sql-presenting.html
@@ -109,15 +133,6 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
             print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
         setModelData = getattr(self, "_model_setter") or super().setModelData
         return setModelData(editor, model, index)
-
-
-class _ColumnOptions(enum.Flag):
-    """Options that will be available on the header of a table."""
-    NONE = enum.auto()
-    SEARCH = enum.auto()
-    VISIBILITY = enum.auto()
-    LOCK = enum.auto()
-    ALL = SEARCH | VISIBILITY | LOCK
 
 
 class _ColumnHeaderOptions(QtWidgets.QWidget):
@@ -537,21 +552,6 @@ class _Spreadsheet(QtWidgets.QDialog):
                     s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
         self.table.setSortingEnabled(orig_sort_enabled)
-
-
-class _Column(NamedTuple):
-    name: str
-    getter: callable
-    setter: callable = _read_only  # "Read-only" by default
-    editor: callable = None
-    model_setter: callable = None  # TODO: reconcile this with the object data flags (object vs model data getter / setter)
-    # createEditor() returns the widget used to change data from the model and can be reimplemented to customize editing behavior.
-    #
-    # setEditorData() provides the widget with data to manipulate.
-    #
-    # updateEditorGeometry() ensures that the editor is displayed correctly with respect to the item view.
-    #
-    # setModelData() returns updated data to the model.
 
 
 class SpreadsheetEditor(_Spreadsheet):
