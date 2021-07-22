@@ -13,7 +13,7 @@ from pxr import Usd, Pcp, Sdf
 from networkx.drawing import nx_pydot
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
-from . import sheets as _sheets
+from . import sheets as _sheets, _core
 
 
 @lru_cache(maxsize=None)
@@ -213,14 +213,17 @@ class PrimComposition(QtWidgets.QDialog):
         prim_index.DumpToDotGraph(fp)
         self._dot_view.setDotPath(fp)
 
+import operator
 
 class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
-        _sheets._Column("Layer Identifier", Sdf.Layer.identifier.getter),
+        _sheets._Column(f"{_core._EMOJI_ID} Identifier", operator.attrgetter('identifier')),
+        _sheets._Column("🚧 Dirty", operator.attrgetter('dirty')),
     )
 
     _PRIM_COLUMNS = (
-        _sheets._Column("Spec on Prim Path", lambda prim: str(prim.GetPath)),
+        # _sheets._Column("🧩 Opinion on Prim Path", lambda prim: str(prim.GetPath)),
+        _sheets._Column("🧩 Opinion on Prim Path", operator.methodcaller("GetPath")),
     )
 
     def __init__(self, stage=None, parent=None, **kwargs):
@@ -255,7 +258,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._paths = dict()
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
-        node_ids = [index.data() for index in self._layers.table.selectedIndexes()]
+        node_ids = [index.data(QtCore.Qt.UserRole) for index in self._layers.table.selectedIndexes()]
         node_indices = [self._node_index_by_id[i] for i in node_ids]
         paths = set(chain.from_iterable(self._paths[i] for i in node_ids))
 
@@ -265,7 +268,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         prims_model.setRowCount(len(paths))
         prims_model.blockSignals(True)
         for row_index, path in enumerate(paths):
-            for column_index, getter in enumerate(self._LAYERS_COLUMNS):
+            for column_index, getter in enumerate(self._PRIM_COLUMNS):
                 item = QtGui.QStandardItem()
                 item.setData(path, QtCore.Qt.DisplayRole)
                 item.setData(path, QtCore.Qt.UserRole)
@@ -335,7 +338,10 @@ class LayerStackComposition(QtWidgets.QDialog):
             label = f"{{{_layer_label(root_layer)}"
             sublayers = [layer for layer in _walk_layer_tree(layer_stack.layerTree)]
             layer_stacks_by_node_idx[stack_index] = sublayers
+            fillcolor = 'white'
             for layer in sublayers:
+                if layer.dirty:
+                    fillcolor = 'palegoldenrod'
                 if layer == root_layer:
                     continue
                 node_index_by_id[layer.identifier] = stack_index
@@ -345,8 +351,8 @@ class LayerStackComposition(QtWidgets.QDialog):
             tooltip = f"Layer Stack:\n{ids}"
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip = tooltip.replace('\n', '&#10;')
-            graph.add_node(stack_index, style='rounded', shape='record', label=label,
-                       tooltip=tooltip, title='world', href=f"{self._graph_view.url_id_prefix}{stack_index}")
+            graph.add_node(stack_index, style='"rounded,filled"', shape='record', label=label,
+                       tooltip=tooltip, title='world', fillcolor=fillcolor, href=f"{self._graph_view.url_id_prefix}{stack_index}")
 
         # only query composition arcs that have specs on our prims.
         qFilter = Usd.PrimCompositionQuery.Filter()
@@ -372,21 +378,25 @@ class LayerStackComposition(QtWidgets.QDialog):
                     graph.add_edge(source_stack_idx, target_stack_idx, **edge_attrs)
 
         layers_model = self._layers.model
-        def _createItem(layer):
-            item = QtGui.QStandardItem(layer.identifier)
-            item.setData(layer, QtCore.Qt.UserRole)
-            return item
-        items_to_add = [
-            # QtGui.QStandardItem(layer.identifier)
-            _createItem(layer)
+
+        layers_to_add = [
+            layer
             for node_id in sorted(set(graph.nodes).difference(legend_node_ids))
             for layer in layer_stacks_by_node_idx[node_id]
             if layer  # ensure the layer is still valid, (e.g. not expired)
         ]
-        layers_model.setRowCount(len(items_to_add))
+
+        layers_model.setRowCount(len(layers_to_add))
         layers_model.blockSignals(True)  # prevent unneeded events from computing
-        for index, item in enumerate(items_to_add):
-            layers_model.setItem(index, 0, item)
+        for row_index, layer in enumerate(layers_to_add):
+            for col_index, col_data in enumerate(self._LAYERS_COLUMNS):
+                item = QtGui.QStandardItem()
+                data = col_data.getter(layer)
+                item.setData(data, QtCore.Qt.DisplayRole)
+                item.setData(layer.identifier, QtCore.Qt.UserRole)
+                if layer.dirty:
+                    item.setData(QtGui.QBrush(QtCore.Qt.yellow), QtCore.Qt.BackgroundRole)
+                layers_model.setItem(row_index, col_index, item)
 
         layers_model.blockSignals(False)
         for table in self._layers, self._prims:
