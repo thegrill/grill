@@ -17,9 +17,6 @@ from PySide2 import QtCore, QtWidgets, QtGui
 logger = logging.getLogger(__name__)
 
 
-# COLUMNS = (1,2)
-
-
 @lru_cache(maxsize=None)
 def _emoji_suffix():
     # Maya widgets strip the last character of widgets with emoji on them.
@@ -123,50 +120,20 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
     def _setHidden(self, value):
         self._vis_button.setChecked(not value)
 
-from pprint import pp
+
 class _ProxyModel(QtCore.QSortFilterProxyModel):
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
         """For a vertical header, display a sequential visual index instead of the logical from the model."""
         # https://www.walletfox.com/course/qsortfilterproxymodelexample.php
-        if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Vertical:
-            return section + 1
+        if role == QtCore.Qt.DisplayRole:
+            if orientation == QtCore.Qt.Vertical:
+                return section + 1
+            elif orientation == QtCore.Qt.Horizontal:
+                return ""  # our horizontal header labels are drawn by custom header
         return super().headerData(section, orientation, role)
 
     def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
         self.sourceModel().sort(column, order)
-
-    # def filterAcceptsRow(self, source_row:int, source_parent:QtCore.QModelIndex) -> bool:
-    #     regex = self.filterRegularExpression()
-    #     if not regex.pattern():
-    #         return True
-    #     source_model = self.sourceModel()
-    #     source = source_model.index(source_row, self.filterKeyColumn(), source_parent)
-    #     prim = source_model.data(source, _USD_DATA_ROLE)
-    #     return regex.match(prim.GetName()).hasMatch()
-    #     source_0 = self.sourceModel().index(source_row, 0, source_parent.child(source_row, 0))
-    #     prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
-    #     # print(source_0)
-    #     # print(prim)
-    #     return True
-    #     source_0 = self.sourceModel().index(source_row, 0, source_parent)
-    #     prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
-    #     return True
-    #     regex = self.filterRegularExpression()
-    #     if not regex.pattern():
-    #         return True
-    #     prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
-    #     name = prim.GetName()
-    #     return regex.match(name).hasMatch()
-    #
-    #     matches = regex.match(name)
-    #     # if "h" not in self.sourceModel().data(source_0, _USD_DATA_ROLE).GetName():
-    #     #     return False
-    #     # self.sourceModel()._prims(source_0)
-    #     source_1 = self.sourceModel().index(source_row, 1, source_parent.child(source_row, 1))
-    #     parent_row = source_parent.row()
-    #     parent_col = source_parent.column()
-    #     pp(locals())
-    #     return True
 
 
 class _Header(QtWidgets.QHeaderView):
@@ -252,6 +219,7 @@ class StageTableModel(QtCore.QAbstractTableModel):
         self._columns_spec = columns
         self._stage = None
         self._prims = []
+        self._locked_columns = set()
 
     @property
     def stage(self):
@@ -292,7 +260,7 @@ class StageTableModel(QtCore.QAbstractTableModel):
 
     def flags(self, index:QtCore.QModelIndex) -> QtCore.Qt.ItemFlags:
         flags = super().flags(index)
-        if index.column() == 1:
+        if index.column() not in self._locked_columns:
             return flags | QtCore.Qt.ItemIsEditable
         return flags
 
@@ -372,23 +340,9 @@ class StageTable(QtWidgets.QDialog):
         self.table.setColumnHidden(index, not visible)
 
     def _setColumnLocked(self, column_index, value):
-        # model = self.model
-        pass
-        # self._locked_columns =
-        # for row_index in range(model.rowCount()):
-        #
-        #     item = model.item(row_index, column_index)
-        #     # if not item:
-        #     #     # add an item here if it's missing?
-        #     #     logger.warning(f"Creating new item for: {row_index}, {column_index}")
-        #     #     item = QtGui.QStandardItem()
-        #     #     item.setData(None, _OBJECT)
-        #     #     column_data = self._columns_spec[column_index]
-        #     #     item.setData(column_data.getter, _VALUE_GETTER)
-        #     #     item.setData(column_data.setter, _VALUE_SETTER)
-        #     #     model.setItem(row_index, column_index, item)
-        #
-        #     item.setEditable(not value)
+        method = set.add if value else set.discard
+        method(self.model._locked_columns, column_index)
+
 
 if __name__ == "__main__":
     import sys
