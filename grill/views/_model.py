@@ -17,7 +17,7 @@ from PySide2 import QtCore, QtWidgets, QtGui
 logger = logging.getLogger(__name__)
 
 
-COLUMNS = (1,2)
+# COLUMNS = (1,2)
 
 
 @lru_cache(maxsize=None)
@@ -135,27 +135,38 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
     def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
         self.sourceModel().sort(column, order)
 
-    def filterAcceptsRow(self, source_row:int, source_parent:QtCore.QModelIndex) -> bool:
-        # source_0 = self.sourceModel().index(source_row, 0, source_parent.child(source_row, 0))
-        source_0 = self.sourceModel().index(source_row, 0, source_parent)
-        prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
-        # return True
-        regex = self.filterRegularExpression()
-        if not regex.pattern():
-            return True
-        prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
-        name = prim.GetName()
-        return regex.match(name).hasMatch()
-
-        matches = regex.match(name)
-        # if "h" not in self.sourceModel().data(source_0, _USD_DATA_ROLE).GetName():
-        #     return False
-        # self.sourceModel()._prims(source_0)
-        source_1 = self.sourceModel().index(source_row, 1, source_parent.child(source_row, 1))
-        parent_row = source_parent.row()
-        parent_col = source_parent.column()
-        pp(locals())
-        return True
+    # def filterAcceptsRow(self, source_row:int, source_parent:QtCore.QModelIndex) -> bool:
+    #     regex = self.filterRegularExpression()
+    #     if not regex.pattern():
+    #         return True
+    #     source_model = self.sourceModel()
+    #     source = source_model.index(source_row, self.filterKeyColumn(), source_parent)
+    #     prim = source_model.data(source, _USD_DATA_ROLE)
+    #     return regex.match(prim.GetName()).hasMatch()
+    #     source_0 = self.sourceModel().index(source_row, 0, source_parent.child(source_row, 0))
+    #     prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
+    #     # print(source_0)
+    #     # print(prim)
+    #     return True
+    #     source_0 = self.sourceModel().index(source_row, 0, source_parent)
+    #     prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
+    #     return True
+    #     regex = self.filterRegularExpression()
+    #     if not regex.pattern():
+    #         return True
+    #     prim = self.sourceModel().data(source_0, _USD_DATA_ROLE)
+    #     name = prim.GetName()
+    #     return regex.match(name).hasMatch()
+    #
+    #     matches = regex.match(name)
+    #     # if "h" not in self.sourceModel().data(source_0, _USD_DATA_ROLE).GetName():
+    #     #     return False
+    #     # self.sourceModel()._prims(source_0)
+    #     source_1 = self.sourceModel().index(source_row, 1, source_parent.child(source_row, 1))
+    #     parent_row = source_parent.row()
+    #     parent_col = source_parent.column()
+    #     pp(locals())
+    #     return True
 
 
 class _Header(QtWidgets.QHeaderView):
@@ -170,7 +181,6 @@ class _Header(QtWidgets.QHeaderView):
         super().__init__(*args, **kwargs)
         self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
-
         for index, name in enumerate(columns):
             column_options = _ColumnHeaderOptions(name, options=options, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
@@ -231,10 +241,10 @@ _USD_DATA_ROLE = QtCore.Qt.UserRole + 1
 
 
 class StageTableModel(QtCore.QAbstractTableModel):
-    # See:
     # https://doc.qt.io/qtforpython/PySide6/QtCore/QAbstractItemModel.html
     # https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-pixelator-example.html#pixelator-example
-    # SortFilter slow with over 200k prims. Because fo this, see:
+    # I tried to implement fetchMore for 250k+ prims (for filtering operations) but
+    # it's not as pleasant experience and filtering first on path is a better tactic.
     # https://doc.qt.io/qt-5/qtwidgets-itemviews-fetchmore-example.html
 
     def __init__(self, columns, *args, **kwargs):
@@ -242,7 +252,6 @@ class StageTableModel(QtCore.QAbstractTableModel):
         self._columns_spec = columns
         self._stage = None
         self._prims = []
-        self._viewed_amount = 0  # amount of visible prims
 
     @property
     def stage(self):
@@ -253,24 +262,16 @@ class StageTableModel(QtCore.QAbstractTableModel):
         self.beginResetModel()
         self._stage = value
         flags = Usd.PrimIsLoaded & ~Usd.PrimIsAbstract
-        # self._prims = list(Usd.PrimRange.Stage(self.stage, flags))[:20]
         self._prims = list(Usd.PrimRange.Stage(self.stage, flags))
         self.endResetModel()
 
     def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
-        # if not parent.isValid():
-        #     return 0
-        # return len(self._prims)
-        # return len(self._prims
-        return self._viewed_amount
+        return len(self._prims)
 
     def columnCount(self, parent:QtCore.QModelIndex=...) -> int:
         return len(self._columns_spec)
 
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
-        # if (!index.isValid() || role != Qt::DisplayRole)
-        #         return QVariant();
-        #     return qGray(modelImage.pixel(index.column(), index.row()));
         if not index.isValid():
             return None
         elif role == _USD_DATA_ROLE:  # raw data
@@ -289,33 +290,11 @@ class StageTableModel(QtCore.QAbstractTableModel):
         finally:
             self.layoutChanged.emit()
 
-    def headerData(self, section:int, orientation:QtCore.Qt.Orientation, role:int=...) -> typing.Any:
-        #     if (role == Qt::SizeHintRole)
-        #         return QSize(1, 1);
-        #     return QVariant();
-        if role == QtCore.Qt.SizeHintRole:
-            return QtCore.QSize(50, 50)
-        if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Vertical:
-            return section + 1
-        return super().headerData(section, orientation, role)
-
     def flags(self, index:QtCore.QModelIndex) -> QtCore.Qt.ItemFlags:
         flags = super().flags(index)
         if index.column() == 1:
             return flags | QtCore.Qt.ItemIsEditable
         return flags
-
-    def fetchMore(self, parent:QtCore.QModelIndex) -> None:
-        remainder = len(self._prims) - self._viewed_amount
-        to_fetch = min(1000, remainder)
-        if not to_fetch:
-            return
-        self.beginInsertRows(QtCore.QModelIndex(), self._viewed_amount, self._viewed_amount + to_fetch - 1 )
-        self._viewed_amount += to_fetch
-        self.endInsertRows()
-
-    def canFetchMore(self, parent:QtCore.QModelIndex) -> bool:
-        return self._viewed_amount < len(self._prims)
 
 
 class _Table(QtWidgets.QTableView):
@@ -333,9 +312,8 @@ class StageTable(QtWidgets.QDialog):
     def __init__(self, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
         columns = (
-            _Column("Name", Usd.Prim.GetName),
             _Column("Path", lambda prim: str(prim.GetPath())),
-            # _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox),
+            _Column("Name", Usd.Prim.GetName),
             _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
             _Column("Documentation", Usd.Prim.GetDocumentation,
                     Usd.Prim.SetDocumentation),
@@ -352,11 +330,11 @@ class StageTable(QtWidgets.QDialog):
         self._column_options = header.section_options
 
         # for every column, create a proxy model and chain it to the next one
-        for column_index, column_data in enumerate(COLUMNS):
+        for column_index, column_data in enumerate(columns):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
             proxy_model.setFilterKeyColumn(column_index)
-            source_model = proxy_model
+            # proxy_model.setFilterRole(_USD_DATA_ROLE)
 
             column_options = header.section_options[column_index]
             if _ColumnOptions.SEARCH in options:
@@ -365,6 +343,9 @@ class StageTable(QtWidgets.QDialog):
                 column_options.toggled.connect(partial(self._setColumnVisibility, column_index))
             if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
+
+            source_model = proxy_model
+
 
         header.setModel(source_model)
         header.setSectionsClickable(True)
@@ -414,8 +395,8 @@ if __name__ == "__main__":
     # from PySide2 import QtWebEngine
     # QtWebEngine.QtWebEngine.initialize()
     app = QtWidgets.QApplication(sys.argv)
-    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
+    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
     # _COLUMNS = (
     #     _Column("Name", Usd.Prim.GetName),
     #     _Column("Path", lambda prim: str(prim.GetPath())),
