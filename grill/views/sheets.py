@@ -690,17 +690,3 @@ class SpreadsheetEditor(StageTable):
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self.model.stage = stage
-
-
-if __name__ == "__main__":
-    import sys
-    # from PySide2 import QtWebEngine
-    # QtWebEngine.QtWebEngine.initialize()
-    app = QtWidgets.QApplication(sys.argv)
-    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi_mini.usda")
-    w = SpreadsheetEditor()
-    w.setStage(stage)
-    w.show()
-    sys.exit(app.exec_())
