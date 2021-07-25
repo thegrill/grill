@@ -219,6 +219,29 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         self.sourceModel().sort(column, order)
 
 
+class _PrimTextColor(enum.Enum):
+    NONE = None
+    INSTANCE = QtGui.QColor('lightskyblue')
+    INACTIVE = QtGui.QColor('darkgray')
+    INACTIVE_ARCS = QtGui.QColor('darkorange')
+    ARCS = QtGui.QColor('orange')
+
+
+@lru_cache(maxsize=None)
+def _prim_font(*, abstract=False, orphaned=False):
+    # Passing arguments via the constructor does not work even though docs say they should
+    font = QtGui.QFont()
+    if abstract:
+        font.setWeight(QtGui.QFont.ExtraLight)
+        font.setLetterSpacing(QtGui.QFont.PercentageSpacing, 120)
+    elif orphaned:
+        font.setWeight(QtGui.QFont.Light)
+        font.setItalic(True)
+    else:
+        font.setWeight(QtGui.QFont.Normal)
+    return font
+
+
 class StageTableModel(QtCore.QAbstractTableModel):
     # https://doc.qt.io/qtforpython/PySide6/QtCore/QAbstractItemModel.html
     # https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-pixelator-example.html#pixelator-example
@@ -269,7 +292,7 @@ class StageTableModel(QtCore.QAbstractTableModel):
             active = prim.IsActive()
             # Keep consistency with USDView visual style
             if prim.IsInstanceable():
-                color = QtGui.QColor('lightskyblue' if active else 'darkgray')
+                color = _PrimTextColor.INSTANCE
             elif (
                 prim.HasAuthoredReferences() or
                 prim.HasAuthoredPayloads() or
@@ -277,28 +300,18 @@ class StageTableModel(QtCore.QAbstractTableModel):
                 prim.HasAuthoredSpecializes() or
                 prim.HasVariantSets()
             ):
-                color = QtGui.QColor('orange' if active else 'darkorange')
+                color = _PrimTextColor.ARCS if active else _PrimTextColor.INACTIVE_ARCS
             elif not active:
-                color = QtGui.QColor('darkgray')
+                color = _PrimTextColor.INACTIVE
             else:
-                color = None
-            return color
+                color = _PrimTextColor.NONE
+            return color.value
         elif role == QtCore.Qt.FontRole:
-            # Keep consistency with USDView visual style
+            # Keep similar USDView visual style (but we don't "bold" defined prims)
             # Abstract prims are also considered defined; since we want
             # to distinguish abstract defined prims from non-abstract
             # defined prims, we check for abstract first.
-            font = QtGui.QFont()
-            if prim.IsAbstract():
-                font.setWeight(QtGui.QFont.Thin)
-                return font
-            elif not prim.IsDefined():
-                font.setWeight(QtGui.QFont.Light)
-                font.setItalic(True)
-                return font
-            else:
-                font.setWeight(QtGui.QFont.Normal)
-                return font
+            return _prim_font(abstract=prim.IsAbstract(), orphaned=not prim.IsDefined())
         elif role != QtCore.Qt.DisplayRole:
             return None
         prim = self._prims[index.row()]
@@ -315,7 +328,7 @@ class StageTableModel(QtCore.QAbstractTableModel):
 
     def flags(self, index:QtCore.QModelIndex) -> QtCore.Qt.ItemFlags:
         flags = super().flags(index)
-        if index.column() not in self._locked_columns:
+        if index.column() not in self._locked_columns and not self._prims[index.row()].IsInstanceable():
             return flags | QtCore.Qt.ItemIsEditable
         return flags
 
@@ -690,3 +703,17 @@ class SpreadsheetEditor(StageTable):
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self.model.stage = stage
+
+
+if __name__ == "__main__":
+    import sys
+    # from PySide2 import QtWebEngine
+    # QtWebEngine.QtWebEngine.initialize()
+    app = QtWidgets.QApplication(sys.argv)
+    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
+    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi_mini.usda")
+    w = SpreadsheetEditor()
+    w.setStage(stage)
+    w.show()
+    sys.exit(app.exec_())
