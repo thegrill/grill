@@ -1,12 +1,12 @@
 import io
 import csv
 import enum
+import typing
 import inspect
 import logging
 import itertools
 import contextlib
 
-from typing import NamedTuple
 from collections import Counter
 from functools import partial, lru_cache
 
@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
 options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
-
-_read_only = lambda x, y: x
 
 
 @lru_cache(maxsize=None)
@@ -55,9 +53,8 @@ def _prim_type_combobox(parent, option, index):
     return combobox
 
 
-_OBJECT = QtCore.Qt.UserRole + 0
-_VALUE_GETTER = QtCore.Qt.UserRole + 1
-_VALUE_SETTER = QtCore.Qt.UserRole + 2
+# Agreement: raw data accessible here
+_USD_DATA_ROLE = QtCore.Qt.UserRole + 1
 
 
 class _ColumnOptions(enum.Flag):
@@ -69,19 +66,10 @@ class _ColumnOptions(enum.Flag):
     ALL = SEARCH | VISIBILITY | LOCK
 
 
-class _Column(NamedTuple):
+class _Column(typing.NamedTuple):
     name: str
     getter: callable
-    setter: callable = _read_only  # "Read-only" by default
-    editor: callable = None
-    model_setter: callable = None  # TODO: reconcile this with the object data flags (object vs model data getter / setter)
-    # createEditor() returns the widget used to change data from the model and can be reimplemented to customize editing behavior.
-    #
-    # setEditorData() provides the widget with data to manipulate.
-    #
-    # updateEditorGeometry() ensures that the editor is displayed correctly with respect to the item view.
-    #
-    # setModelData() returns updated data to the model.
+    setter: callable = None
 
 
 class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
@@ -217,43 +205,119 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
 
 
 class _ProxyModel(QtCore.QSortFilterProxyModel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # TODO: move model hierarchy filter logic to a different class
-        self._useModelHierarchy = False
-
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
         """For a vertical header, display a sequential visual index instead of the logical from the model."""
         # https://www.walletfox.com/course/qsortfilterproxymodelexample.php
-        if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Vertical:
-            return section + 1
+        if role == QtCore.Qt.DisplayRole:
+            if orientation == QtCore.Qt.Vertical:
+                return section + 1
+            elif orientation == QtCore.Qt.Horizontal:
+                return ""  # our horizontal header labels are drawn by custom header
         return super().headerData(section, orientation, role)
 
-    def _extraFilters(self, source_row, source_parent):
-        source_column = self.filterKeyColumn()
-        source_model = self.sourceModel()
-        index = source_model.index(source_row, source_column, source_parent)
+    def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
+        self.sourceModel().sort(column, order)
+
+
+class StageTableModel(QtCore.QAbstractTableModel):
+    # https://doc.qt.io/qtforpython/PySide6/QtCore/QAbstractItemModel.html
+    # https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-pixelator-example.html#pixelator-example
+    # I tried to implement fetchMore for 250k+ prims (for filtering operations) but
+    # it's not as pleasant experience and filtering first on path is a better tactic.
+    # https://doc.qt.io/qt-5/qtwidgets-itemviews-fetchmore-example.html
+
+    # TODO: buttons for filtering by
+    # - class
+    # - orphaned
+    # - def
+    # - active
+    # - ModelAPI (existed as "Model Hierarchy" on SpreadsheetEditor)
+    def __init__(self, columns, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_spec = columns
+        self._stage = None
+        self._prims = []
+        self._locked_columns = set()
+
+    @property
+    def stage(self):
+        return self._stage
+
+    @stage.setter
+    def stage(self, value):
+        self.beginResetModel()
+        self._stage = value
+        flags = Usd.PrimIsLoaded & ~Usd.PrimIsAbstract
+        # self._prims = list(Usd.PrimRange.Stage(self.stage, flags))
+        self._prims = list(value.TraverseAll())
+        self.endResetModel()
+
+    def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
+        return len(self._prims)
+
+    def columnCount(self, parent:QtCore.QModelIndex=...) -> int:
+        return len(self._columns_spec)
+
+    def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if not index.isValid():
-            raise ValueError(f"Invalid index from source_row={source_row}, source_column={source_column}, source_parent={source_parent}")
+            return None
+        if role == _USD_DATA_ROLE:  # raw data
+            return self._prims[index.row()]
+        prim = self.data(index, role=_USD_DATA_ROLE)
+        # Keep consistency with USDView visual style
+        if role == QtCore.Qt.ForegroundRole:
+            active = prim.IsActive()
+            # Keep consistency with USDView visual style
+            if prim.IsInstanceable():
+                color = QtGui.QColor('lightskyblue' if active else 'darkgray')
+            elif (
+                prim.HasAuthoredReferences() or
+                prim.HasAuthoredPayloads() or
+                prim.HasAuthoredInherits() or
+                prim.HasAuthoredSpecializes() or
+                prim.HasVariantSets()
+            ):
+                color = QtGui.QColor('orange' if active else 'darkorange')
+            elif not active:
+                color = QtGui.QColor('darkgray')
+            else:
+                color = None
+            return color
+        elif role == QtCore.Qt.FontRole:
+            # Keep consistency with USDView visual style
+            # Abstract prims are also considered defined; since we want
+            # to distinguish abstract defined prims from non-abstract
+            # defined prims, we check for abstract first.
+            font = QtGui.QFont()
+            if prim.IsAbstract():
+                font.setWeight(QtGui.QFont.Thin)
+                return font
+            elif not prim.IsDefined():
+                font.setWeight(QtGui.QFont.Light)
+                font.setItalic(True)
+                return font
+            else:
+                font.setWeight(QtGui.QFont.Normal)
+                return font
+        elif role != QtCore.Qt.DisplayRole:
+            return None
+        prim = self._prims[index.row()]
+        return self._columns_spec[index.column()].getter(prim)
 
-        prim = index.data(_OBJECT)
-        if not prim:
-            # row may have been just inserted as a result of a model.insertRow or
-            # model.appendRow call, so no prim yet. Mmmm see how to prevent this?
-            # blocking signals before adding row on setStage does not work around this.
-            return True
-        if self._useModelHierarchy:
-            return prim.IsModel()
-        return True
+    def sort(self, column:int, order:QtCore.Qt.SortOrder=...) -> None:
+        self.layoutAboutToBeChanged.emit()
+        key = self._columns_spec[column].getter
+        reverse = order == QtCore.Qt.SortOrder.AscendingOrder
+        try:
+            self._prims = sorted(self._prims, key=key, reverse=reverse)
+        finally:
+            self.layoutChanged.emit()
 
-    def filterAcceptsRow(self, source_row:int, source_parent:QtCore.QModelIndex) -> bool:
-        result = super().filterAcceptsRow(source_row, source_parent)
-        if result:
-            result = self._extraFilters(source_row, source_parent)
-        return result
-
-    def _setModelHierarchyEnabled(self, value):
-        self._useModelHierarchy = value
+    def flags(self, index:QtCore.QModelIndex) -> QtCore.Qt.ItemFlags:
+        flags = super().flags(index)
+        if index.column() not in self._locked_columns:
+            return flags | QtCore.Qt.ItemIsEditable
+        return flags
 
 
 class _Header(QtWidgets.QHeaderView):
@@ -268,7 +332,6 @@ class _Header(QtWidgets.QHeaderView):
         super().__init__(*args, **kwargs)
         self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
-
         for index, name in enumerate(columns):
             column_options = _ColumnHeaderOptions(name, options=options, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
@@ -335,79 +398,71 @@ class _Table(QtWidgets.QTableView):
         header._updateVisualSections(min(header.section_options))
 
 
-class _Spreadsheet(QtWidgets.QDialog):
-    def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
+class StageTable(QtWidgets.QDialog):
+    def __init__(self, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = model = QtGui.QStandardItemModel(0, len(columns))
+        columns = (
+            _Column("Path", lambda prim: str(prim.GetPath())),
+            _Column("Name", Usd.Prim.GetName),
+            _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
+            _Column("Documentation", Usd.Prim.GetDocumentation,
+                    Usd.Prim.SetDocumentation),
+            _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
+            _Column("Visibility",
+                    lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
+            _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+        )
+        self.model = source_model = StageTableModel(columns=columns)
         self._columns_spec = columns
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
-        # for every column, create a proxy model and chain it to the next one
-        proxy_model = source_model = model
+        self._column_options = header.section_options
 
-        self._column_options = dict()
+        # for every column, create a proxy model and chain it to the next one
         for column_index, column_data in enumerate(columns):
             proxy_model = _ProxyModel()
             proxy_model.setSourceModel(source_model)
             proxy_model.setFilterKeyColumn(column_index)
-            source_model = proxy_model  # chain so next proxy model takes this one
 
             column_options = header.section_options[column_index]
             if _ColumnOptions.SEARCH in options:
-                column_options.filterChanged.connect(proxy_model.setFilterRegExp)
+                column_options.filterChanged.connect(proxy_model.setFilterRegularExpression)
             if _ColumnOptions.VISIBILITY in options:
                 column_options.toggled.connect(partial(self._setColumnVisibility, column_index))
             if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
 
-            delegate = _ColumnItemDelegate()
-            delegate._editor = column_data.editor
-            delegate._model_setter = column_data.model_setter
-            # delegate._model_data_setter = column_data.model_data_setter
-            table.setItemDelegateForColumn(column_index, delegate)
-            # for custom delegates we need to keep a reference, otherwise they're
-            # garbage collected and might cause crashes.
-            setattr(self, f"_delegate_{column_index}", delegate)
+            source_model = proxy_model
 
-            self._column_options[column_index] = column_options
-            self._connectProxyModel(proxy_model)  # TODO: only reason of this is model hierarchy. explore to remove soon.
-
-        header.setModel(proxy_model)
+        header.setModel(source_model)
         header.setSectionsClickable(True)
 
-        table.setModel(proxy_model)
+        table.setModel(source_model)
         table.setHorizontalHeader(header)
         table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.SelectedClicked)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
+        table.setSortingEnabled(True)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(table)
         self.installEventFilter(self)
         self.setLayout(layout)
 
-    def _connectProxyModel(self, proxy_model):
-        # TODO: only reason of this is model hierarchy. explore to remove soon.
-        pass
+    @property
+    def stage(self):
+        return self.model.stage
+
+    @stage.setter
+    def stage(self, value):
+        self.model.stage = value
 
     def _setColumnVisibility(self, index: int, visible: bool):
         self.table.setColumnHidden(index, not visible)
 
     def _setColumnLocked(self, column_index, value):
-        model = self.model
-        for row_index in range(model.rowCount()):
-            item = model.item(row_index, column_index)
-            if not item:
-                # add an item here if it's missing?
-                logger.warning(f"Creating new item for: {row_index}, {column_index}")
-                item = QtGui.QStandardItem()
-                item.setData(None, _OBJECT)
-                column_data = self._columns_spec[column_index]
-                item.setData(column_data.getter, _VALUE_GETTER)
-                item.setData(column_data.setter, _VALUE_SETTER)
-                model.setItem(row_index, column_index, item)
-
-            item.setEditable(not value)
+        method = set.add if value else set.discard
+        method(self.model._locked_columns, column_index)
 
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
@@ -554,23 +609,13 @@ class _Spreadsheet(QtWidgets.QDialog):
         self.table.setSortingEnabled(orig_sort_enabled)
 
 
-class SpreadsheetEditor(_Spreadsheet):
-    _COLUMNS = (
-        _Column("Name", Usd.Prim.GetName),
-        _Column("Path", lambda prim: str(prim.GetPath())),
-        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox),
-        _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
-        _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
-        _Column("Visibility", lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
-        _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
-    )
+class SpreadsheetEditor(StageTable):
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
     """
-    def __init__(self, stage=None, parent=None, **kwargs):
-        columns = self._COLUMNS
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
         self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox(f"🏡 Model Hierarchy{_emoji_suffix()}")
-        super().__init__(columns, parent=parent, **kwargs)
 
         hide_key = "👀 Hide All"
         self._vis_states = {"👀 Show All": True, hide_key: False}
@@ -599,7 +644,6 @@ class SpreadsheetEditor(_Spreadsheet):
         layout = self.layout()
         layout.addLayout(options_layout)
         layout.addWidget(self.table)
-        self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Spreadsheet Editor")
 
         for column_index, column_options in self._column_options.items():
@@ -645,28 +689,18 @@ class SpreadsheetEditor(_Spreadsheet):
     @wait()
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
-        self._stage = stage
-        table = self.table
-        model = self.model
-        model.clear()
-        # labels are on the header widgets
-        model.setHorizontalHeaderLabels([''] * len(self._COLUMNS))
-        table.setSortingEnabled(False)
-        items = list(enumerate(stage.TraverseAll()))
-        model.setRowCount(len(items))
-        model.blockSignals(True)  # prevent unneeded events from computing
-        for index, prim in enumerate(stage.TraverseAll()):
-            self._addPrimToRow(index, prim)
-        model.blockSignals(False)
-        table.setSortingEnabled(self.sorting_enabled.isChecked())
+        self.model.stage = stage
 
-    def _addPrimToRow(self, row_index, prim):
-        model = self.model
-        for column_index, column_data in enumerate(self._COLUMNS):
-            attribute = column_data.getter(prim)
-            item = QtGui.QStandardItem()
-            item.setData(attribute, QtCore.Qt.DisplayRole)
-            item.setData(prim, _OBJECT)
-            item.setData(column_data.getter, _VALUE_GETTER)
-            item.setData(column_data.setter, _VALUE_SETTER)
-            model.setItem(row_index, column_index, item)
+
+if __name__ == "__main__":
+    import sys
+    # from PySide2 import QtWebEngine
+    # QtWebEngine.QtWebEngine.initialize()
+    app = QtWidgets.QApplication(sys.argv)
+    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
+    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi_mini.usda")
+    w = SpreadsheetEditor()
+    w.setStage(stage)
+    w.show()
+    sys.exit(app.exec_())
