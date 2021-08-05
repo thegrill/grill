@@ -7,7 +7,7 @@ from pxr.Usdviewq.plugin import PluginContainer
 
 from PySide2 import QtWidgets
 
-from . import sheets as _sheets, description as _description, create as _create
+from . import sheets as _sheets, description as _description, create as _create, _core
 
 
 def _stage_on_widget(widget_creator):
@@ -15,6 +15,7 @@ def _stage_on_widget(widget_creator):
     def _launcher(usdviewApi):
         widget = widget_creator(parent=usdviewApi.qMainWindow)
         widget.setStage(usdviewApi.stage)
+        widget.setStyleSheet(_core._USDVIEW_PUSH_BUTTON_STYLE)
         return widget
     return _launcher
 

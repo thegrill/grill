@@ -4,6 +4,7 @@ import enum
 import typing
 import inspect
 import logging
+import operator
 import itertools
 import contextlib
 
@@ -222,8 +223,9 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
 class _PrimTextColor(enum.Enum):
     NONE = None
     INSTANCE = QtGui.QColor('lightskyblue')
+    PROTOTYPE = QtGui.QColor('cornflowerblue')
     INACTIVE = QtGui.QColor('darkgray')
-    INACTIVE_ARCS = QtGui.QColor('darkorange')
+    INACTIVE_ARCS = QtGui.QColor('orange').darker(150)
     ARCS = QtGui.QColor('orange')
 
 
@@ -261,6 +263,8 @@ class StageTableModel(QtCore.QAbstractTableModel):
         self._stage = None
         self._prims = []
         self._locked_columns = set()
+        self._filter_predicate = lambda x: True
+        self._traverse_predicate = Usd.PrimAllPrimsPredicate
 
     @property
     def stage(self):
@@ -270,9 +274,7 @@ class StageTableModel(QtCore.QAbstractTableModel):
     def stage(self, value):
         self.beginResetModel()
         self._stage = value
-        flags = Usd.PrimIsLoaded & ~Usd.PrimIsAbstract
-        # self._prims = list(Usd.PrimRange.Stage(self.stage, flags))
-        self._prims = list(value.TraverseAll())
+        self._prims = [prim for prim in Usd.PrimRange.Stage(value, predicate=self._traverse_predicate) if self._filter_predicate(prim)]
         self.endResetModel()
 
     def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
@@ -284,15 +286,17 @@ class StageTableModel(QtCore.QAbstractTableModel):
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if not index.isValid():
             return None
-        if role == _USD_DATA_ROLE:  # raw data
+        elif role == _USD_DATA_ROLE:  # raw data
             return self._prims[index.row()]
         prim = self.data(index, role=_USD_DATA_ROLE)
         # Keep consistency with USDView visual style
         if role == QtCore.Qt.ForegroundRole:
             active = prim.IsActive()
             # Keep consistency with USDView visual style
-            if prim.IsInstanceable():
+            if prim.IsInstance():
                 color = _PrimTextColor.INSTANCE
+            elif prim.IsInPrototype() or prim.IsInstanceProxy():
+                color = _PrimTextColor.PROTOTYPE
             elif (
                 prim.HasAuthoredReferences() or
                 prim.HasAuthoredPayloads() or
@@ -314,7 +318,6 @@ class StageTableModel(QtCore.QAbstractTableModel):
             return _prim_font(abstract=prim.IsAbstract(), orphaned=not prim.IsDefined())
         elif role != QtCore.Qt.DisplayRole:
             return None
-        prim = self._prims[index.row()]
         return self._columns_spec[index.column()].getter(prim)
 
     def sort(self, column:int, order:QtCore.Qt.SortOrder=...) -> None:
@@ -328,7 +331,8 @@ class StageTableModel(QtCore.QAbstractTableModel):
 
     def flags(self, index:QtCore.QModelIndex) -> QtCore.Qt.ItemFlags:
         flags = super().flags(index)
-        if index.column() not in self._locked_columns and not self._prims[index.row()].IsInstanceable():
+        # only allow edits on non-instance proxies AND on unlocked columns
+        if index.column() not in self._locked_columns and not self._prims[index.row()].IsInstanceProxy():
             return flags | QtCore.Qt.ItemIsEditable
         return flags
 
@@ -625,10 +629,92 @@ class StageTable(QtWidgets.QDialog):
 class SpreadsheetEditor(StageTable):
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
+        - Allow filter operation to be OR | AND
     """
+    @property
+    def _traverse_predicate(self):
+        predicate = Usd.PrimIsModel if self._model_hierarchy.isChecked() else Usd.PrimAllPrimsPredicate
+        return Usd.TraverseInstanceProxies(predicate) if self._instances.isChecked() else predicate
+
+    @property
+    def _filter_predicate(self):
+        orphaned = self._orphaned.isChecked()
+        classes = self._classes.isChecked()
+        defined = self._defined.isChecked()
+        active = self._active.isChecked()
+        inactive = self._inactive.isChecked()
+
+        def specifier(prim):
+            is_class = prim.IsAbstract()
+            is_defined = prim.IsDefined()
+            return ((classes and is_class) or  # classes is quickest check
+                    (orphaned and not is_class and not is_defined) or
+                    (defined and not is_class and is_defined))
+
+        def status(prim):
+            is_active = prim.IsActive()
+            return (active and is_active) or (inactive and not is_active)
+
+        logical_op = self._filters_logical_op.currentData(QtCore.Qt.UserRole)
+        return lambda prim: logical_op(specifier(prim), status(prim))
+
+    def _update_predicates(self, *args, stage=None):
+        self.model._filter_predicate = self._filter_predicate
+        self.model._traverse_predicate = self._traverse_predicate
+        self.model.stage = stage if stage else self.model.stage
+
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox(f"🏡 Model Hierarchy{_emoji_suffix()}")
+        self._model_hierarchy = model_hierarchy = QtWidgets.QPushButton(f"🏡{_emoji_suffix()}")
+        model_hierarchy.setToolTip("🏡 Valid Model Hierarchy")
+        self._instances = instances = QtWidgets.QPushButton(f"💠{_emoji_suffix()}")
+        instances.setToolTip("💠 Traverse Instance Proxies")
+        self._orphaned = orphaned = QtWidgets.QPushButton(f"👻{_emoji_suffix()}")
+        orphaned.setToolTip("👻 Orphaned Prims")
+        self._classes = classes = QtWidgets.QPushButton(f"🧪{_emoji_suffix()}")
+        classes.setToolTip("🧪 Classes (Abstract Prims)")
+        self._defined = defined = QtWidgets.QPushButton(f"🧱{_emoji_suffix()}")
+        defined.setToolTip("🧱 Defined Prims")
+        # self._active = active = QtWidgets.QPushButton(f"💡 🌞 ☀ {_emoji_suffix()}")
+        self._active = active = QtWidgets.QPushButton(f"💡{_emoji_suffix()}")
+        # self._inactive = inactive = QtWidgets.QPushButton(f"💀 🛌  🧊 🌒 ⭕{_emoji_suffix()}")
+        self._inactive = inactive = QtWidgets.QPushButton(f"🌒{_emoji_suffix()}")
+        active.setToolTip("💀 🛌 🧊 🌒 ⭕ Inactive Prims")
+
+        for each in (model_hierarchy, instances, orphaned, classes, defined, active, inactive):
+            each.setCheckable(True)
+            each.clicked.connect(self._update_predicates)
+
+        for each in (model_hierarchy, instances, defined, active):
+            each.setChecked(True)
+
+        prim_traversal_frame = QtWidgets.QFrame()
+        prim_traversal_layout = QtWidgets.QHBoxLayout()
+        prim_traversal_layout.setSpacing(0)
+        prim_traversal_layout.setContentsMargins(0,0,0,0)
+        prim_traversal_layout.setMargin(0)
+        prim_traversal_layout.addWidget(model_hierarchy)
+        prim_traversal_layout.addWidget(instances)
+        prim_traversal_frame.setLayout(prim_traversal_layout)
+
+        prim_specifier_frame = QtWidgets.QFrame()
+        prim_specifier_layout = QtWidgets.QHBoxLayout()
+        prim_specifier_layout.setSpacing(0)
+        prim_specifier_layout.setContentsMargins(0,0,0,0)
+        prim_specifier_layout.setMargin(0)
+        prim_specifier_layout.addWidget(orphaned)
+        prim_specifier_layout.addWidget(classes)
+        prim_specifier_layout.addWidget(defined)
+        prim_specifier_frame.setLayout(prim_specifier_layout)
+
+        prim_status_frame = QtWidgets.QFrame()
+        prim_status_layout = QtWidgets.QHBoxLayout()
+        prim_status_layout.setSpacing(0)
+        prim_status_layout.setContentsMargins(0,0,0,0)
+        prim_status_layout.setMargin(0)
+        prim_status_layout.addWidget(active)
+        prim_status_layout.addWidget(inactive)
+        prim_status_frame.setLayout(prim_status_layout)
 
         hide_key = "👀 Hide All"
         self._vis_states = {"👀 Show All": True, hide_key: False}
@@ -642,12 +728,21 @@ class SpreadsheetEditor(StageTable):
         lock_all.clicked.connect(self._conformLocked)
 
         # table options
-        sorting_enabled = QtWidgets.QCheckBox("Sorting Enabled")
+        sorting_enabled = QtWidgets.QCheckBox("Sorting")
         sorting_enabled.setChecked(True)
 
         options_layout = QtWidgets.QHBoxLayout()
         options_layout.addWidget(sorting_enabled)
-        options_layout.addWidget(model_hierarchy)
+        options_layout.addWidget(prim_traversal_frame)
+        options_layout.addWidget(prim_specifier_frame)
+
+        self._filters_logical_op = filters_logical_op = QtWidgets.QComboBox()
+        for op in (operator.and_, operator.or_):
+            op_text = op.__name__.strip("_")
+            filters_logical_op.addItem(op_text, userData=op)
+        self._filters_logical_op.currentIndexChanged.connect(self._update_predicates)
+        options_layout.addWidget(filters_logical_op)
+        options_layout.addWidget(prim_status_frame)
         options_layout.addWidget(vis_all)
         options_layout.addWidget(lock_all)
         options_layout.addStretch()
@@ -702,7 +797,7 @@ class SpreadsheetEditor(StageTable):
     @wait()
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
-        self.model.stage = stage
+        self._update_predicates(stage=stage)
 
 
 if __name__ == "__main__":
@@ -711,8 +806,8 @@ if __name__ == "__main__":
     # QtWebEngine.QtWebEngine.initialize()
     app = QtWidgets.QApplication(sys.argv)
     # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
-    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi_mini.usda")
+    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
+    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi_mini.usda")
     w = SpreadsheetEditor()
     w.setStage(stage)
     w.show()
