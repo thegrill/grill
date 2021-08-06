@@ -58,6 +58,28 @@ def _prim_type_combobox(parent, option, index):
 _USD_DATA_ROLE = QtCore.Qt.UserRole + 1
 
 
+@lru_cache(maxsize=None)
+def _traverse_predicate(*, model_hierarchy: bool, instance_proxies: bool):
+    predicate = Usd.PrimIsModel if model_hierarchy else Usd.PrimAllPrimsPredicate
+    return Usd.TraverseInstanceProxies(predicate) if instance_proxies else predicate
+
+
+@lru_cache(maxsize=None)
+def _filter_predicate(*, orphaned, classes, defined, active, inactive, logical_op):
+    def specifier(prim):
+        is_class = prim.IsAbstract()
+        is_defined = prim.IsDefined()
+        return ((classes and is_class) or
+                (orphaned and not is_defined) or
+                (defined and is_defined and not is_class))
+
+    def status(prim):
+        is_active = prim.IsActive()
+        return (active and is_active) or (inactive and not is_active)
+
+    return lambda prim: logical_op(specifier(prim), status(prim))
+
+
 class _ColumnOptions(enum.Flag):
     """Options that will be available on the header of a table."""
     NONE = enum.auto()
@@ -631,36 +653,20 @@ class SpreadsheetEditor(StageTable):
         - Make paste work with filtered items (paste has been disabled)
         - Allow filter operation to be OR | AND
     """
-    @property
-    def _traverse_predicate(self):
-        predicate = Usd.PrimIsModel if self._model_hierarchy.isChecked() else Usd.PrimAllPrimsPredicate
-        return Usd.TraverseInstanceProxies(predicate) if self._instances.isChecked() else predicate
-
-    @property
-    def _filter_predicate(self):
-        orphaned = self._orphaned.isChecked()
-        classes = self._classes.isChecked()
-        defined = self._defined.isChecked()
-        active = self._active.isChecked()
-        inactive = self._inactive.isChecked()
-
-        def specifier(prim):
-            is_class = prim.IsAbstract()
-            is_defined = prim.IsDefined()
-            return ((classes and is_class) or  # classes is quickest check
-                    (orphaned and not is_class and not is_defined) or
-                    (defined and not is_class and is_defined))
-
-        def status(prim):
-            is_active = prim.IsActive()
-            return (active and is_active) or (inactive and not is_active)
-
-        logical_op = self._filters_logical_op.currentData(QtCore.Qt.UserRole)
-        return lambda prim: logical_op(specifier(prim), status(prim))
 
     def _update_predicates(self, *args, stage=None):
-        self.model._filter_predicate = self._filter_predicate
-        self.model._traverse_predicate = self._traverse_predicate
+        self.model._filter_predicate = _filter_predicate(
+            orphaned=self._orphaned.isChecked(),
+            classes=self._classes.isChecked(),
+            defined=self._defined.isChecked(),
+            active=self._active.isChecked(),
+            inactive=self._inactive.isChecked(),
+            logical_op=self._filters_logical_op.currentData(QtCore.Qt.UserRole)
+        )
+        self.model._traverse_predicate = _traverse_predicate(
+            model_hierarchy=self._model_hierarchy.isChecked(),
+            instance_proxies=self._instances.isChecked(),
+        )
         self.model.stage = stage if stage else self.model.stage
 
     def __init__(self, parent=None, **kwargs):
@@ -675,9 +681,7 @@ class SpreadsheetEditor(StageTable):
         classes.setToolTip("🧪 Classes (Abstract Prims)")
         self._defined = defined = QtWidgets.QPushButton(f"🧱{_emoji_suffix()}")
         defined.setToolTip("🧱 Defined Prims")
-        # self._active = active = QtWidgets.QPushButton(f"💡 🌞 ☀ {_emoji_suffix()}")
         self._active = active = QtWidgets.QPushButton(f"💡{_emoji_suffix()}")
-        # self._inactive = inactive = QtWidgets.QPushButton(f"💀 🛌  🧊 🌒 ⭕{_emoji_suffix()}")
         self._inactive = inactive = QtWidgets.QPushButton(f"🌒{_emoji_suffix()}")
         active.setToolTip("💀 🛌 🧊 🌒 ⭕ Inactive Prims")
 
@@ -688,33 +692,20 @@ class SpreadsheetEditor(StageTable):
         for each in (model_hierarchy, instances, defined, active):
             each.setChecked(True)
 
-        prim_traversal_frame = QtWidgets.QFrame()
-        prim_traversal_layout = QtWidgets.QHBoxLayout()
-        prim_traversal_layout.setSpacing(0)
-        prim_traversal_layout.setContentsMargins(0,0,0,0)
-        prim_traversal_layout.setMargin(0)
-        prim_traversal_layout.addWidget(model_hierarchy)
-        prim_traversal_layout.addWidget(instances)
-        prim_traversal_frame.setLayout(prim_traversal_layout)
+        def _buttons_on_frame(*buttons):
+            frame = QtWidgets.QFrame()
+            layout = QtWidgets.QHBoxLayout()
+            layout.setSpacing(0)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setMargin(0)
+            for button in buttons:
+                layout.addWidget(button)
+            frame.setLayout(layout)
+            return frame
 
-        prim_specifier_frame = QtWidgets.QFrame()
-        prim_specifier_layout = QtWidgets.QHBoxLayout()
-        prim_specifier_layout.setSpacing(0)
-        prim_specifier_layout.setContentsMargins(0,0,0,0)
-        prim_specifier_layout.setMargin(0)
-        prim_specifier_layout.addWidget(orphaned)
-        prim_specifier_layout.addWidget(classes)
-        prim_specifier_layout.addWidget(defined)
-        prim_specifier_frame.setLayout(prim_specifier_layout)
-
-        prim_status_frame = QtWidgets.QFrame()
-        prim_status_layout = QtWidgets.QHBoxLayout()
-        prim_status_layout.setSpacing(0)
-        prim_status_layout.setContentsMargins(0,0,0,0)
-        prim_status_layout.setMargin(0)
-        prim_status_layout.addWidget(active)
-        prim_status_layout.addWidget(inactive)
-        prim_status_frame.setLayout(prim_status_layout)
+        prim_traversal_frame = _buttons_on_frame(model_hierarchy, instances)
+        prim_specifier_frame = _buttons_on_frame(orphaned, classes, defined)
+        prim_status_frame = _buttons_on_frame(active, inactive)
 
         hide_key = "👀 Hide All"
         self._vis_states = {"👀 Show All": True, hide_key: False}
@@ -732,7 +723,6 @@ class SpreadsheetEditor(StageTable):
         sorting_enabled.setChecked(True)
 
         options_layout = QtWidgets.QHBoxLayout()
-        options_layout.addWidget(sorting_enabled)
         options_layout.addWidget(prim_traversal_frame)
         options_layout.addWidget(prim_specifier_frame)
 
@@ -741,8 +731,11 @@ class SpreadsheetEditor(StageTable):
             op_text = op.__name__.strip("_")
             filters_logical_op.addItem(op_text, userData=op)
         self._filters_logical_op.currentIndexChanged.connect(self._update_predicates)
+
         options_layout.addWidget(filters_logical_op)
         options_layout.addWidget(prim_status_frame)
+
+        options_layout.addWidget(sorting_enabled)
         options_layout.addWidget(vis_all)
         options_layout.addWidget(lock_all)
         options_layout.addStretch()
