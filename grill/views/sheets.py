@@ -296,7 +296,7 @@ class StageTableModel(QtCore.QAbstractTableModel):
     def stage(self, value):
         self.beginResetModel()
         self._stage = value
-        self._prims = [prim for prim in Usd.PrimRange.Stage(value, predicate=self._traverse_predicate) if self._filter_predicate(prim)]
+        self._prims = list(filter(self._filter_predicate, Usd.PrimRange.Stage(value, self._traverse_predicate)))
         self.endResetModel()
 
     def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
