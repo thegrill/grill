@@ -46,9 +46,11 @@ logger = logging.getLogger(__name__)
 
 Repository = contextvars.ContextVar('Repository')
 
-_PRIM_GRILL_KEY = 'grill'
-_PRIM_FIELDS_KEY = 'fields'
-_PRIM_TAXA_KEY = 'taxa'
+_TAXA_KEY = 'taxa'
+_FIELDS_KEY = 'fields'
+_ASSETINFO_KEY = 'grill'
+_ASSETINFO_TAXA_KEY = f'{_ASSETINFO_KEY}:{_TAXA_KEY}'
+_ASSETINFO_FIELDS_KEY = f'{_ASSETINFO_KEY}:{_FIELDS_KEY}'
 
 # Taxonomy rank handles the grill classification and grouping of assets.
 _TAXONOMY_NAME = 'Taxonomy'
@@ -141,7 +143,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
             prim.GetReferences().AddInternalReference(reference.GetPath())
         prim.CreateAttribute("label", Sdf.ValueTypeNames.String, custom=False)
         taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
-        prim.SetCustomDataByKey(_PRIM_GRILL_KEY, {_PRIM_FIELDS_KEY: taxon_fields, _PRIM_TAXA_KEY: {name: 0}})
+        prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
     return prim
 
@@ -155,7 +157,7 @@ def _iter_taxa(stage, taxon1, *taxonN, predicate=Usd.PrimDefaultPredicate):
             # Ignore prims from the taxonomy hierarchy as they're not
             # taxa members but the definition themselves.
             it.PruneChildren()
-        elif taxa_names.intersection(prim.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:{_PRIM_TAXA_KEY}') or {}):
+        elif taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}):
             yield prim
 
 
@@ -185,7 +187,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     current_permission = root_layer.permissionToEdit
     root_layer.SetPermissionToEdit(True)
 
-    # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(f'{_PRIM_GRILL_KEY}:{_PRIM_TAXA_KEY}'))}
+    # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
     # taxonomy_layer_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
     taxonomy_layer_id = taxonomy_layer.identifier  # TODO: please ensure it's never absolute path
@@ -295,14 +297,14 @@ def _root_asset(stage):
 
 
 def _get_id_fields(prim):
-    data = prim.GetCustomDataByKey(_PRIM_GRILL_KEY) or {}
-    if not data:
-        raise ValueError(f"No data found on '{_PRIM_GRILL_KEY}' key for {prim}")
-    fields = data.get(_PRIM_FIELDS_KEY, {})
+    # data = prim.GetAssetInfoByKey(_ASSETINFO_KEY) or {}
+    # if not data:
+    #     raise ValueError(f"No data found on '{_ASSETINFO_KEY}' key for {prim}")
+    fields = prim.GetAssetInfoByKey(_ASSETINFO_FIELDS_KEY)
     if not fields:
-        raise ValueError(f"Missing or empty '{_PRIM_FIELDS_KEY}' found on '{_PRIM_GRILL_KEY}' custom data for {prim}. Custom data: {pformat(data)}")
+        raise ValueError(f"Missing or empty '{_FIELDS_KEY}' on '{_ASSETINFO_KEY}' asset info for {prim}. Got: {pformat(prim.GetAssetInfoByKey(_ASSETINFO_KEY))}")
     if not isinstance(fields, typing.Mapping):
-        raise TypeError(f"Expected mapping on key '{_PRIM_FIELDS_KEY}' from {prim} on custom data key '{_PRIM_GRILL_KEY}'. Got instead {fields} with type: {type(fields)}")
+        raise TypeError(f"Expected mapping on key '{_FIELDS_KEY}' from {prim} on custom data key '{_ASSETINFO_KEY}'. Got instead {fields} with type: {type(fields)}")
     return fields
 
 

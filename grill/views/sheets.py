@@ -18,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
-options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
+_PRIM_TYPE_OPTIONS = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
+
+# Agreement: raw data accessible here
+_USD_DATA_ROLE = QtCore.Qt.UserRole + 1
 
 
 @lru_cache(maxsize=None)
@@ -38,24 +41,21 @@ def wait():
         QtWidgets.QApplication.restoreOverrideCursor()
 
 
-@lru_cache(maxsize=None)
-def _property_name_from_option_type(optype):
-    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QItemEditorFactory.html
-    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QAbstractItemDelegate.html#PySide2.QtWidgets.PySide2.QtWidgets.QAbstractItemDelegate.createEditor
-    # https://discourse.techart.online/t/pyside2-qitemeditorfactory-and-missing-qvariant-qmetatype/11387/2
-    factory = QtWidgets.QItemEditorFactory.defaultFactory()
-    property_name = factory.valuePropertyName(optype)  # e.g. QtCore.QByteArray(b'text')
-    return property_name.data().decode()  # e.g. from b'text' to "text", "value", ...
+# @lru_cache(maxsize=None)
+# def _property_name_from_option_type(optype):
+#     # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QItemEditorFactory.html
+#     # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QAbstractItemDelegate.html#PySide2.QtWidgets.PySide2.QtWidgets.QAbstractItemDelegate.createEditor
+#     # https://discourse.techart.online/t/pyside2-qitemeditorfactory-and-missing-qvariant-qmetatype/11387/2
+#     factory = QtWidgets.QItemEditorFactory.defaultFactory()
+#     property_name = factory.valuePropertyName(optype)  # e.g. QtCore.QByteArray(b'text')
+#     return property_name.data().decode()  # e.g. from b'text' to "text", "value", ...
 
 
 def _prim_type_combobox(parent, option, index):
+    # TODO: see if we can lru_cache as well
     combobox = QtWidgets.QComboBox(parent=parent)
-    combobox.addItems(list(options.keys()))
+    combobox.addItems(sorted(_PRIM_TYPE_OPTIONS))
     return combobox
-
-
-# Agreement: raw data accessible here
-_USD_DATA_ROLE = QtCore.Qt.UserRole + 1
 
 
 @lru_cache(maxsize=None)
@@ -80,6 +80,12 @@ def _filter_predicate(*, orphaned, classes, defined, active, inactive, logical_o
     return lambda prim: logical_op(specifier(prim), status(prim))
 
 
+class _Column(typing.NamedTuple):
+    name: str
+    getter: callable
+    setter: callable = None
+
+
 class _ColumnOptions(enum.Flag):
     """Options that will be available on the header of a table."""
     NONE = enum.auto()
@@ -89,65 +95,71 @@ class _ColumnOptions(enum.Flag):
     ALL = SEARCH | VISIBILITY | LOCK
 
 
-class _Column(typing.NamedTuple):
-    name: str
-    getter: callable
-    setter: callable = None
+class _PrimTextColor(enum.Enum):
+    NONE = None
+    INSTANCE = QtGui.QColor('lightskyblue')
+    PROTOTYPE = QtGui.QColor('cornflowerblue')
+    INACTIVE = QtGui.QColor('darkgray')
+    INACTIVE_ARCS = QtGui.QColor('orange').darker(150)
+    ARCS = QtGui.QColor('orange')
 
 
-class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
-    """
-    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
-    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
-
-    Contract:
-    Object - UserRole
-    ValueGetter - UserRole + 1
-    ValueSetter - UserRole + 2
-    Widget - UserRole + 3
-    """
-
-    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        creator = getattr(self, "_editor") or super().createEditor
-        editor = creator(parent, option, index)
-        editor._property_name = _property_name_from_option_type(option.type)
-        return editor
-
-    # def setEditorData(self, editor:QtWidgets.QWidget, index:QtCore.QModelIndex) -> None:
-
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-        # setModelData = getattr(self, "_model_data_setter") or super().setModelData
-        # we would always fallback to _property_name but it looks like there's no
-        # consistency, so we always prefer to check for "value" and only if it's None
-        # we check the property name found from the option when the editor was created.
-        value = editor.property("value")
-        # value will usually work for "bool"
-        print(f"From property 'value': {value}, type: {type(value)}")
-        # text will work for line edits and other text editors.
-        if value is None:
-            value = editor.property(editor._property_name)
-            print(f"From property '{editor._property_name}': {value}, type: {type(value)}")
-        # currentText will work for combo boxes.
-        if value is None:
-            value = editor.property("currentText")
-            print(f"From property 'currentText': {value}, type: {type(value)}")
-        # there's also datetime, time, but those should be coming from editor._property_name
-        # fail if we find something we don't know how to translate
-        if value is None:
-            raise ValueError(f"Can not obtain value to set from editor: {editor} on index {index}")
-        obj = index.data(_OBJECT)
-        setter = index.data(_VALUE_SETTER)
-        if setter:
-            print(f"Setting: {value} on object {obj} via {setter}")
-            setter(obj, value)
-        else:
-            print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
-        setModelData = getattr(self, "_model_setter") or super().setModelData
-        return setModelData(editor, model, index)
+# class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
+#     """
+#     https://doc.qt.io/qtforpython/overviews/sql-presenting.html
+#     https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+#
+#     Contract:
+#     Object - UserRole
+#     ValueGetter - UserRole + 1
+#     ValueSetter - UserRole + 2
+#     Widget - UserRole + 3
+#     """
+#
+#     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+#         creator = getattr(self, "_editor") or super().createEditor
+#         editor = creator(parent, option, index)
+#         editor._property_name = _property_name_from_option_type(option.type)
+#         return editor
+#
+#     # def setEditorData(self, editor:QtWidgets.QWidget, index:QtCore.QModelIndex) -> None:
+#
+#     def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+#         # setModelData = getattr(self, "_model_data_setter") or super().setModelData
+#         # we would always fallback to _property_name but it looks like there's no
+#         # consistency, so we always prefer to check for "value" and only if it's None
+#         # we check the property name found from the option when the editor was created.
+#         value = editor.property("value")
+#         # value will usually work for "bool"
+#         print(f"From property 'value': {value}, type: {type(value)}")
+#         # text will work for line edits and other text editors.
+#         if value is None:
+#             value = editor.property(editor._property_name)
+#             print(f"From property '{editor._property_name}': {value}, type: {type(value)}")
+#         # currentText will work for combo boxes.
+#         if value is None:
+#             value = editor.property("currentText")
+#             print(f"From property 'currentText': {value}, type: {type(value)}")
+#         # there's also datetime, time, but those should be coming from editor._property_name
+#         # fail if we find something we don't know how to translate
+#         if value is None:
+#             raise ValueError(f"Can not obtain value to set from editor: {editor} on index {index}")
+#         obj = index.data(_OBJECT)
+#         setter = index.data(_VALUE_SETTER)
+#         if setter:
+#             print(f"Setting: {value} on object {obj} via {setter}")
+#             setter(obj, value)
+#         else:
+#             print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
+#         setModelData = getattr(self, "_model_setter") or super().setModelData
+#         return setModelData(editor, model, index)
 
 
 class _ColumnHeaderOptions(QtWidgets.QWidget):
-    """A widget to be used within a header for columns on a USD spreadsheet."""
+    """A widget to be used within a header for columns on a USD spreadsheet.
+
+    TODO: Clicking sorting after modifying a header lenght makes it not draw properly
+    """
     def __init__(self, name, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
@@ -157,6 +169,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         # Search filter
         self._line_filter = line_filter = QtWidgets.QLineEdit()
         line_filter.setPlaceholderText("Filter")
+        # TODO: add functionality for "inverse regex"
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
 
         # Visibility
@@ -242,15 +255,6 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         self.sourceModel().sort(column, order)
 
 
-class _PrimTextColor(enum.Enum):
-    NONE = None
-    INSTANCE = QtGui.QColor('lightskyblue')
-    PROTOTYPE = QtGui.QColor('cornflowerblue')
-    INACTIVE = QtGui.QColor('darkgray')
-    INACTIVE_ARCS = QtGui.QColor('orange').darker(150)
-    ARCS = QtGui.QColor('orange')
-
-
 @lru_cache(maxsize=None)
 def _prim_font(*, abstract=False, orphaned=False):
     # Passing arguments via the constructor does not work even though docs say they should
@@ -296,7 +300,7 @@ class StageTableModel(QtCore.QAbstractTableModel):
     def stage(self, value):
         self.beginResetModel()
         self._stage = value
-        self._prims = list(filter(self._filter_predicate, Usd.PrimRange.Stage(value, self._traverse_predicate)))
+        self._prims = [p for p in Usd.PrimRange.Stage(value, self._traverse_predicate) if self._filter_predicate(p)]
         self.endResetModel()
 
     def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
@@ -651,23 +655,7 @@ class StageTable(QtWidgets.QDialog):
 class SpreadsheetEditor(StageTable):
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
-        - Allow filter operation to be OR | AND
     """
-
-    def _update_predicates(self, *args, stage=None):
-        self.model._filter_predicate = _filter_predicate(
-            orphaned=self._orphaned.isChecked(),
-            classes=self._classes.isChecked(),
-            defined=self._defined.isChecked(),
-            active=self._active.isChecked(),
-            inactive=self._inactive.isChecked(),
-            logical_op=self._filters_logical_op.currentData(QtCore.Qt.UserRole)
-        )
-        self.model._traverse_predicate = _traverse_predicate(
-            model_hierarchy=self._model_hierarchy.isChecked(),
-            instance_proxies=self._instances.isChecked(),
-        )
-        self.model.stage = stage if stage else self.model.stage
 
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
@@ -787,20 +775,74 @@ class SpreadsheetEditor(StageTable):
             self._setColumnLocked(index, value)
         self._lock_all.setText(f"{self._lock_key_by_value[not value]}{_emoji_suffix()}")
 
-    @wait()
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._update_predicates(stage=stage)
 
+    @wait()
+    def _update_predicates(self, *args, stage=None):
+        self.model._filter_predicate = _filter_predicate(
+            orphaned=self._orphaned.isChecked(),
+            classes=self._classes.isChecked(),
+            defined=self._defined.isChecked(),
+            active=self._active.isChecked(),
+            inactive=self._inactive.isChecked(),
+            logical_op=self._filters_logical_op.currentData(QtCore.Qt.UserRole)
+        )
+        self.model._traverse_predicate = _traverse_predicate(
+            model_hierarchy=self._model_hierarchy.isChecked(),
+            instance_proxies=self._instances.isChecked(),
+        )
+        self.model.stage = stage if stage else self.model.stage
+
 
 if __name__ == "__main__":
     import sys
-    # from PySide2 import QtWebEngine
-    # QtWebEngine.QtWebEngine.initialize()
+    from PySide2 import QtWebEngine
+    QtWebEngine.QtWebEngine.initialize()
     app = QtWidgets.QApplication(sys.argv)
     # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
     # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
     stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi_mini.usda")
+    # def mai2n(stage):
+    #     # Total time: 0:00:01.636715
+    #     # Total time: 0:00:01.734015
+    #     # Total time: 0:00:01.539668
+    #     # Total time: 0:00:01.596138
+    #     # Total time: 0:00:01.707611
+    #     return list(
+    #         filter(
+    #             _filter_predicate(orphaned=True, classes=True, defined=True, active=True, inactive=True, logical_op=operator.and_),
+    #             Usd.PrimRange.Stage(stage, _traverse_predicate(model_hierarchy=False, instance_proxies=True))
+    #         )
+    #     )
+    # def main(stage):
+    #     # Total time: 0:00:01.577574
+    #     # Total time: 0:00:01.614016
+    #     # Total time: 0:00:01.633999
+    #     # Total time: 0:00:01.539995
+    #     # Total time: 0:00:01.710000
+    #     predicate = _filter_predicate(orphaned=True, classes=True, defined=True, active=True, inactive=True, logical_op=operator.and_)
+    #     return [p for p in Usd.PrimRange.Stage(stage, _traverse_predicate(model_hierarchy=False, instance_proxies=True)) if predicate(p)]
+    #     # return list(
+    #     #     filter(
+    #     #         _filter_predicate(orphaned=True, classes=True, defined=True, active=True, inactive=True, logical_op=operator.and_),
+    #     #         Usd.PrimRange.Stage(stage, _traverse_predicate(model_hierarchy=False, instance_proxies=True))
+    #     #     )
+    #     # )
+    # import cProfile
+    # import datetime
+    # from pathlib import Path
+    # start = datetime.datetime.now()
+    # pr = cProfile.Profile()
+    # pr.enable()
+    # prims = pr.runcall(main, stage)
+    # pr.disable()
+    # pr.dump_stats(str(Path(__file__).parent / "stats_no_init_name.log"))
+    # end = datetime.datetime.now()
+    # print(f"Total time: {end - start}")
+
+
     w = SpreadsheetEditor()
     w.setStage(stage)
     w.show()

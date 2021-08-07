@@ -113,19 +113,19 @@ class TestWrite(unittest.TestCase):
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {'invalid': 42})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {'invalid': 42})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: 42})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {write._FIELDS_KEY: 42})
         with self.assertRaises(TypeError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: {}})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {write._FIELDS_KEY: {}})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
