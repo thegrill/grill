@@ -77,7 +77,7 @@ class CreateAssets(_CreatePrims):
         self._applied.connect(self._apply)
         self.setWindowTitle("Create Assets")
 
-    @_sheets.wait()
+    @_core.wait()
     def _create(self):
         if not write.Repository.get(None):
             if not self._setRepositoryPath(self, "Select a repository path to create assets on"):
@@ -275,7 +275,7 @@ class TaxonomyEditor(_CreatePrims):
         existing_model.blockSignals(False)
         self._existing._setColumnLocked(0, True)
 
-    @_sheets.wait()
+    @_core.wait()
     def _create(self):
         if not write.Repository.get(None):
             if not self._setRepositoryPath(self, "Select a repository path to create assets on"):

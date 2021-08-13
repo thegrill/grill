@@ -1,4 +1,50 @@
-_EMOJI_ID = "🕵"
+"""Shared members for views modules, not considered public API."""
+import enum
+import contextlib
+from functools import lru_cache
+
+from PySide2 import QtWidgets, QtGui, QtCore
+
+
+@lru_cache(maxsize=None)
+def _emoji_suffix():
+    # Maya widgets strip the last character of widgets with emoji on them.
+    # Remove this workaround when QtWidgets.QLabel("🔎 Hello") does not show as "🔎 Hell".
+    text_test = "🔎 Hello"
+    # check for a running application instance (like maya), otherwise assume all good (e.g. standalone)
+    return "" if QtWidgets.QApplication.instance() and QtWidgets.QLabel(text_test).text() == text_test else " "
+
+
+@contextlib.contextmanager
+def wait():
+    try:
+        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
+        yield
+    finally:
+        QtWidgets.QApplication.restoreOverrideCursor()
+
+
+class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.10
+    # GENERAL
+    ID = f"🕵{_emoji_suffix()}"
+    VISIBILITY = f"👀{_emoji_suffix()}"
+    SEARCH = f"🔎{_emoji_suffix()}"
+    LOCK = f"🔐{_emoji_suffix()}"
+    UNLOCK = f"🔓{_emoji_suffix()}"
+
+    # STAGE TRAVERSAL
+    MODEL_HIERARCHY = f"🏡{_emoji_suffix()}"
+    INSTANCES = f"💠{_emoji_suffix()}"
+
+    # PRIM SPECIFIER
+    ORPHANED = f"👻{_emoji_suffix()}"
+    CLASSES = f"🧪{_emoji_suffix()}"
+    DEFINED = f"🧱{_emoji_suffix()}"
+
+    # PRIM STATUS
+    ACTIVE = f"💡{_emoji_suffix()}"
+    INACTIVE = f"🌒{_emoji_suffix()}"
+
 
 # Very slightly modified USDView stylesheet for the push buttons.
 _USDVIEW_PUSH_BUTTON_STYLE = """

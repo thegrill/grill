@@ -217,7 +217,7 @@ import operator
 
 class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
-        _sheets._Column(f"{_core._EMOJI_ID} Identifier", operator.attrgetter('identifier')),
+        _sheets._Column(f"{_core._EMOJI.ID.value} Identifier", operator.attrgetter('identifier')),
         _sheets._Column("🚧 Dirty", operator.attrgetter('dirty')),
     )
 
@@ -278,7 +278,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._prims.table.horizontalHeader()._updateVisualSections(0)
         self._graph_view.view(node_indices)
 
-    @_sheets.wait()
+    @_core.wait()
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage

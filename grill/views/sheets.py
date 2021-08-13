@@ -5,14 +5,16 @@ import typing
 import inspect
 import logging
 import operator
+import textwrap
 import itertools
-import contextlib
 
 from collections import Counter
 from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtCore, QtWidgets, QtGui
+
+from . import _core
 
 logger = logging.getLogger(__name__)
 
@@ -22,23 +24,6 @@ _PRIM_TYPE_OPTIONS = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass
 
 # Agreement: raw data accessible here
 _USD_DATA_ROLE = QtCore.Qt.UserRole + 1
-
-
-@lru_cache(maxsize=None)
-def _emoji_suffix():
-    # Maya widgets strip the last character of widgets with emoji on them.
-    # Remove this workaround when QtWidgets.QLabel("🔎 Hello") does not show as "🔎 Hell".
-    text_test = "🔎 Hello"
-    return "" if QtWidgets.QLabel(text_test).text() == text_test else " "
-
-
-@contextlib.contextmanager
-def wait():
-    try:
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
-        yield
-    finally:
-        QtWidgets.QApplication.restoreOverrideCursor()
 
 
 # @lru_cache(maxsize=None)
@@ -78,6 +63,21 @@ def _filter_predicate(*, orphaned, classes, defined, active, inactive, logical_o
         return (active and is_active) or (inactive and not is_active)
 
     return lambda prim: logical_op(specifier(prim), status(prim))
+
+
+@lru_cache(maxsize=None)
+def _prim_font(*, abstract=False, orphaned=False):
+    # Passing arguments via the constructor does not work even though docs say they should
+    font = QtGui.QFont()
+    if abstract:
+        font.setWeight(QtGui.QFont.ExtraLight)
+        font.setLetterSpacing(QtGui.QFont.PercentageSpacing, 120)
+    elif orphaned:
+        font.setWeight(QtGui.QFont.Light)
+        font.setItalic(True)
+    else:
+        font.setWeight(QtGui.QFont.Normal)
+    return font
 
 
 class _Column(typing.NamedTuple):
@@ -173,7 +173,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
 
         # Visibility
-        self._vis_button = vis_button = QtWidgets.QPushButton(f"👀{_emoji_suffix()}")
+        self._vis_button = vis_button = QtWidgets.QPushButton(_core._EMOJI.VISIBILITY.value)
         vis_button.setCheckable(True)
         vis_button.setChecked(True)
         vis_button.setFlat(True)
@@ -191,7 +191,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         options_layout.addStretch()
         layout.addLayout(options_layout)
         self._filter_layout = filter_layout = QtWidgets.QFormLayout()
-        filter_layout.addRow(f"🔎{_emoji_suffix()}", line_filter)
+        filter_layout.addRow(_core._EMOJI.SEARCH.value, line_filter)
         if _ColumnOptions.SEARCH in options:
             layout.addLayout(filter_layout)
         self._options = options
@@ -228,12 +228,12 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
 
     def _decorateLockButton(self, button, locked):
         if locked:
-            text = "🔐"
+            text = _core._EMOJI.LOCK.value
             tip = "Column is non-editable (locked).\nClick to allow edits."
         else:
-            text = "🔓"
+            text = _core._EMOJI.UNLOCK.value
             tip = "Edits are allowed on this column (unlocked).\nClick to block edits."
-        button.setText(f"{text}{_emoji_suffix()}")
+        button.setText(text)
         button.setToolTip(tip)
 
     def _setHidden(self, value):
@@ -253,21 +253,6 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
 
     def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
         self.sourceModel().sort(column, order)
-
-
-@lru_cache(maxsize=None)
-def _prim_font(*, abstract=False, orphaned=False):
-    # Passing arguments via the constructor does not work even though docs say they should
-    font = QtGui.QFont()
-    if abstract:
-        font.setWeight(QtGui.QFont.ExtraLight)
-        font.setLetterSpacing(QtGui.QFont.PercentageSpacing, 120)
-    elif orphaned:
-        font.setWeight(QtGui.QFont.Light)
-        font.setItalic(True)
-    else:
-        font.setWeight(QtGui.QFont.Normal)
-    return font
 
 
 class StageTableModel(QtCore.QAbstractTableModel):
@@ -384,13 +369,14 @@ class _Header(QtWidgets.QHeaderView):
             # we keep track of the column options label but our proxy will bypass clicks
             # allowing for UX when clicking on column headers
             proxy_label = QtWidgets.QLabel(parent=self)
-            proxy_label.setText(f"{column_options.label.text()}{_emoji_suffix()}")
+            proxy_label.setText(column_options.label.text())
             proxy_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             self._proxy_labels[column_options.label] = proxy_label
 
         self.setSectionsMovable(True)
         self.sectionResized.connect(self._handleSectionResized)
         self.sectionMoved.connect(self._handleSectionMoved)
+        self.sectionClicked.connect(self._handleSectionClicked)
 
     def _updateOptionsGeometry(self, logical_index: int):
         """Updates the options geometry for the column at the logical index"""
@@ -425,6 +411,13 @@ class _Header(QtWidgets.QHeaderView):
     def _handleSectionMoved(self, __, old_visual_index, new_visual_index):
         self._updateVisualSections(min(old_visual_index, new_visual_index))
 
+    def _handleSectionClicked(self, index):
+        """Without this, when a section is clicked (e.g. when sorting),
+        we'd have a mismatch on the proxy geometry label.
+        """
+        self._handleSectionResized(0)
+        self._updateVisualSections(0)
+
     def _geometryForWidget(self, index):
         """Main geometry for the widget to show at the given index"""
         return self.sectionViewportPosition(index) + 10, 10, self.sectionSize(index) - 20, self.height() - 20
@@ -444,6 +437,11 @@ class _Table(QtWidgets.QTableView):
 class StageTable(QtWidgets.QDialog):
     def __init__(self, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        def _vis_value(prim):
+            imageable = UsdGeom.Imageable(prim)
+            return imageable.GetVisibilityAttr().Get() if imageable else ""
+
         columns = (
             _Column("Path", lambda prim: str(prim.GetPath())),
             _Column("Name", Usd.Prim.GetName),
@@ -451,8 +449,7 @@ class StageTable(QtWidgets.QDialog):
             _Column("Documentation", Usd.Prim.GetDocumentation,
                     Usd.Prim.SetDocumentation),
             _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
-            _Column("Visibility",
-                    lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
+            _Column("Visibility", _vis_value),
             _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
         )
         self.model = source_model = StageTableModel(columns=columns)
@@ -655,23 +652,42 @@ class StageTable(QtWidgets.QDialog):
 class SpreadsheetEditor(StageTable):
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
+        - Allow to filter via type inheritance
     """
 
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        self._model_hierarchy = model_hierarchy = QtWidgets.QPushButton(f"🏡{_emoji_suffix()}")
-        model_hierarchy.setToolTip("🏡 Valid Model Hierarchy")
-        self._instances = instances = QtWidgets.QPushButton(f"💠{_emoji_suffix()}")
-        instances.setToolTip("💠 Traverse Instance Proxies")
-        self._orphaned = orphaned = QtWidgets.QPushButton(f"👻{_emoji_suffix()}")
-        orphaned.setToolTip("👻 Orphaned Prims")
-        self._classes = classes = QtWidgets.QPushButton(f"🧪{_emoji_suffix()}")
-        classes.setToolTip("🧪 Classes (Abstract Prims)")
-        self._defined = defined = QtWidgets.QPushButton(f"🧱{_emoji_suffix()}")
-        defined.setToolTip("🧱 Defined Prims")
-        self._active = active = QtWidgets.QPushButton(f"💡{_emoji_suffix()}")
-        self._inactive = inactive = QtWidgets.QPushButton(f"🌒{_emoji_suffix()}")
-        active.setToolTip("💀 🛌 🧊 🌒 ⭕ Inactive Prims")
+        self._model_hierarchy = model_hierarchy = QtWidgets.QPushButton(_core._EMOJI.MODEL_HIERARCHY.value)
+        model_hierarchy.setToolTip(
+            textwrap.dedent(f"""
+                {_core._EMOJI.MODEL_HIERARCHY.value} Valid Model Hierarchy:
+                
+                The model hierarchy defines a contiguous set of prims descending from a root prim on a stage, all of which are models.
+                This means that each prim in the hierarchy is considered "important to consumers".
+                """
+            )
+        )
+        self._instances = instances = QtWidgets.QPushButton(_core._EMOJI.INSTANCES.value)
+        instances.setToolTip(
+            textwrap.dedent(f"""
+                {_core._EMOJI.INSTANCES.value} Traverse Instance Proxies:
+        
+                An instance proxy is a UsdPrim that represents a descendant prim beneath an instance.
+                An instance proxy can not be edited. If edits are required, the parent prim makred as "instanceable=True" must
+                be updated with "instanceable=False".
+                """
+            )
+        )
+        self._orphaned = orphaned = QtWidgets.QPushButton(_core._EMOJI.ORPHANED.value)
+        orphaned.setToolTip(f"{_core._EMOJI.ORPHANED.value} Orphaned Prims")
+        self._classes = classes = QtWidgets.QPushButton(_core._EMOJI.CLASSES.value)
+        classes.setToolTip(f"{_core._EMOJI.CLASSES.value} Classes (Abstract Prims)")
+        self._defined = defined = QtWidgets.QPushButton(_core._EMOJI.DEFINED.value)
+        defined.setToolTip(f"{_core._EMOJI.DEFINED.value} Defined Prims")
+        self._active = active = QtWidgets.QPushButton(_core._EMOJI.ACTIVE.value)
+        active.setToolTip(f"{_core._EMOJI.ACTIVE.value}")
+        self._inactive = inactive = QtWidgets.QPushButton(_core._EMOJI.INACTIVE.value)
+        inactive.setToolTip(f"{_core._EMOJI.INACTIVE.value}")
 
         for each in (model_hierarchy, instances, orphaned, classes, defined, active, inactive):
             each.setCheckable(True)
@@ -695,15 +711,15 @@ class SpreadsheetEditor(StageTable):
         prim_specifier_frame = _buttons_on_frame(orphaned, classes, defined)
         prim_status_frame = _buttons_on_frame(active, inactive)
 
-        hide_key = "👀 Hide All"
-        self._vis_states = {"👀 Show All": True, hide_key: False}
+        hide_key = f"{_core._EMOJI.VISIBILITY.value} Hide All"
+        self._vis_states = {f"{_core._EMOJI.VISIBILITY.value} Show All": True, hide_key: False}
         self._vis_key_by_value = {v: k for k, v in self._vis_states.items()}  # True: Show All
-        self._vis_all = vis_all = QtWidgets.QPushButton(f"{hide_key}{_emoji_suffix()}")
+        self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
         vis_all.clicked.connect(self._conformVisibility)
-        lock_key = "🔐 Lock All"
-        self._lock_states = {lock_key: True, "🔓 Unlock All": False}
+        lock_key = f"{_core._EMOJI.LOCK.value} Lock All"
+        self._lock_states = {lock_key: True, f"{_core._EMOJI.UNLOCK.value} Unlock All": False}
         self._lock_key_by_value = {v: k for k, v in self._lock_states.items()}  # True: Lock All
-        self._lock_all = lock_all = QtWidgets.QPushButton(f"{lock_key}{_emoji_suffix()}")
+        self._lock_all = lock_all = QtWidgets.QPushButton(lock_key)
         lock_all.clicked.connect(self._conformLocked)
 
         # table options
@@ -748,14 +764,14 @@ class SpreadsheetEditor(StageTable):
         """Make vis option offer inverse depending on how much is currently hidden"""
         counter = Counter(self.table.isColumnHidden(i) for i in self._column_options)
         current, count = next(iter(counter.most_common(1)))
-        self._vis_all.setText(f"{self._vis_key_by_value[current]}{_emoji_suffix()}")
+        self._vis_all.setText(self._vis_key_by_value[current])
         return current
 
     def _conformLockSwitch(self):
         """Make lock option offer inverse depending on how much is currently locked"""
         counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
         current, count = next(iter(counter.most_common(1)))
-        self._lock_all.setText(f"{self._lock_key_by_value[not current]}{_emoji_suffix()}")
+        self._lock_all.setText(self._lock_key_by_value[not current])
         return current
 
     def _conformVisibility(self):
@@ -764,22 +780,22 @@ class SpreadsheetEditor(StageTable):
             self._setColumnVisibility(index, value)
             options._setHidden(not value)
 
-        self._vis_all.setText(f"{self._vis_key_by_value[not value]}{_emoji_suffix()}")
+        self._vis_all.setText(self._vis_key_by_value[not value])
         self.table.horizontalHeader()._handleSectionResized(0)
 
-    @wait()
+    @_core.wait()
     def _conformLocked(self):
         value = self._lock_states[self._lock_all.text()]
         for index, options in self._column_options.items():
             options._lock_button.setChecked(value)
             self._setColumnLocked(index, value)
-        self._lock_all.setText(f"{self._lock_key_by_value[not value]}{_emoji_suffix()}")
+        self._lock_all.setText(self._lock_key_by_value[not value])
 
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._update_predicates(stage=stage)
 
-    @wait()
+    @_core.wait()
     def _update_predicates(self, *args, stage=None):
         self.model._filter_predicate = _filter_predicate(
             orphaned=self._orphaned.isChecked(),
@@ -794,56 +810,3 @@ class SpreadsheetEditor(StageTable):
             instance_proxies=self._instances.isChecked(),
         )
         self.model.stage = stage if stage else self.model.stage
-
-
-if __name__ == "__main__":
-    import sys
-    from PySide2 import QtWebEngine
-    QtWebEngine.QtWebEngine.initialize()
-    app = QtWidgets.QApplication(sys.argv)
-    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\Kitchen_set.usd")
-    # stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi.usda")
-    stage = Usd.Stage.Open(r"B:\read\cg\downloads\Kitchen_set\Kitchen_set\kitchen_multi_mini.usda")
-    # def mai2n(stage):
-    #     # Total time: 0:00:01.636715
-    #     # Total time: 0:00:01.734015
-    #     # Total time: 0:00:01.539668
-    #     # Total time: 0:00:01.596138
-    #     # Total time: 0:00:01.707611
-    #     return list(
-    #         filter(
-    #             _filter_predicate(orphaned=True, classes=True, defined=True, active=True, inactive=True, logical_op=operator.and_),
-    #             Usd.PrimRange.Stage(stage, _traverse_predicate(model_hierarchy=False, instance_proxies=True))
-    #         )
-    #     )
-    # def main(stage):
-    #     # Total time: 0:00:01.577574
-    #     # Total time: 0:00:01.614016
-    #     # Total time: 0:00:01.633999
-    #     # Total time: 0:00:01.539995
-    #     # Total time: 0:00:01.710000
-    #     predicate = _filter_predicate(orphaned=True, classes=True, defined=True, active=True, inactive=True, logical_op=operator.and_)
-    #     return [p for p in Usd.PrimRange.Stage(stage, _traverse_predicate(model_hierarchy=False, instance_proxies=True)) if predicate(p)]
-    #     # return list(
-    #     #     filter(
-    #     #         _filter_predicate(orphaned=True, classes=True, defined=True, active=True, inactive=True, logical_op=operator.and_),
-    #     #         Usd.PrimRange.Stage(stage, _traverse_predicate(model_hierarchy=False, instance_proxies=True))
-    #     #     )
-    #     # )
-    # import cProfile
-    # import datetime
-    # from pathlib import Path
-    # start = datetime.datetime.now()
-    # pr = cProfile.Profile()
-    # pr.enable()
-    # prims = pr.runcall(main, stage)
-    # pr.disable()
-    # pr.dump_stats(str(Path(__file__).parent / "stats_no_init_name.log"))
-    # end = datetime.datetime.now()
-    # print(f"Total time: {end - start}")
-
-
-    w = SpreadsheetEditor()
-    w.setStage(stage)
-    w.show()
-    sys.exit(app.exec_())
