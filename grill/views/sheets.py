@@ -255,7 +255,56 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         self.sourceModel().sort(column, order)
 
 
+def iter_pruned_prims(prim_range, paths):
+    for prim in prim_range:
+        path = prim.GetPath()
+        if any(path.HasPrefix(p) for p in paths):
+            prim_range.PruneChildren()
+        yield prim
+
+
+def common_prefixes(paths):
+    root_path = Sdf.Path.absoluteRootPath
+    common = set()
+    # keep track of combinations with and without common prefixes separately
+    matched = set()
+    unmatched = set()
+    for combination in itertools.combinations(paths, 2):
+        common_prefix = Sdf.Path.GetCommonPrefix(*combination)
+        if common_prefix == root_path:
+            unmatched.update(combination)
+        else:
+            matched.update(combination)
+            common.add(common_prefix)
+    common.update(unmatched - matched)
+    from pprint import pp
+    pp(common)
+    return common
+
+
+def _iprims(stage, roots=None, prune=None, traversal=):
+    if roots:  # Traverse only specific parts of the stage.
+        root_paths = common_prefixes(roots)
+        # Usd.PrimRange already discards invalid prims, so no need to check.
+        root_prims = map(stage.GetPrimAtPath, root_paths)
+        ranges = (Usd.PrimRange(prim, traversal) for prim in root_prims)
+    else:
+        ranges = [Usd.PrimRange.Stage(stage, traversal)]
+
+    if prune:
+        ranges = (iter_pruned_prims(iter(r), prune) for r in ranges)
+    return itertools.chain.from_iterable(ranges)
+
+
 class StageTableModel(QtCore.QAbstractTableModel):
+    """This model provides flexibility for:
+
+    - Specifying traversal method
+    - Specifying root prims to traverse
+    - Specifying prim paths to prune from traversal
+    - Filtering prims based on a provided predicate
+    """
+
     # https://doc.qt.io/qtforpython/PySide6/QtCore/QAbstractItemModel.html
     # https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-pixelator-example.html#pixelator-example
     # I tried to implement fetchMore for 250k+ prims (for filtering operations) but
@@ -276,6 +325,22 @@ class StageTableModel(QtCore.QAbstractTableModel):
         self._locked_columns = set()
         self._filter_predicate = lambda x: True
         self._traverse_predicate = Usd.PrimAllPrimsPredicate
+        self._root_prims = set()
+        self._root_prims = {
+            Sdf.Path("/typed/lab01"),
+            Sdf.Path("/untyped"),
+            Sdf.Path("/does_not_exist"),
+            Sdf.Path("/does_not_exist.property"),
+            Sdf.Path("/single_nonexisting.property"),
+            Sdf.Path("/single_nonexisting_prim"),
+            Sdf.Path("/root_orphaned/child_def"),
+            Sdf.Path("/root_orphaned/child_def.property"),
+            Sdf.Path("/typed/lab01/camera_ztl01_140"),
+            Sdf.Path("/typed/lab01/camera_ztl01_does_not_exist"),
+            Sdf.Path("/typed/lab01/camera_ztl01_060"),
+        }
+        self._prune_children = set()
+        self._prune_children = {Sdf.Path("/typed/k0"), Sdf.Path("/typed/k1"), Sdf.Path("/typed/lab01/thelab01")}  # Sdf.Path
 
     @property
     def stage(self):
@@ -285,7 +350,12 @@ class StageTableModel(QtCore.QAbstractTableModel):
     def stage(self, value):
         self.beginResetModel()
         self._stage = value
-        self._prims = [p for p in Usd.PrimRange.Stage(value, self._traverse_predicate) if self._filter_predicate(p)]
+        _traversal = self._traverse_predicate
+        _root_paths = self._root_prims
+        _prune_paths = self._prune_children
+
+        prims = filter(self._filter_predicate, itertools.chain.from_iterable(ranges))
+        self._prims = list(prims)
         self.endResetModel()
 
     def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
