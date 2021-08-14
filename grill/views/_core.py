@@ -5,6 +5,9 @@ from functools import lru_cache
 
 from PySide2 import QtWidgets, QtGui, QtCore
 
+# Agreement: raw data accessible here
+_USD_DATA_ROLE = QtCore.Qt.UserRole + 1
+
 
 @lru_cache(maxsize=None)
 def _emoji_suffix():

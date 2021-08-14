@@ -22,9 +22,6 @@ logger = logging.getLogger(__name__)
 # TODO: add more types here
 _PRIM_TYPE_OPTIONS = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
 
-# Agreement: raw data accessible here
-_USD_DATA_ROLE = QtCore.Qt.UserRole + 1
-
 
 # @lru_cache(maxsize=None)
 # def _property_name_from_option_type(optype):
@@ -67,6 +64,9 @@ def _filter_predicate(*, orphaned, classes, defined, active, inactive, logical_o
 
 def _common_prefixes(paths):
     root_path = Sdf.Path.absoluteRootPath
+    if len(paths) < 2:
+        # If our size is less than 2, nothing to check. Return as-is.
+        return paths
     common = set()
     # keep track of combinations with and without common prefixes separately
     matched = set()
@@ -109,6 +109,8 @@ def _iprims(stage, root_paths=None, prune_predicate=None, traverse_predicate=Usd
 def _prim_font(*, abstract=False, orphaned=False):
     # Passing arguments via the constructor does not work even though docs say they should
     font = QtGui.QFont()
+    # Abstract prims are also considered defined; since we want to distinguish abstract
+    # defined prims from non-abstract defined prims, we check for abstract first.
     if abstract:
         font.setWeight(QtGui.QFont.ExtraLight)
         font.setLetterSpacing(QtGui.QFont.PercentageSpacing, 120)
@@ -122,8 +124,9 @@ def _prim_font(*, abstract=False, orphaned=False):
 
 class _Column(typing.NamedTuple):
     name: str
-    getter: callable
+    getter: callable = None
     setter: callable = None
+    editor: callable = None
 
 
 class _ColumnOptions(enum.Flag):
@@ -295,6 +298,18 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         self.sourceModel().sort(column, order)
 
 
+class EmptyTableModel(QtGui.QStandardItemModel):
+    """Minimal empty table for new data (unlike existing USD stages or layers).
+
+    This is a "transient" model which will eventually have data translated into USD.
+    """
+    def __init__(self, columns, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_spec = columns
+        self._locked_columns = set()  # TODO: make sure this plays well with this and USD table
+        self.setHorizontalHeaderLabels([''] * len(columns))
+
+
 class UsdObjectTableModel(QtCore.QAbstractTableModel):
     """Base table model for USD objects.
 
@@ -316,10 +331,10 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if not index.isValid():
             return None
-        elif role == _USD_DATA_ROLE:  # raw data
+        elif role == _core._USD_DATA_ROLE:  # raw data
             return self._objects[index.row()]
         elif role == QtCore.Qt.DisplayRole:
-            usdobj = self.data(index, role=_USD_DATA_ROLE)
+            usdobj = self.data(index, role=_core._USD_DATA_ROLE)
             return self._columns_spec[index.column()].getter(usdobj)
 
     def sort(self, column:int, order:QtCore.Qt.SortOrder=...) -> None:
@@ -346,33 +361,12 @@ class StageTableModel(UsdObjectTableModel):
     # I tried to implement fetchMore for 250k+ prims (for filtering operations) but
     # it's not as pleasant experience and filtering first on path is a better tactic.
     # https://doc.qt.io/qt-5/qtwidgets-itemviews-fetchmore-example.html
-
-    # TODO: buttons for filtering by
-    # - class
-    # - orphaned
-    # - def
-    # - active
-    # - ModelAPI (existed as "Model Hierarchy" on SpreadsheetEditor)
     def __init__(self, columns, *args, **kwargs):
         super().__init__(columns, *args, **kwargs)
         self._stage = None
         self._traverse_predicate = Usd.PrimAllPrimsPredicate
         self._root_paths = set()
-        # self._root_paths = {
-        #     Sdf.Path("/typed/lab01"),
-        #     Sdf.Path("/untyped"),
-        #     Sdf.Path("/does_not_exist"),
-        #     Sdf.Path("/does_not_exist.property"),
-        #     Sdf.Path("/single_nonexisting.property"),
-        #     Sdf.Path("/single_nonexisting_prim"),
-        #     Sdf.Path("/root_orphaned/child_def"),
-        #     Sdf.Path("/root_orphaned/child_def.property"),
-        #     Sdf.Path("/typed/lab01/camera_ztl01_140"),
-        #     Sdf.Path("/typed/lab01/camera_ztl01_does_not_exist"),
-        #     Sdf.Path("/typed/lab01/camera_ztl01_060"),
-        # }
         self._prune_children = set()
-        # self._prune_children = {Sdf.Path("/typed/k0"), Sdf.Path("/typed/k1"), Sdf.Path("/typed/lab01/thelab01")}  # Sdf.Path
 
     @property
     def _prune_predicate(self):
@@ -389,21 +383,23 @@ class StageTableModel(UsdObjectTableModel):
     def stage(self, value):
         self.beginResetModel()
         self._stage = value
-        prims = _iprims(
-            value,
-            root_paths=self._root_paths,
-            prune_predicate=self._prune_predicate if self._prune_children else None,
-            traverse_predicate=self._traverse_predicate
-        )
-        self._objects = list(filter(self._filter_predicate, prims))
+        if value:
+            prims = list(_iprims(
+                value,
+                root_paths=self._root_paths,
+                prune_predicate=self._prune_predicate if self._prune_children else None,
+                traverse_predicate=self._traverse_predicate
+            ))
+            self._objects = list(filter(self._filter_predicate, prims))
+        else:
+            self._objects = []
         self.endResetModel()
 
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         # Keep consistency with USDView visual style
         if role == QtCore.Qt.ForegroundRole:
-            prim = self.data(index, role=_USD_DATA_ROLE)
+            prim = self.data(index, role=_core._USD_DATA_ROLE)
             active = prim.IsActive()
-            # Keep consistency with USDView visual style
             if prim.IsInstance():
                 color = _PrimTextColor.INSTANCE
             elif prim.IsInPrototype() or prim.IsInstanceProxy():
@@ -422,11 +418,8 @@ class StageTableModel(UsdObjectTableModel):
                 color = _PrimTextColor.NONE
             return color.value
         elif role == QtCore.Qt.FontRole:
-            # Keep similar USDView visual style (but we don't "bold" defined prims)
-            # Abstract prims are also considered defined; since we want
-            # to distinguish abstract defined prims from non-abstract
-            # defined prims, we check for abstract first.
-            prim = self.data(index, role=_USD_DATA_ROLE)
+            # Keep similar USDView visual style, just  don't "bold" defined prims.
+            prim = self.data(index, role=_core._USD_DATA_ROLE)
             return _prim_font(abstract=prim.IsAbstract(), orphaned=not prim.IsDefined())
         return super().data(index, role)
 

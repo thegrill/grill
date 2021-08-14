@@ -30,14 +30,14 @@ class _CreatePrims(QtWidgets.QDialog):
         apply_btn = button_box.button(QtWidgets.QDialogButtonBox.Apply)
         self._applied = apply_btn.clicked
 
-        self.sheet = sheet = _sheets._Spreadsheet(columns, _sheets._ColumnOptions.NONE)
-        sheet.model.setHorizontalHeaderLabels([''] * len(columns))
+        model = _sheets.EmptyTableModel(columns=columns)
+        self.sheet = sheet = _sheets._Spreadsheet(model, columns, _sheets._ColumnOptions.NONE)
         self._amount.valueChanged.connect(sheet.model.setRowCount)
         sheet.layout().setContentsMargins(0, 0, 0, 0)
 
         self._amount.setValue(1)
         self._amount.setMinimum(1)
-        self._amount.setMaximum(500)
+        self._amount.setMaximum(1000)
         self._splitter = splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding))
         splitter.addWidget(sheet)
@@ -65,12 +65,11 @@ class CreateAssets(_CreatePrims):
             combobox = QtWidgets.QComboBox(parent=parent)
             combobox.addItems(sorted(self._taxon_options))
             return combobox
-        identity = lambda x: x
         _columns = (
-            _sheets._Column("🧬 Taxon", identity, editor=_taxon_combobox),
-            _sheets._Column("🔖 Name", identity),
-            _sheets._Column("🏷 Label", identity),
-            _sheets._Column("📜 Description", identity),
+            _sheets._Column("🧬 Taxon", editor=_taxon_combobox),
+            _sheets._Column("🔖 Name"),
+            _sheets._Column("🏷 Label"),
+            _sheets._Column("📜 Description"),
         )
         super().__init__(_columns, *args, **kwargs)
         self.accepted.connect(self._create)
@@ -116,7 +115,6 @@ class TaxonomyEditor(_CreatePrims):
         # 1. Read only list of existing taxonomy
         # 2. Place to create new taxon groups
         #    - name | references | id_fields
-        self._taxon_options = []
 
         class ReferenceSelection(QtWidgets.QDialog):
             def __init__(self, parent=None):
@@ -196,18 +194,25 @@ class TaxonomyEditor(_CreatePrims):
             _sheets._Column(
                 "🔗 References",
                 identity,
-                editor=_reference_selector,
-                model_setter=_reference_setter
+                # editor=_reference_selector,
+                # model_setter=_reference_setter
             ),
-            _sheets._Column(f"{_core._EMOJI_ID} ID Fields", identity),
+            _sheets._Column(f"{_core._EMOJI.ID.value} ID Fields", identity),
         )
         super().__init__(_columns, *args, **kwargs)
         self.setWindowTitle("Taxonomy Editor")
 
         existing_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
+        existing_model = _sheets.StageTableModel(columns=existing_columns)
+        # TODO: turn this into a method to lock all columns?
+        existing_model._locked_columns = list(range(len(existing_columns)))
         self._existing = existing = _sheets._Spreadsheet(
-            (_sheets._Column("🧬 Existing", identity),),
-            _sheets._ColumnOptions.SEARCH
+            existing_model,
+            # TODO: see if columns "should" be passed always to the model. If so, then
+            #   we can avoid passing it here.
+            existing_columns,
+            _sheets._ColumnOptions.SEARCH,
         )
         existing.layout().setContentsMargins(0, 0, 0, 0)
         existing_splitter.addWidget(existing)
@@ -216,7 +221,8 @@ class TaxonomyEditor(_CreatePrims):
         existing_splitter.addWidget(self._graph_view)
 
         selectionModel = existing.table.selectionModel()
-        selectionModel.selectionChanged.connect(self._selectionChanged)
+        selectionModel.selectionChanged.connect(self._existingSelectionChanged)
+        self._ids_by_taxa = dict()
 
         self._splitter.insertWidget(0, existing_splitter)
         self._splitter.setStretchFactor(0, 2)
@@ -231,28 +237,27 @@ class TaxonomyEditor(_CreatePrims):
         self._create()
         self.setStage(self._stage)
 
-    def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
-        node_ids = [index.data(QtCore.Qt.UserRole) for index in self._existing.table.selectedIndexes()]
+    def _existingSelectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
+        prims = (index.data(_core._USD_DATA_ROLE) for index in self._existing.table.selectedIndexes())
+        node_ids = [self._ids_by_taxa[prim.GetName()] for prim in prims]
         self._graph_view.view(node_ids)
+
+    @property
+    def _taxon_options(self):
+        return self._existing.model._objects
 
     def setStage(self, stage):
         self._stage = stage
-        root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
-        self._taxon_options = [child for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
-        existing_model = self._existing.model
-        existing_model.setHorizontalHeaderLabels([''])
-        existing_model.setRowCount(len(self._taxon_options))
-        existing_model.blockSignals(True)
-
+        self._existing.model._root_paths = {write._TAXONOMY_ROOT_PATH}
+        self._existing.model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
+        self._existing.model.stage = stage
+        existing_taxa = self._taxon_options
         self._graph_view.graph = graph = networkx.DiGraph(tooltip="Taxonomy Graph")
         graph.graph['graph'] = {'rankdir': 'LR'}
-        _ids_by_taxa = dict()  # {"taxon1": 42}
-        for index, taxon in enumerate(self._taxon_options):
+        self._ids_by_taxa = _ids_by_taxa = dict()  # {"taxon1": 42}
+        for index, taxon in enumerate(existing_taxa):
+            # TODO: ensure to guarantee taxa will be unique (no duplicated short names)
             taxon_name = taxon.GetName()
-            item = QtGui.QStandardItem()
-            item.setData(taxon_name, QtCore.Qt.DisplayRole)
-            item.setData(index, QtCore.Qt.UserRole)
-            existing_model.setItem(index, 0, item)
             graph.add_node(
                 index,
                 label=taxon_name,
@@ -266,14 +271,12 @@ class TaxonomyEditor(_CreatePrims):
             _ids_by_taxa[taxon_name] = index
 
         # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
-        for row_index, taxon in enumerate(self._taxon_options):
-            taxa = taxon.GetCustomDataByKey(write._PRIM_GRILL_KEY)['taxa']
-            taxa.pop(taxon.GetName())
+        for taxon in existing_taxa:
+            taxa = taxon.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
+            taxon_name = taxon.GetName()
+            taxa.pop(taxon_name)
             for ref_taxon in taxa:
-                graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon.GetName()])
-
-        existing_model.blockSignals(False)
-        self._existing._setColumnLocked(0, True)
+                graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon_name])
 
     @_core.wait()
     def _create(self):
