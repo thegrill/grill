@@ -384,12 +384,12 @@ class StageTableModel(UsdObjectTableModel):
         self.beginResetModel()
         self._stage = value
         if value:
-            prims = list(_iprims(
+            prims = _iprims(
                 value,
                 root_paths=self._root_paths,
                 prune_predicate=self._prune_predicate if self._prune_children else None,
                 traverse_predicate=self._traverse_predicate
-            ))
+            )
             self._objects = list(filter(self._filter_predicate, prims))
         else:
             self._objects = []
@@ -716,6 +716,7 @@ class _Spreadsheet(QtWidgets.QDialog):
 class SpreadsheetEditor(_Spreadsheet):
     """TODO:
             - Allow to filter via type inheritance
+            - Allow setting root paths from selected paths
     """
 
     def __init__(self, *args, **kwargs):

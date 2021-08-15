@@ -205,6 +205,8 @@ class TaxonomyEditor(_CreatePrims):
         existing_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
         existing_model = _sheets.StageTableModel(columns=existing_columns)
+        existing_model._root_paths = {write._TAXONOMY_ROOT_PATH}
+        existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
         # TODO: turn this into a method to lock all columns?
         existing_model._locked_columns = list(range(len(existing_columns)))
         self._existing = existing = _sheets._Spreadsheet(
@@ -248,8 +250,6 @@ class TaxonomyEditor(_CreatePrims):
 
     def setStage(self, stage):
         self._stage = stage
-        self._existing.model._root_paths = {write._TAXONOMY_ROOT_PATH}
-        self._existing.model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
         self._existing.model.stage = stage
         existing_taxa = self._taxon_options
         self._graph_view.graph = graph = networkx.DiGraph(tooltip="Taxonomy Graph")
@@ -286,6 +286,8 @@ class TaxonomyEditor(_CreatePrims):
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
                 return
         # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
+        # TODO: make data point to the actual existing prims from the start.
+        #   So that we don't need to call GetPRimAtPath.
         root = self._stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
