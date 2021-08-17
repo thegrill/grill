@@ -126,7 +126,7 @@ class _Column(typing.NamedTuple):
     name: str
     getter: callable = None
     setter: callable = None
-    editor: callable = None
+    editor: callable = None  # TODO: still pondering how to reconcile this with a custom column delegate
 
 
 class _ColumnOptions(enum.Flag):
