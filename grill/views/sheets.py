@@ -147,23 +147,21 @@ class _PrimTextColor(enum.Enum):
     ARCS = QtGui.QColor('orange')
 
 
-# class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
-#     """
-#     https://doc.qt.io/qtforpython/overviews/sql-presenting.html
-#     https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
-#
-#     Contract:
-#     Object - UserRole
-#     ValueGetter - UserRole + 1
-#     ValueSetter - UserRole + 2
-#     Widget - UserRole + 3
-#     """
-#
-#     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-#         creator = getattr(self, "_editor") or super().createEditor
-#         editor = creator(parent, option, index)
-#         editor._property_name = _property_name_from_option_type(option.type)
-#         return editor
+class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
+    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+
+    Contract:
+    Object - UserRole
+    ValueGetter - UserRole + 1
+    ValueSetter - UserRole + 2
+    Widget - UserRole + 3
+    """
+
+    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+        creator = self.parent()._columns_spec[index.column()].editor or super().createEditor
+        return creator(parent, option, index)
 #
 #     # def setEditorData(self, editor:QtWidgets.QWidget, index:QtCore.QModelIndex) -> None:
 #
@@ -283,21 +281,6 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         self._vis_button.setChecked(not value)
 
 
-class _ProxyModel(QtCore.QSortFilterProxyModel):
-    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
-        """For a vertical header, display a sequential visual index instead of the logical from the model."""
-        # https://www.walletfox.com/course/qsortfilterproxymodelexample.php
-        if role == QtCore.Qt.DisplayRole:
-            if orientation == QtCore.Qt.Vertical:
-                return section + 1
-            elif orientation == QtCore.Qt.Horizontal:
-                return ""  # our horizontal header labels are drawn by custom header
-        return super().headerData(section, orientation, role)
-
-    def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
-        self.sourceModel().sort(column, order)
-
-
 class EmptyTableModel(QtGui.QStandardItemModel):
     """Minimal empty table for new data (unlike existing USD stages or layers).
 
@@ -308,6 +291,19 @@ class EmptyTableModel(QtGui.QStandardItemModel):
         self._columns_spec = columns
         self._locked_columns = set()  # TODO: make sure this plays well with this and USD table
         self.setHorizontalHeaderLabels([''] * len(columns))
+
+    # def setData(self, index:QtCore.QModelIndex, value:typing.Any, role:int=...) -> bool:
+    #     print('<<<<<<<>>>>>>> MODEL STTER')
+    #     pp(locals())
+    #     return super().setData(index, value, role)
+        # return None
+        # # usdobj = self.data(index, role=_core._USD_DATA_ROLE)
+        # result = self._columns_spec[index.column()].setter(index, value)
+        # pp(locals())
+        # print(f"{result=}")
+        # print(f"{self._columns_spec[index.column()].setter=}")
+        # self.dataChanged.emit(index, index)  # needed?
+        # return True
 
 
 class UsdObjectTableModel(QtCore.QAbstractTableModel):
@@ -336,6 +332,9 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
         elif role == QtCore.Qt.DisplayRole:
             usdobj = self.data(index, role=_core._USD_DATA_ROLE)
             return self._columns_spec[index.column()].getter(usdobj)
+        elif role == QtCore.Qt.EditRole:
+            usdobj = self.data(index, role=_core._USD_DATA_ROLE)
+            return self._columns_spec[index.column()].getter(usdobj)
 
     def sort(self, column:int, order:QtCore.Qt.SortOrder=...) -> None:
         self.layoutAboutToBeChanged.emit()
@@ -345,6 +344,31 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
             self._objects = sorted(self._objects, key=key, reverse=reverse)
         finally:
             self.layoutChanged.emit()
+
+    def setData(self, index:QtCore.QModelIndex, value:typing.Any, role:int=...) -> bool:
+        usdobj = self.data(index, role=_core._USD_DATA_ROLE)
+        result = self._columns_spec[index.column()].setter(usdobj, value)
+        pp(locals())
+        print(f"{result=}")
+        print(f"{self._columns_spec[index.column()].setter=}")
+        print(f"{self._columns_spec[index.column()].getter(usdobj)=}")
+        # self.dataChanged.emit(topLeft, bottomRight)  # needed?
+        return True
+
+from pprint import pp
+class _ProxyModel(QtCore.QSortFilterProxyModel):
+    def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
+        """For a vertical header, display a sequential visual index instead of the logical from the model."""
+        # https://www.walletfox.com/course/qsortfilterproxymodelexample.php
+        if role == QtCore.Qt.DisplayRole:
+            if orientation == QtCore.Qt.Vertical:
+                return section + 1
+            elif orientation == QtCore.Qt.Horizontal:
+                return ""  # our horizontal header labels are drawn by custom header
+        return super().headerData(section, orientation, role)
+
+    def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
+        self.sourceModel().sort(column, order)
 
 
 class StageTableModel(UsdObjectTableModel):
@@ -425,8 +449,12 @@ class StageTableModel(UsdObjectTableModel):
 
     def flags(self, index:QtCore.QModelIndex) -> QtCore.Qt.ItemFlags:
         flags = super().flags(index)
-        # only allow edits on non-instance proxies AND on unlocked columns
-        if index.column() not in self._locked_columns and not self._objects[index.row()].IsInstanceProxy():
+        col_index = index.column()
+        # only allow edits when:
+        if (col_index not in self._locked_columns  # column is unlocked
+            and self._columns_spec[col_index].setter  # a setter has been provided
+            and not self._objects[index.row()].IsInstanceProxy()  # Not an instance proxy
+        ):
             return flags | QtCore.Qt.ItemIsEditable
         return flags
 
@@ -520,6 +548,8 @@ class _Table(QtWidgets.QTableView):
 class _Spreadsheet(QtWidgets.QDialog):
     """TODO:
         - Make paste work with filtered items (paste has been disabled)
+        - Setting a prim as instanceable invalidates child prims.
+            - Quickest workaround is to invalidate model?
     """
     def __init__(self, model, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -544,6 +574,12 @@ class _Spreadsheet(QtWidgets.QDialog):
 
             if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
+
+            delegate = _ColumnItemDelegate(parent=self)
+            delegate._editor = column_data.editor
+            # delegate._model_setter = column_data.model_setter
+            # delegate._model_data_setter = column_data.model_data_setter
+            table.setItemDelegateForColumn(column_index, delegate)
 
             model = proxy_model
 
@@ -721,12 +757,14 @@ class SpreadsheetEditor(_Spreadsheet):
 
     def __init__(self, *args, **kwargs):
         def _vis_value(prim):
+            # keep homogeneus array by returning a value of the same type for prims
+            # that are not imageable (e.g. untyped prims)
             imageable = UsdGeom.Imageable(prim)
             return imageable.GetVisibilityAttr().Get() if imageable else ""
         columns = (
             _Column("Path", lambda prim: str(prim.GetPath())),
             _Column("Name", Usd.Prim.GetName),
-            _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName),
+            _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, editor=_prim_type_combobox),
             _Column("Documentation", Usd.Prim.GetDocumentation,
                     Usd.Prim.SetDocumentation),
             _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),

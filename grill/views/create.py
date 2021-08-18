@@ -186,16 +186,18 @@ class TaxonomyEditor(_CreatePrims):
             return inter
 
         def _reference_setter(editor: ReferenceSelection, model: _sheets._ProxyModel, index:QtCore.QModelIndex):
+            print('---------------------- REFERENCE STTER')
+            pp(locals())
             return model.setData(index, "\n".join(editor._value()))
-
+        from pprint import pp
         identity = lambda x: x
         _columns = (
             _sheets._Column("🧬 New Name", identity),
             _sheets._Column(
                 "🔗 References",
                 identity,
-                # editor=_reference_selector,
-                # model_setter=_reference_setter
+                editor=_reference_selector,
+                setter=_reference_setter
             ),
             _sheets._Column(f"{_core._EMOJI.ID.value} ID Fields", identity),
         )
