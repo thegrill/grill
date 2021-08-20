@@ -60,6 +60,12 @@ _TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_N
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 _UNIT_ORIGIN_PATH = Sdf.Path("/Origin")
 
+# Composition filters for asset edits
+_ASSET_UNIT_QUERY_FILTER = Usd.PrimCompositionQuery.Filter()
+_ASSET_UNIT_QUERY_FILTER.dependencyTypeFilter = Usd.PrimCompositionQuery.DependencyTypeFilter.Direct
+_ASSET_UNIT_QUERY_FILTER.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
+_ASSET_UNIT_QUERY_FILTER.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.ReferenceOrPayload
+
 
 @functools.lru_cache(maxsize=None)
 def fetch_stage(identifier: str) -> Usd.Stage:
@@ -138,7 +144,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
         raise ValueError(f"Got invalid id_field keys: {', '.join(invalid_fields)}. Allowed: {', '.join(ids.CGAsset.__members__)}")
 
     with taxonomy_context(stage):
-        prim = stage.CreateClassPrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
+        prim = stage.DefinePrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
         prim.CreateAttribute("label", Sdf.ValueTypeNames.String, custom=False)
@@ -189,8 +195,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
-    # taxonomy_layer_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
-    taxonomy_layer_id = taxonomy_layer.identifier  # TODO: please ensure it's never absolute path
+    taxonomy_reference = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
 
     scope_path = stage.GetPseudoRoot().GetPath().AppendPath(taxon.GetName())
     scope = stage.GetPrimAtPath(scope_path)
@@ -202,8 +207,9 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             return prim
         assetid = new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name})
         asset_stage = fetch_stage(assetid)
+        asset_stage.GetRootLayer().subLayerPaths.append(taxonomy_reference)
         asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
-        asset_origin.GetReferences().AddReference(taxonomy_layer_id, taxon_path)
+        asset_origin.GetInherits().AddInherit(taxon_path)
         asset_stage.SetDefaultPrim(asset_origin)
         if label:
             label_attr = asset_origin.GetAttribute("label")
@@ -257,7 +263,8 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
         root_layer.subLayerPaths.append(taxonomy_reference)
 
         if not taxonomy_stage.GetDefaultPrim():
-            taxonomy_stage.SetDefaultPrim(taxonomy_stage.DefinePrim(_TAXONOMY_ROOT_PATH))
+            default_prim = taxonomy_stage.CreateClassPrim(_TAXONOMY_ROOT_PATH)
+            taxonomy_stage.SetDefaultPrim(default_prim)
 
         return _context(stage, _TAXONOMY_FIELDS)
 
@@ -297,9 +304,6 @@ def _root_asset(stage):
 
 
 def _get_id_fields(prim):
-    # data = prim.GetAssetInfoByKey(_ASSETINFO_KEY) or {}
-    # if not data:
-    #     raise ValueError(f"No data found on '{_ASSETINFO_KEY}' key for {prim}")
     fields = prim.GetAssetInfoByKey(_ASSETINFO_FIELDS_KEY)
     if not fields:
         raise ValueError(f"Missing or empty '{_FIELDS_KEY}' on '{_ASSETINFO_KEY}' asset info for {prim}. Got: {pformat(prim.GetAssetInfoByKey(_ASSETINFO_KEY))}")
@@ -349,7 +353,17 @@ def _(obj: Usd.Stage, layer):
 @_edit_context.register
 def _(obj: Usd.Prim, layer):
     # We need to explicitely construct our edit target since our layer is not on the layer stack of the stage.
-    target = Usd.EditTarget(layer, obj.GetPrimIndex().rootNode.children[0])
+    # TODO: this is specific about "localised edits" for an asset. Dispatch no longer looking solid?
+    query = Usd.PrimCompositionQuery(obj)
+    query.filter = _ASSET_UNIT_QUERY_FILTER
+    arcs = query.GetCompositionArcs()
+    for arc in arcs:
+        target_node = arc.GetTargetNode()
+        if target_node.path == _UNIT_ORIGIN_PATH and target_node.layerStack.identifier.rootLayer == layer:
+            break
+    else:
+        raise ValueError(f"Could not find appropiate node for edit target for {obj} matching {layer}")
+    target = Usd.EditTarget(layer, target_node)
     return Usd.EditContext(obj.GetStage(), target)
 
 
