@@ -7,7 +7,7 @@ import logging
 import operator
 import textwrap
 import itertools
-
+from pprint import pp  # temp, please remove
 from collections import Counter
 from functools import partial, lru_cache
 
@@ -21,16 +21,6 @@ logger = logging.getLogger(__name__)
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
 _PRIM_TYPE_OPTIONS = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
-
-
-# @lru_cache(maxsize=None)
-# def _property_name_from_option_type(optype):
-#     # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QItemEditorFactory.html
-#     # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QAbstractItemDelegate.html#PySide2.QtWidgets.PySide2.QtWidgets.QAbstractItemDelegate.createEditor
-#     # https://discourse.techart.online/t/pyside2-qitemeditorfactory-and-missing-qvariant-qmetatype/11387/2
-#     factory = QtWidgets.QItemEditorFactory.defaultFactory()
-#     property_name = factory.valuePropertyName(optype)  # e.g. QtCore.QByteArray(b'text')
-#     return property_name.data().decode()  # e.g. from b'text' to "text", "value", ...
 
 
 def _prim_type_combobox(parent, option, index):
@@ -126,7 +116,7 @@ class _Column(typing.NamedTuple):
     name: str
     getter: callable = None
     setter: callable = None
-    editor: callable = None  # TODO: still pondering how to reconcile this with a custom column delegate
+    editor: callable = None
 
 
 class _ColumnOptions(enum.Flag):
@@ -151,55 +141,22 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     https://doc.qt.io/qtforpython/overviews/sql-presenting.html
     https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
-
-    Contract:
-    Object - UserRole
-    ValueGetter - UserRole + 1
-    ValueSetter - UserRole + 2
-    Widget - UserRole + 3
     """
 
     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
         creator = self.parent()._columns_spec[index.column()].editor or super().createEditor
         return creator(parent, option, index)
-#
-#     # def setEditorData(self, editor:QtWidgets.QWidget, index:QtCore.QModelIndex) -> None:
-#
-#     def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-#         # setModelData = getattr(self, "_model_data_setter") or super().setModelData
-#         # we would always fallback to _property_name but it looks like there's no
-#         # consistency, so we always prefer to check for "value" and only if it's None
-#         # we check the property name found from the option when the editor was created.
-#         value = editor.property("value")
-#         # value will usually work for "bool"
-#         print(f"From property 'value': {value}, type: {type(value)}")
-#         # text will work for line edits and other text editors.
-#         if value is None:
-#             value = editor.property(editor._property_name)
-#             print(f"From property '{editor._property_name}': {value}, type: {type(value)}")
-#         # currentText will work for combo boxes.
-#         if value is None:
-#             value = editor.property("currentText")
-#             print(f"From property 'currentText': {value}, type: {type(value)}")
-#         # there's also datetime, time, but those should be coming from editor._property_name
-#         # fail if we find something we don't know how to translate
-#         if value is None:
-#             raise ValueError(f"Can not obtain value to set from editor: {editor} on index {index}")
-#         obj = index.data(_OBJECT)
-#         setter = index.data(_VALUE_SETTER)
-#         if setter:
-#             print(f"Setting: {value} on object {obj} via {setter}")
-#             setter(obj, value)
-#         else:
-#             print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
-#         setModelData = getattr(self, "_model_setter") or super().setModelData
-#         return setModelData(editor, model, index)
+
+
+class _EmptyItemDelegate(_ColumnItemDelegate):
+    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        setter = self.parent()._columns_spec[index.column()].setter or super().setModelData
+        return setter(editor, model, index)
 
 
 class _ColumnHeaderOptions(QtWidgets.QWidget):
     """A widget to be used within a header for columns on a USD spreadsheet.
 
-    TODO: Clicking sorting after modifying a header lenght makes it not draw properly
     """
     def __init__(self, name, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -292,19 +249,6 @@ class EmptyTableModel(QtGui.QStandardItemModel):
         self._locked_columns = set()  # TODO: make sure this plays well with this and USD table
         self.setHorizontalHeaderLabels([''] * len(columns))
 
-    # def setData(self, index:QtCore.QModelIndex, value:typing.Any, role:int=...) -> bool:
-    #     print('<<<<<<<>>>>>>> MODEL STTER')
-    #     pp(locals())
-    #     return super().setData(index, value, role)
-        # return None
-        # # usdobj = self.data(index, role=_core._USD_DATA_ROLE)
-        # result = self._columns_spec[index.column()].setter(index, value)
-        # pp(locals())
-        # print(f"{result=}")
-        # print(f"{self._columns_spec[index.column()].setter=}")
-        # self.dataChanged.emit(index, index)  # needed?
-        # return True
-
 
 class UsdObjectTableModel(QtCore.QAbstractTableModel):
     """Base table model for USD objects.
@@ -355,7 +299,7 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
         # self.dataChanged.emit(topLeft, bottomRight)  # needed?
         return True
 
-from pprint import pp
+
 class _ProxyModel(QtCore.QSortFilterProxyModel):
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
         """For a vertical header, display a sequential visual index instead of the logical from the model."""
@@ -558,6 +502,8 @@ class _Spreadsheet(QtWidgets.QDialog):
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
+        # TODO: item delegate per model type? For now it works ):<
+        column_delegate_cls = _ColumnItemDelegate if isinstance(model, UsdObjectTableModel) else _EmptyItemDelegate
         self._column_options = header.section_options
 
         # for every column, create a proxy model and chain it to the next one
@@ -575,10 +521,7 @@ class _Spreadsheet(QtWidgets.QDialog):
             if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
 
-            delegate = _ColumnItemDelegate(parent=self)
-            delegate._editor = column_data.editor
-            # delegate._model_setter = column_data.model_setter
-            # delegate._model_data_setter = column_data.model_data_setter
+            delegate = column_delegate_cls(parent=self)
             table.setItemDelegateForColumn(column_index, delegate)
 
             model = proxy_model
