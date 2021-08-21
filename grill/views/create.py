@@ -114,7 +114,6 @@ class CreateAssets(_CreatePrims):
     def setStage(self, stage):
         self._stage = stage
         self._existing_model.stage = stage
-        print("MODEL SET")
 
     def _apply(self):
         """Apply current changes and keep dialog open."""
@@ -200,10 +199,8 @@ class TaxonomyEditor(_CreatePrims):
             return inter
 
         def _reference_setter(editor: ReferenceSelection, model: _sheets._ProxyModel, index:QtCore.QModelIndex):
-            print('---------------------- REFERENCE STTER')
-            pp(locals())
             return model.setData(index, "\n".join(editor._value()))
-        from pprint import pp
+
         identity = lambda x: x
         _columns = (
             _sheets._Column("🧬 New Name", identity),

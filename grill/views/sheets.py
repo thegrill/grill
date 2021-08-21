@@ -7,7 +7,6 @@ import logging
 import operator
 import textwrap
 import itertools
-from pprint import pp  # temp, please remove
 from collections import Counter
 from functools import partial, lru_cache
 
@@ -292,10 +291,7 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
     def setData(self, index:QtCore.QModelIndex, value:typing.Any, role:int=...) -> bool:
         usdobj = self.data(index, role=_core._USD_DATA_ROLE)
         result = self._columns_spec[index.column()].setter(usdobj, value)
-        pp(locals())
-        print(f"{result=}")
-        print(f"{self._columns_spec[index.column()].setter=}")
-        print(f"{self._columns_spec[index.column()].getter(usdobj)=}")
+        print(f"Result: {result}")
         # self.dataChanged.emit(topLeft, bottomRight)  # needed?
         return True
 
