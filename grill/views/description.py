@@ -89,7 +89,9 @@ def _compute_layerstack_graph(prims, url_id_prefix):
         if root_layer in stack_index_by_root_layer:
             return stack_index_by_root_layer[root_layer]
         stack_index = len(stack_id_by_node_idx)
-
+        if "Kitchen_payload.usd" in root_layer.identifier:
+            print(f">>>>>>>>>>>>>>>>>>>>>> {locals()}")
+        # stack_indices_by_sublayers[root_layer].add(stack_index)
         stack_index_by_root_layer[root_layer] = stack_index
         print(f"1. Index: {stack_index}, root layer: {root_layer}")
         stack_id_by_node_idx[stack_index] = root_layer
@@ -101,7 +103,9 @@ def _compute_layerstack_graph(prims, url_id_prefix):
         for layer in sublayers:
             if layer.dirty:
                 fillcolor = 'palegoldenrod'
-            stack_indices_by_sublayers[layer].add(stack_index)
+            # stack_indices_by_sublayers[layer].add(stack_index)
+            if "Kitchen_payload.usd" in layer.identifier:
+                print(f">>>>>>>>>>>>>>>>>>>>>> {locals()}")
             if layer == root_layer:  # root layer has been added at the start.
                 continue
             print(f"2. Root indices: {stack_indices_by_sublayers[layer]} with layer: {layer}")
@@ -133,6 +137,7 @@ def _compute_layerstack_graph(prims, url_id_prefix):
         query = Usd.PrimCompositionQuery(prim)
         query.filter = qFilter
         affected_indices = set()
+        unmatched = list()
         for arc in query.GetCompositionArcs():
             node_index = _add_node(arc.GetTargetNode())
             affected_indices.add(node_index)
@@ -141,20 +146,52 @@ def _compute_layerstack_graph(prims, url_id_prefix):
             intro = arc.GetIntroducingLayer()
             if intro:
                 edge_attrs = _ARCS_LEGEND[arc.GetArcType()]
-                source_indices = stack_indices_by_sublayers[intro]
-                for edge_id in source_indices:
-                    graph.add_edge(edge_id, target_stack_idx, **edge_attrs)
-        return affected_indices
+                if intro in _sublayers(arc.GetTargetNode().layerStack):
+                    source_index = target_stack_idx
+                else:
+                    # source_index = stack_index_by_root_layer[intro]
+                    try:
+                        source_index = stack_index_by_root_layer[intro]
+                    except KeyError:
+                        print(f">>>    Could not find {intro} to connect to {target}")
+                        unmatched.append((intro, target_stack_idx, edge_attrs))
+                        continue
+                # else:
+                #     graph.add_edge(source_index, target_stack_idx, **edge_attrs)
+                graph.add_edge(source_index, target_stack_idx, **edge_attrs)
+                # source_indices = stack_indices_by_sublayers[intro]
+                # for edge_id in source_indices:
+                #     graph.add_edge(edge_id, target_stack_idx, **edge_attrs)
+        return affected_indices, unmatched
 
+    all_unmatched = list()
     for prim in prims:
         # use a forwarded prim in case of instanceability to avoid computing same stack more than once
         prim_path = prim.GetPath()
         forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-        for each in _compute_composition(forwarded_prim):
+        affected_indices, unlinked = _compute_composition(forwarded_prim)
+        if unlinked:
+            print(f"!!!!!!!!!!!! {forwarded_prim}")
+        all_unmatched.extend(unlinked)
+        for each in affected_indices:
             graph.nodes[each]["prim_paths"].add(prim_path)
 
+    # by this time we should have all indices computed and existing
+    for source_layer, target_index, attrs in all_unmatched:
+        try:
+            source_index = stack_index_by_root_layer[source_layer]
+        except KeyError:
+            # msg = f"ERROR:\n{source_layer},\n{target_index},\n{stack_index_by_root_layer[target_index]}"
+            msg = f"ERROR:\n{source_layer},\n{target_index},\n"
+            print(msg)
+            from pprint import pp
+            pp(stack_index_by_root_layer)
+            raise ValueError(msg)
+        graph.add_edge(source_index, target_index, **attrs)
+
     graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY] = MappingProxyType(
-        {k: tuple(v) for k, v in stack_indices_by_sublayers.items()}
+        # {k: tuple(v) for k, v in stack_indices_by_sublayers.items()}
+        {k: v for k, v in stack_index_by_root_layer.items()}
     )
     graph.graph[_DESCRIPTION_LEGEND_IDS_KEY] = tuple(legend_node_ids)
     return graph
@@ -401,7 +438,8 @@ class LayerStackComposition(QtWidgets.QDialog):
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         node_ids = [index.data(_core._USD_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
-        node_indices = set(chain.from_iterable(self._graph_view.graph.graph['indices_by_layers'][layer] for layer in node_ids))
+        # node_indices = set(chain.from_iterable(self._graph_view.graph.graph['indices_by_layers'][layer] for layer in node_ids))
+        node_indices = set(self._graph_view.graph.graph['indices_by_layers'][layer] for layer in node_ids)
         paths = set(chain.from_iterable(self._graph_view.graph.nodes[i]['prim_paths'] for i in node_indices))
 
         def _filter_predicate(p):
