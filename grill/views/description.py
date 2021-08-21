@@ -27,6 +27,7 @@ _ARCS_LEGEND = MappingProxyType({
 
 _DESCRIPTION_LEGEND_IDS_KEY = 'legend_indices'
 _DESCRIPTION_IDS_BY_LAYERS_KEY = 'indices_by_layers'
+_DESCRIPTION_PATHS_BY_IDS_KEY = 'paths_by_indices'
 
 
 @lru_cache(maxsize=None)
@@ -119,8 +120,6 @@ def _compute_layerstack_graph(prims, url_id_prefix):
             title='world',
             fillcolor=fillcolor,
             href=f"{url_id_prefix}{stack_index}",
-            layer_stack=sublayers,
-            prim_paths=set(),
         )
         return stack_index
 
@@ -132,11 +131,11 @@ def _compute_layerstack_graph(prims, url_id_prefix):
     def _compute_composition(prim):
         query = Usd.PrimCompositionQuery(prim)
         query.filter = qFilter
-        affected_indices = set()
+        affected_by = set()  # {int}  indices of nodes affecting this prim
         for arc in query.GetCompositionArcs():
             target_node = arc.GetTargetNode()
             target_idx = _add_node(target_node)
-            affected_indices.add(target_idx)
+            affected_by.add(target_idx)
 
             source_node = arc.GetIntroducingNode()
             source_idx = _add_node(source_node)
@@ -152,19 +151,23 @@ def _compute_layerstack_graph(prims, url_id_prefix):
                     raise ValueError(f"Dont know how to proceed {locals()}")
                 graph.add_edge(source_index, target_idx, **edge_attrs)
 
-        return affected_indices
+        return affected_by
 
+    paths_by_node_idx = defaultdict(set)
     for prim in prims:
         # use a forwarded prim in case of instanceability to avoid computing same stack more than once
         prim_path = prim.GetPath()
         forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-        for each in _compute_composition(forwarded_prim):
-            graph.nodes[each]["prim_paths"].add(prim_path)
+        for node_idx in _compute_composition(forwarded_prim):
+            paths_by_node_idx[node_idx].add(prim_path)
 
     graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY] = MappingProxyType(
         {k: tuple(v) for k, v in stack_indices_by_sublayers.items()}
     )
     graph.graph[_DESCRIPTION_LEGEND_IDS_KEY] = tuple(legend_node_ids)
+    graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY] = MappingProxyType(
+        {k: tuple(v) for k, v in paths_by_node_idx.items()}
+    )
     return graph
 
 
@@ -262,12 +265,7 @@ class _GraphViewer(_DotViewer):
         nodes_of_interest = list(self.sticky_nodes)  # sticky nodes are always visible
         nodes_of_interest.extend(chain(node_indices, successors, predecessors))
         # avoid failures by using a copy on selected nodes + removing composition attributes
-        # subgraph = graph.subgraph(nodes_of_interest)
-        # TODO: see how to remove the requirement of a copy
-        subgraph = graph.subgraph(nodes_of_interest).copy()
-        for each in subgraph:
-            subgraph.nodes[each].pop("prim_paths", None)
-            subgraph.nodes[each].pop("layer_stack", None)
+        subgraph = graph.subgraph(nodes_of_interest)
         fd, fp = tempfile.mkstemp()
         nx_pydot.write_dot(subgraph, fp)
 
@@ -411,8 +409,11 @@ class LayerStackComposition(QtWidgets.QDialog):
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         node_ids = [index.data(_core._USD_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
-        node_indices = set(chain.from_iterable(self._graph_view.graph.graph['indices_by_layers'][layer] for layer in node_ids))
-        paths = set(chain.from_iterable(self._graph_view.graph.nodes[i]['prim_paths'] for i in node_indices))
+        node_indices = set(chain.from_iterable(self._graph_view.graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY][layer] for layer in node_ids))
+        # paths = set(chain.from_iterable(self._graph_view.graph.nodes[i]['prim_paths'] for i in node_indices))
+        paths = set(chain.from_iterable(
+            self._graph_view.graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY][i] for i in node_indices)
+        )
 
         def _filter_predicate(p):
             return p.GetPath() in paths
@@ -434,5 +435,5 @@ class LayerStackComposition(QtWidgets.QDialog):
         prims = Usd.PrimRange.Stage(stage, predicate)
         graph = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._graph_view.graph = graph
-        self._graph_view.sticky_nodes.extend(sorted(graph.graph['legend_indices']))
-        self._layers.model.layers = graph.graph['indices_by_layers']
+        self._graph_view.sticky_nodes.extend(sorted(graph.graph[_DESCRIPTION_LEGEND_IDS_KEY]))
+        self._layers.model.layers = graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY]
