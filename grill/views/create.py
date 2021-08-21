@@ -1,4 +1,3 @@
-import operator
 from pathlib import Path
 from functools import partial
 
@@ -157,8 +156,8 @@ class TaxonomyEditor(_CreatePrims):
 
                 menu = QtWidgets.QMenu(self._options)
                 for title, status in (
-                        ("Check Selected", QtCore.Qt.Checked),
-                        ("Uncheck Selected", QtCore.Qt.Unchecked),
+                    ("Check Selected", QtCore.Qt.Checked),
+                    ("Uncheck Selected", QtCore.Qt.Unchecked),
                 ):
                     action = menu.addAction(title)
                     action.triggered.connect(partial(set_check_status, status))

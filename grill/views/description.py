@@ -90,13 +90,10 @@ def _compute_layerstack_graph(prims, url_id_prefix):
         if root_layer in stack_index_by_root_layer:
             return stack_index_by_root_layer[root_layer]
         stack_index = len(stack_id_by_node_idx)
-        # stack_indices_by_sublayers[root_layer].add(stack_index)
         stack_index_by_root_layer[root_layer] = stack_index
-        # print(f"1. Index: {stack_index}, root layer: {root_layer}")
         stack_id_by_node_idx[stack_index] = root_layer
         label = f"{{{_layer_label(root_layer)}"
         sublayers = _sublayers(layer_stack)
-
         layer_stacks_by_node_idx[stack_index] = sublayers
         fillcolor = 'white'
         for layer in sublayers:
@@ -105,7 +102,6 @@ def _compute_layerstack_graph(prims, url_id_prefix):
             stack_indices_by_sublayers[layer].add(stack_index)
             if layer == root_layer:  # root layer has been added at the start.
                 continue
-            # print(f"2. Root indices: {stack_indices_by_sublayers[layer]} with layer: {layer}")
             label += f"|{_layer_label(layer)}"
         label += "}"
         ids = '\n'.join(f"{i}: {layer.realPath or layer.identifier}" for i, layer in enumerate(sublayers))
@@ -117,7 +113,6 @@ def _compute_layerstack_graph(prims, url_id_prefix):
             label=label,
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip=tooltip.replace('\n', '&#10;'),
-            title='world',
             fillcolor=fillcolor,
             href=f"{url_id_prefix}{stack_index}",
         )
@@ -410,7 +405,6 @@ class LayerStackComposition(QtWidgets.QDialog):
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         node_ids = [index.data(_core._USD_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
         node_indices = set(chain.from_iterable(self._graph_view.graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY][layer] for layer in node_ids))
-        # paths = set(chain.from_iterable(self._graph_view.graph.nodes[i]['prim_paths'] for i in node_indices))
         paths = set(chain.from_iterable(
             self._graph_view.graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY][i] for i in node_indices)
         )
@@ -419,7 +413,7 @@ class LayerStackComposition(QtWidgets.QDialog):
             return p.GetPath() in paths
 
         prims_model = self._prims.model
-        prims_model._traverse_predicate = Usd.TraverseInstanceProxies()
+        prims_model._traverse_predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims_model._filter_predicate = _filter_predicate
         prims_model._root_paths = paths
         prims_model.stage = self._stage
