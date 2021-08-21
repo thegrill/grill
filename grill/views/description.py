@@ -89,11 +89,9 @@ def _compute_layerstack_graph(prims, url_id_prefix):
         if root_layer in stack_index_by_root_layer:
             return stack_index_by_root_layer[root_layer]
         stack_index = len(stack_id_by_node_idx)
-        if "Kitchen_payload.usd" in root_layer.identifier:
-            print(f">>>>>>>>>>>>>>>>>>>>>> {locals()}")
         # stack_indices_by_sublayers[root_layer].add(stack_index)
         stack_index_by_root_layer[root_layer] = stack_index
-        print(f"1. Index: {stack_index}, root layer: {root_layer}")
+        # print(f"1. Index: {stack_index}, root layer: {root_layer}")
         stack_id_by_node_idx[stack_index] = root_layer
         label = f"{{{_layer_label(root_layer)}"
         sublayers = _sublayers(layer_stack)
@@ -103,12 +101,10 @@ def _compute_layerstack_graph(prims, url_id_prefix):
         for layer in sublayers:
             if layer.dirty:
                 fillcolor = 'palegoldenrod'
-            # stack_indices_by_sublayers[layer].add(stack_index)
-            if "Kitchen_payload.usd" in layer.identifier:
-                print(f">>>>>>>>>>>>>>>>>>>>>> {locals()}")
+            stack_indices_by_sublayers[layer].add(stack_index)
             if layer == root_layer:  # root layer has been added at the start.
                 continue
-            print(f"2. Root indices: {stack_indices_by_sublayers[layer]} with layer: {layer}")
+            # print(f"2. Root indices: {stack_indices_by_sublayers[layer]} with layer: {layer}")
             label += f"|{_layer_label(layer)}"
         label += "}"
         ids = '\n'.join(f"{i}: {layer.realPath or layer.identifier}" for i, layer in enumerate(sublayers))
@@ -137,61 +133,36 @@ def _compute_layerstack_graph(prims, url_id_prefix):
         query = Usd.PrimCompositionQuery(prim)
         query.filter = qFilter
         affected_indices = set()
-        unmatched = list()
         for arc in query.GetCompositionArcs():
-            node_index = _add_node(arc.GetTargetNode())
-            affected_indices.add(node_index)
-            target = arc.GetTargetNode().layerStack.identifier.rootLayer
-            target_stack_idx = stack_index_by_root_layer[target]
-            intro = arc.GetIntroducingLayer()
-            if intro:
-                edge_attrs = _ARCS_LEGEND[arc.GetArcType()]
-                if intro in _sublayers(arc.GetTargetNode().layerStack):
-                    source_index = target_stack_idx
-                else:
-                    # source_index = stack_index_by_root_layer[intro]
-                    try:
-                        source_index = stack_index_by_root_layer[intro]
-                    except KeyError:
-                        print(f">>>    Could not find {intro} to connect to {target}")
-                        unmatched.append((intro, target_stack_idx, edge_attrs))
-                        continue
-                # else:
-                #     graph.add_edge(source_index, target_stack_idx, **edge_attrs)
-                graph.add_edge(source_index, target_stack_idx, **edge_attrs)
-                # source_indices = stack_indices_by_sublayers[intro]
-                # for edge_id in source_indices:
-                #     graph.add_edge(edge_id, target_stack_idx, **edge_attrs)
-        return affected_indices, unmatched
+            target_node = arc.GetTargetNode()
+            target_idx = _add_node(target_node)
+            affected_indices.add(target_idx)
 
-    all_unmatched = list()
+            source_node = arc.GetIntroducingNode()
+            source_idx = _add_node(source_node)
+            source_layer = arc.GetIntroducingLayer()
+
+            if source_layer:
+                edge_attrs = _ARCS_LEGEND[arc.GetArcType()]
+                if source_layer in _sublayers(target_node.layerStack):
+                    source_index = target_idx
+                elif source_layer in _sublayers(source_node.layerStack):
+                    source_index = source_idx
+                else:
+                    raise ValueError(f"Dont know how to proceed {locals()}")
+                graph.add_edge(source_index, target_idx, **edge_attrs)
+
+        return affected_indices
+
     for prim in prims:
         # use a forwarded prim in case of instanceability to avoid computing same stack more than once
         prim_path = prim.GetPath()
         forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-        affected_indices, unlinked = _compute_composition(forwarded_prim)
-        if unlinked:
-            print(f"!!!!!!!!!!!! {forwarded_prim}")
-        all_unmatched.extend(unlinked)
-        for each in affected_indices:
+        for each in _compute_composition(forwarded_prim):
             graph.nodes[each]["prim_paths"].add(prim_path)
 
-    # by this time we should have all indices computed and existing
-    for source_layer, target_index, attrs in all_unmatched:
-        try:
-            source_index = stack_index_by_root_layer[source_layer]
-        except KeyError:
-            # msg = f"ERROR:\n{source_layer},\n{target_index},\n{stack_index_by_root_layer[target_index]}"
-            msg = f"ERROR:\n{source_layer},\n{target_index},\n"
-            print(msg)
-            from pprint import pp
-            pp(stack_index_by_root_layer)
-            raise ValueError(msg)
-        graph.add_edge(source_index, target_index, **attrs)
-
     graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY] = MappingProxyType(
-        # {k: tuple(v) for k, v in stack_indices_by_sublayers.items()}
-        {k: v for k, v in stack_index_by_root_layer.items()}
+        {k: tuple(v) for k, v in stack_indices_by_sublayers.items()}
     )
     graph.graph[_DESCRIPTION_LEGEND_IDS_KEY] = tuple(legend_node_ids)
     return graph
@@ -291,6 +262,8 @@ class _GraphViewer(_DotViewer):
         nodes_of_interest = list(self.sticky_nodes)  # sticky nodes are always visible
         nodes_of_interest.extend(chain(node_indices, successors, predecessors))
         # avoid failures by using a copy on selected nodes + removing composition attributes
+        # subgraph = graph.subgraph(nodes_of_interest)
+        # TODO: see how to remove the requirement of a copy
         subgraph = graph.subgraph(nodes_of_interest).copy()
         for each in subgraph:
             subgraph.nodes[each].pop("prim_paths", None)
@@ -438,15 +411,14 @@ class LayerStackComposition(QtWidgets.QDialog):
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         node_ids = [index.data(_core._USD_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
-        # node_indices = set(chain.from_iterable(self._graph_view.graph.graph['indices_by_layers'][layer] for layer in node_ids))
-        node_indices = set(self._graph_view.graph.graph['indices_by_layers'][layer] for layer in node_ids)
+        node_indices = set(chain.from_iterable(self._graph_view.graph.graph['indices_by_layers'][layer] for layer in node_ids))
         paths = set(chain.from_iterable(self._graph_view.graph.nodes[i]['prim_paths'] for i in node_indices))
 
         def _filter_predicate(p):
             return p.GetPath() in paths
 
         prims_model = self._prims.model
-        # prims_model._traverse_predicate = Usd.TraverseInstanceProxies()
+        prims_model._traverse_predicate = Usd.TraverseInstanceProxies()
         prims_model._filter_predicate = _filter_predicate
         prims_model._root_paths = paths
         prims_model.stage = self._stage
