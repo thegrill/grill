@@ -63,7 +63,7 @@ class TestViews(unittest.TestCase):
         affectedPaths[self.world.GetRootLayer()] = 2
 
         for row in range(widget._layers.model.rowCount()):
-            layer = widget._layers.model.item(row, 0).data(QtCore.Qt.UserRole)
+            layer = widget._layers.model._objects[row]
             widget._layers.table.selectRow(row)
             expectedAffectedPrims = affectedPaths[layer]
             actualListedPrims = widget._prims.model.rowCount()
@@ -152,12 +152,10 @@ class TestViews(unittest.TestCase):
         index = sheet_model.index(0, 1)
         editor = widget.sheet._columns_spec[1].editor(None, None, index)
         self.assertIsInstance(editor, QtWidgets.QDialog)
-        self.assertEqual(editor.property('value'), [valid_data[0][1]])
-        widget.sheet._columns_spec[1].model_setter(editor, sheet_model, index)
+        widget.sheet._columns_spec[1].setter(editor, sheet_model, index)
         editor._options.selectAll()
         menu = editor._create_context_menu()
         menu.actions()[0].trigger()
-        self.assertIsNone(editor.property('text'))
 
         # after creation, set stage again to test existing column
         widget._apply()
@@ -176,6 +174,7 @@ class TestViews(unittest.TestCase):
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
+        widget._model_hierarchy.setChecked(False)  # default is True
         widget.setStage(self.world)
         widget.table.scrollContentsBy(10, 10)
 
@@ -197,7 +196,7 @@ class TestViews(unittest.TestCase):
         widget._copySelection()
         clip = QtWidgets.QApplication.instance().clipboard().text()
         data = tuple(csv.reader(io.StringIO(clip), delimiter=csv.excel_tab.delimiter))
-        expected_data = (['child', '/nested/child', '', '', 'False', '', 'False'],)
+        expected_data = (['/nested/child', 'child', '', '', 'False', '', 'False'],)
         self.assertEqual(data, expected_data)
 
         widget.table.clearSelection()

@@ -1,3 +1,4 @@
+import operator
 from pathlib import Path
 from functools import partial
 
@@ -60,10 +61,10 @@ class _CreatePrims(QtWidgets.QDialog):
 
 class CreateAssets(_CreatePrims):
     def __init__(self, *args, **kwargs):
-        self._taxon_options = []
         def _taxon_combobox(parent, option, index):
             combobox = QtWidgets.QComboBox(parent=parent)
-            combobox.addItems(sorted(self._taxon_options))
+            options = sorted(self._taxon_options, key=Usd.Prim.GetName)
+            combobox.addItems([p.GetName() for p in options])
             return combobox
         _columns = (
             _sheets._Column("🧬 Taxon", editor=_taxon_combobox),
@@ -71,10 +72,23 @@ class CreateAssets(_CreatePrims):
             _sheets._Column("🏷 Label"),
             _sheets._Column("📜 Description"),
         )
+
+        existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
+        existing_model = _sheets.StageTableModel(columns=existing_columns)
+        existing_model._root_paths = {write._TAXONOMY_ROOT_PATH}
+        existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
+        # TODO: turn this into a method to lock all columns?
+        existing_model._locked_columns = list(range(len(existing_columns)))
+        self._existing_model = existing_model
+
         super().__init__(_columns, *args, **kwargs)
         self.accepted.connect(self._create)
         self._applied.connect(self._apply)
         self.setWindowTitle("Create Assets")
+
+    @property
+    def _taxon_options(self):
+        return self._existing_model._objects
 
     @_core.wait()
     def _create(self):
@@ -99,8 +113,8 @@ class CreateAssets(_CreatePrims):
 
     def setStage(self, stage):
         self._stage = stage
-        root = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
-        self._taxon_options = [child.GetName() for child in root.GetFilteredChildren(Usd.PrimIsAbstract)] if root else []
+        self._existing_model.stage = stage
+        print("MODEL SET")
 
     def _apply(self):
         """Apply current changes and keep dialog open."""

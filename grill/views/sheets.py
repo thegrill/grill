@@ -655,12 +655,16 @@ class _Spreadsheet(QtWidgets.QDialog):
                 # print(prim)
                 # self._addPrimToRow(row_index, prim)
             else:
-                source_index = _sourceIndex(model.index(visual_row, 0))
-                source_item = self.model.itemFromIndex(source_index)
-                # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
-
-                prim = source_item.data(_OBJECT)
-                print("Source model:")
+                # model.data(index, )
+                prim = model.data(model.index(visual_row, 0), _core._USD_DATA_ROLE)
+                # source_index = _sourceIndex(model.index(visual_row, 0))
+                # if isinstance(source_index.model(), UsdObjectTableModel):
+                #     prim =
+                # source_item = self.model.itemFromIndex(source_index)
+                # # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
+                #
+                # prim = source_item.data(_core._USD_DATA_ROLE)
+                # print("Source model:")
                 print(prim)
                 # print("Table proxy model:")
                 # print(self.table.model().index(row_index, 0).data(QtCore.Qt.UserRole))
@@ -670,24 +674,29 @@ class _Spreadsheet(QtWidgets.QDialog):
                     # mapped = table_model.mapToSource(table_model.index(row_index, column_index))
                     # _sourceIndex(model.index(visual_row, column_index))
                     # item = model.item(row_index, column_index)
-                    s_index = _sourceIndex(model.index(visual_row, column_index))
-                    s_item = self.model.itemFromIndex(s_index)
-                    assert s_item.data(_OBJECT) is prim
+                    # s_index = _sourceIndex(model.index(visual_row, column_index))
+                    # s_item = self.model.itemFromIndex(s_index)
+                    # assert s_item.data(_core._USD_DATA_ROLE) is prim
 
                     setter = self._columns_spec[column_index].setter
                     if prim:
+                        if not setter:
+                            print(f"Skipping since missing setter: {column_data}")
+                            continue
                         print(f"Setting {column_data} with type {type(column_data)} on {prim}")
-                        import json  # big hack. how to?
-                        # due to boolean types
                         try:
                             setter(prim, column_data)
                         except Exception as exc:
                             print(exc)
+                            import json  # big hack. how to?
+                            # due to boolean types
                             column_data = json.loads(column_data.lower())
                             print(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
                             setter(prim, column_data)
-
-                    s_item.setData(column_data, QtCore.Qt.DisplayRole)
+                    else:
+                        s_index = _sourceIndex(model.index(visual_row, column_index))
+                        s_item = self.model.itemFromIndex(s_index)
+                        s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
         self.table.setSortingEnabled(orig_sort_enabled)
 
