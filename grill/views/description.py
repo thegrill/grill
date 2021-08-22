@@ -1,5 +1,4 @@
 """Views related to USD scene description"""
-
 import shutil
 import operator
 import tempfile
@@ -48,27 +47,12 @@ def _dot_2_svg(sourcepath):
     return error, targetpath
 
 
-def _compute_layerstack_graph(prims, url_id_prefix):
+def _compute_layerstack_graph(prims, url_prefix):
     """Compute a layer stack graph for the provided prims
 
     Returns:
         nx_graph {int: <..., layer_stack: (Sdf.Layer,), prim_paths: {Sdf.Path}>}
     """
-    graph = nx.DiGraph(tooltip="LayerStack Composition")
-
-    legend_node_ids = list()
-    for arc_type, edge_attrs in _ARCS_LEGEND.items():
-        label = f" {arc_type.displayName}"
-        arc_node_indices = (len(legend_node_ids), len(legend_node_ids)+1)
-        graph.add_nodes_from(arc_node_indices, style='invis')
-        graph.add_edge(*arc_node_indices, label=label, **edge_attrs)
-        legend_node_ids.extend(arc_node_indices)
-
-    layer_stacks_by_node_idx = dict()
-    stack_id_by_node_idx = dict.fromkeys(legend_node_ids)  # {42: layer.identifier}
-    stack_index_by_root_layer = dict()
-    stack_indices_by_sublayers = defaultdict(set)  # layer: {int,}
-
     @lru_cache(maxsize=None)
     def _layer_label(layer):
         return Path(layer.realPath).stem or layer.identifier
@@ -87,82 +71,70 @@ def _compute_layerstack_graph(prims, url_id_prefix):
     def _add_node(pcp_node):
         layer_stack = pcp_node.layerStack
         root_layer = layer_stack.identifier.rootLayer
-        if root_layer in stack_index_by_root_layer:
-            return stack_index_by_root_layer[root_layer]
-        stack_index = len(stack_id_by_node_idx)
-        stack_index_by_root_layer[root_layer] = stack_index
-        stack_id_by_node_idx[stack_index] = root_layer
-        label = f"{{{_layer_label(root_layer)}"
+        try:
+            return node_indices[root_layer]
+        except KeyError:
+            pass  # layerStack still not processed, let's add it
+        node_indices[root_layer] = index = len(node_indices)
         sublayers = _sublayers(layer_stack)
-        layer_stacks_by_node_idx[stack_index] = sublayers
-        fillcolor = 'white'
+
+        attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}")
+        label = f"{{{_layer_label(root_layer)}"
         for layer in sublayers:
-            if layer.dirty:
-                fillcolor = 'palegoldenrod'
-            stack_indices_by_sublayers[layer].add(stack_index)
-            if layer == root_layer:  # root layer has been added at the start.
-                continue
-            label += f"|{_layer_label(layer)}"
+            indices_by_sublayers[layer].add(index)
+            attrs['fillcolor'] = 'palegoldenrod' if layer.dirty else 'white'
+            if layer != root_layer:  # root layer has been added at the start.
+                label += f"|{_layer_label(layer)}"
         label += "}"
         ids = '\n'.join(f"{i}: {layer.realPath or layer.identifier}" for i, layer in enumerate(sublayers))
-        tooltip = f"Layer Stack:\n{ids}"
-        graph.add_node(
-            stack_index,
-            style='"rounded,filled"',
-            shape='record',
-            label=label,
-            # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
-            tooltip=tooltip.replace('\n', '&#10;'),
-            fillcolor=fillcolor,
-            href=f"{url_id_prefix}{stack_index}",
-        )
-        return stack_index
-
-    # only query arcs that have specs on our prims.
-    qFilter = Usd.PrimCompositionQuery.Filter()
-    qFilter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
+        # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
+        tooltip = f"Layer Stack:\n{ids}".replace('\n', '&#10;'),
+        graph.add_node(index, label=label, tooltip=tooltip, **attrs)
+        return index
 
     @lru_cache(maxsize=None)
-    def _compute_composition(prim):
-        query = Usd.PrimCompositionQuery(prim)
-        query.filter = qFilter
+    def _compute_composition(_prim):
+        query = Usd.PrimCompositionQuery(_prim)
+        query.filter = query_filter
         affected_by = set()  # {int}  indices of nodes affecting this prim
+        edges = list()
         for arc in query.GetCompositionArcs():
-            target_node = arc.GetTargetNode()
-            target_idx = _add_node(target_node)
+            target_idx = _add_node(arc.GetTargetNode())
             affected_by.add(target_idx)
-
-            source_node = arc.GetIntroducingNode()
-            source_idx = _add_node(source_node)
-            source_layer = arc.GetIntroducingLayer()
-
-            if source_layer:
+            if arc.GetIntroducingLayer():
                 edge_attrs = _ARCS_LEGEND[arc.GetArcType()]
-                if source_layer in _sublayers(target_node.layerStack):
-                    source_index = target_idx
-                elif source_layer in _sublayers(source_node.layerStack):
-                    source_index = source_idx
-                else:
-                    raise ValueError(f"Dont know how to proceed {locals()}")
-                graph.add_edge(source_index, target_idx, **edge_attrs)
-
+                source_node = arc.GetIntroducingNode()
+                edges.append((_add_node(source_node), target_idx, edge_attrs))
+        graph.add_edges_from(edges)
         return affected_by
 
+    graph = nx.DiGraph(tooltip="LayerStack Composition")
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
+
+    legend_node_ids = list()
+    for arc_type, attributes in _ARCS_LEGEND.items():
+        arc_node_indices = (len(legend_node_ids), len(legend_node_ids) + 1)
+        graph.add_nodes_from(arc_node_indices, style='invis')
+        graph.add_edge(*arc_node_indices, label=f" {arc_type.displayName}", **attributes)
+        legend_node_ids.extend(arc_node_indices)
+
+    node_indices = dict.fromkeys(legend_node_ids)  # {Sdf.Layer: int}
+    indices_by_sublayers = defaultdict(set)  # {Sdf.Layer: {int,} }
     paths_by_node_idx = defaultdict(set)
     for prim in prims:
         # use a forwarded prim in case of instanceability to avoid computing same stack more than once
         prim_path = prim.GetPath()
         forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-        for node_idx in _compute_composition(forwarded_prim):
-            paths_by_node_idx[node_idx].add(prim_path)
+        for affected_by_idx in _compute_composition(forwarded_prim):
+            paths_by_node_idx[affected_by_idx].add(prim_path)
 
-    graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY] = MappingProxyType(
-        {k: tuple(v) for k, v in stack_indices_by_sublayers.items()}
-    )
+    def _freeze(dct):
+        return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
+
+    graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY] = _freeze(indices_by_sublayers)
     graph.graph[_DESCRIPTION_LEGEND_IDS_KEY] = tuple(legend_node_ids)
-    graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY] = MappingProxyType(
-        {k: tuple(v) for k, v in paths_by_node_idx.items()}
-    )
+    graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY] = _freeze(paths_by_node_idx)
     return graph
 
 
