@@ -16,12 +16,14 @@ from PySide2 import QtWidgets, QtCore, QtWebEngineWidgets
 
 from . import sheets as _sheets, _core
 
+
+_ARCS_COLOR_SCHEME = "paired12"
 _ARCS_LEGEND = MappingProxyType({
-    Pcp.ArcTypePayload: dict(color=10, colorscheme="paired12", fontcolor=10),     # purple
-    Pcp.ArcTypeReference: dict(color=6, colorscheme="paired12", fontcolor=6),     # red
-    Pcp.ArcTypeVariant: dict(color=8, colorscheme="paired12", fontcolor=8),       # yellow
-    Pcp.ArcTypeSpecialize: dict(color=12, colorscheme="paired12", fontcolor=12),  # brown
-    Pcp.ArcTypeInherit: dict(color=4, colorscheme="paired12", fontcolor=4),       # green
+    Pcp.ArcTypePayload: dict(color=10, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=10),     # purple
+    Pcp.ArcTypeReference: dict(color=6, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=6),     # red
+    Pcp.ArcTypeVariant: dict(color=8, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=8),       # yellow
+    Pcp.ArcTypeSpecialize: dict(color=12, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=12),  # brown
+    Pcp.ArcTypeInherit: dict(color=4, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=4),       # green
 })
 
 _DESCRIPTION_LEGEND_IDS_KEY = 'legend_indices'
@@ -97,16 +99,13 @@ def _compute_layerstack_graph(prims, url_prefix):
         query = Usd.PrimCompositionQuery(_prim)
         query.filter = query_filter
         affected_by = set()  # {int}  indices of nodes affecting this prim
-        edges = list()
+        edges = defaultdict(set)  # {(source_int, target_int): {Pcp.ArcType...}}
         for arc in query.GetCompositionArcs():
             target_idx = _add_node(arc.GetTargetNode())
             affected_by.add(target_idx)
             if arc.GetIntroducingLayer():
-                edge_attrs = _ARCS_LEGEND[arc.GetArcType()]
-                source_node = arc.GetIntroducingNode()
-                edges.append((_add_node(source_node), target_idx, edge_attrs))
-        graph.add_edges_from(edges)
-        return affected_by
+                edges[_add_node(arc.GetIntroducingNode()), target_idx].add(arc.GetArcType())
+        return affected_by, edges
 
     graph = nx.DiGraph(tooltip="LayerStack Composition")
     query_filter = Usd.PrimCompositionQuery.Filter()
@@ -122,16 +121,28 @@ def _compute_layerstack_graph(prims, url_prefix):
     node_indices = dict.fromkeys(legend_node_ids)  # {Sdf.Layer: int}
     indices_by_sublayers = defaultdict(set)  # {Sdf.Layer: {int,} }
     paths_by_node_idx = defaultdict(set)
+    all_edges = defaultdict(set)  # {(int, int): {Pcp.ArcType..., }}
     for prim in prims:
         # use a forwarded prim in case of instanceability to avoid computing same stack more than once
         prim_path = prim.GetPath()
         forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-        for affected_by_idx in _compute_composition(forwarded_prim):
+        affected_by_indices, edges = _compute_composition(forwarded_prim)
+        for edge_data, edge_arcs in edges.items():
+            all_edges[edge_data].update(edge_arcs)
+        for affected_by_idx in affected_by_indices:
             paths_by_node_idx[affected_by_idx].add(prim_path)
 
     def _freeze(dct):
         return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
 
+    @lru_cache(maxsize=None)
+    def edge_attrs(edge_arcs):
+        return dict(  # need to wrap color in quotes to allow multicolor
+            color=f'"{":".join(str(_ARCS_LEGEND[arc]["color"]) for arc in edge_arcs)}"',
+            colorscheme=_ARCS_COLOR_SCHEME
+        )
+
+    graph.add_edges_from((src, tgt, edge_attrs(tuple(v))) for (src, tgt), v in all_edges.items())
     graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY] = _freeze(indices_by_sublayers)
     graph.graph[_DESCRIPTION_LEGEND_IDS_KEY] = tuple(legend_node_ids)
     graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY] = _freeze(paths_by_node_idx)
@@ -231,8 +242,8 @@ class _GraphViewer(_DotViewer):
             graph.predecessors(index) for index in node_indices)
         nodes_of_interest = list(self.sticky_nodes)  # sticky nodes are always visible
         nodes_of_interest.extend(chain(node_indices, successors, predecessors))
-        # avoid failures by using a copy on selected nodes + removing composition attributes
         subgraph = graph.subgraph(nodes_of_interest)
+
         fd, fp = tempfile.mkstemp()
         nx_pydot.write_dot(subgraph, fp)
 
@@ -332,13 +343,13 @@ class LayerTableModel(_sheets.UsdObjectTableModel):
 
 class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
-        _sheets._Column(f"{_core._EMOJI.ID.value} Identifier", operator.attrgetter('identifier')),
+        _sheets._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
         _sheets._Column("🚧 Dirty", operator.attrgetter('dirty')),
     )
 
     _PRIM_COLUMNS = (
-        _sheets._Column("🧩 Prim Path", lambda prim: str(prim.GetPath())),
-        _sheets._Column("🧩 Name", Usd.Prim.GetName),
+        _sheets._Column("🧩 Opinion on Prim Path", lambda prim: str(prim.GetPath())),
+        _sheets._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
     )
 
     def __init__(self, stage=None, parent=None, **kwargs):

@@ -37,7 +37,7 @@ class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.10
 
     # STAGE TRAVERSAL
     MODEL_HIERARCHY = f"🏡{_emoji_suffix()}"
-    INSTANCES = f"💠{_emoji_suffix()}"
+    INSTANCE_PROXIES = f"💠{_emoji_suffix()}"
 
     # PRIM SPECIFIER
     ORPHANED = f"👻{_emoji_suffix()}"
@@ -48,6 +48,8 @@ class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.10
     ACTIVE = f"💡{_emoji_suffix()}"
     INACTIVE = f"🌒{_emoji_suffix()}"
 
+    # IDENTIFICATION
+    NAME = f"🔖{_emoji_suffix()}"
 
 # Very slightly modified USDView stylesheet for the push buttons.
 _USDVIEW_PUSH_BUTTON_STYLE = """

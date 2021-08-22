@@ -268,9 +268,7 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
         return len(self._columns_spec)
 
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
-        if not index.isValid():
-            return None
-        elif role == _core._USD_DATA_ROLE:  # raw data
+        if role == _core._USD_DATA_ROLE:  # raw data
             return self._objects[index.row()]
         elif role == QtCore.Qt.DisplayRole:
             usdobj = self.data(index, role=_core._USD_DATA_ROLE)
@@ -731,10 +729,10 @@ class SpreadsheetEditor(_Spreadsheet):
                 """
             )
         )
-        self._instances = instances = QtWidgets.QPushButton(_core._EMOJI.INSTANCES.value)
+        self._instances = instances = QtWidgets.QPushButton(_core._EMOJI.INSTANCE_PROXIES.value)
         instances.setToolTip(
             textwrap.dedent(f"""
-                {_core._EMOJI.INSTANCES.value} Traverse Instance Proxies:
+                {_core._EMOJI.INSTANCE_PROXIES.value} Traverse Instance Proxies:
         
                 An instance proxy is a UsdPrim that represents a descendant prim beneath an instance.
                 An instance proxy can not be edited. If edits are required, the parent prim makred as "instanceable=True" must
