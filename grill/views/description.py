@@ -19,11 +19,11 @@ from . import sheets as _sheets, _core
 
 _ARCS_COLOR_SCHEME = "paired12"
 _ARCS_LEGEND = MappingProxyType({
-    Pcp.ArcTypePayload: dict(color=10, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=10),     # purple
-    Pcp.ArcTypeReference: dict(color=6, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=6),     # red
-    Pcp.ArcTypeVariant: dict(color=8, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=8),       # yellow
-    Pcp.ArcTypeSpecialize: dict(color=12, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=12),  # brown
     Pcp.ArcTypeInherit: dict(color=4, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=4),       # green
+    Pcp.ArcTypeVariant: dict(color=8, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=8),       # yellow
+    Pcp.ArcTypeReference: dict(color=6, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=6),     # red
+    Pcp.ArcTypePayload: dict(color=10, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=10),     # purple
+    Pcp.ArcTypeSpecialize: dict(color=12, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=12),  # brown
 })
 
 _DESCRIPTION_LEGEND_IDS_KEY = 'legend_indices'
