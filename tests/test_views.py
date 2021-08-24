@@ -219,6 +219,34 @@ class TestViews(unittest.TestCase):
         widget.table.selectAll()
         widget._pasteClipboard()
 
+    def test_prim_filter_data(self):
+        stage = write.fetch_stage(self.rootf)
+        person = write.define_taxon(stage, "Person")
+        agent = write.define_taxon(stage, "Agent", references=(person,))
+        generic = write.create(agent, "GenericAgent")
+        with write.unit_context(generic):
+            stage.DefinePrim(generic.GetPath().AppendChild("ChildPrim"))
+        generic_asset = write.unit_asset(generic)
+        for each in range(10):
+            path = Sdf.Path.absoluteRootPath.AppendChild(f"Instance{each}")
+            instance = stage.DefinePrim(path)
+            instance.SetInstanceable(True)
+            instance.GetPayloads().AddPayload(generic_asset.identifier)
+        instance.SetActive(False)
+        instance.Unload()
+        stage.OverridePrim("/Orphaned")
+        widget = sheets.SpreadsheetEditor()
+        for stage_value in (stage, None):
+            widget.setStage(stage_value)
+            for each in range(2):
+                widget._filters_logical_op.setCurrentIndex(each)
+                widget._model_hierarchy.click()  # default is True
+                widget._orphaned.click()
+                widget._classes.click()
+                widget._defined.click()
+                widget._active.click()
+                widget._inactive.click()
+
     def test_dot_call(self):
         """Test execution of function by mocking dot with python call"""
         with mock.patch("grill.views.description._dot_exe") as patch:
