@@ -234,7 +234,7 @@ class TestViews(unittest.TestCase):
             instance.GetPayloads().AddPayload(generic_asset.identifier)
         instance.SetActive(False)
         instance.Unload()
-        stage.OverridePrim("/Orphaned")
+        over = stage.OverridePrim("/Orphaned")
         widget = sheets.SpreadsheetEditor()
         for stage_value in (stage, None):
             widget.setStage(stage_value)
@@ -246,6 +246,8 @@ class TestViews(unittest.TestCase):
                 widget._defined.click()
                 widget._active.click()
                 widget._inactive.click()
+        widget.model._root_paths = {over.GetPath(), over.GetPath()}
+        widget.model._prune_children = {over.GetPath()}
 
     def test_dot_call(self):
         """Test execution of function by mocking dot with python call"""

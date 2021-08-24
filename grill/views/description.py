@@ -332,12 +332,8 @@ class PrimComposition(QtWidgets.QDialog):
 
 
 class LayerTableModel(_sheets.UsdObjectTableModel):
-    @property
-    def layers(self):
-        return self._objects
 
-    @layers.setter
-    def layers(self, value):
+    def setLayers(self, value):
         self.beginResetModel()
         self._objects = list(value)
         self.endResetModel()
@@ -415,4 +411,4 @@ class LayerStackComposition(QtWidgets.QDialog):
         graph = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._graph_view.graph = graph
         self._graph_view.sticky_nodes.extend(sorted(graph.graph[_DESCRIPTION_LEGEND_IDS_KEY]))
-        self._layers.model.layers = graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY]
+        self._layers.model.setLayers(graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY])
