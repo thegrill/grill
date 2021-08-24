@@ -135,6 +135,32 @@ class TestWrite(unittest.TestCase):
         with write.unit_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")
 
+        hero = write.define_taxon(root_stage, "Hero", references=(person,))
+        batman = write.create(hero, "Batman")
+        expected_people = [emil, batman]  # batman is also a person
+        expected_heroes = [batman]
+        self.assertEqual(expected_people, list(write._iter_taxa(root_stage, person)))
+        self.assertEqual(expected_heroes, list(write._iter_taxa(root_stage, hero)))
+
+    def test_asset_unit(self):
+        stage = write.fetch_stage(self.root_asset)
+        taxon_name = "Person"
+        person = write.define_taxon(stage, taxon_name)
+        unit_name = "EmilSinclair"
+        emil = write.create(person, unit_name, label="Emil Sinclair")
+        unit_asset = write.unit_asset(emil)
+        unit_id = write.UsdAsset(unit_asset.identifier)
+        self.assertEqual(unit_name, getattr(unit_id, write._UNIT_UNIQUE_ID.name))
+        self.assertEqual(taxon_name, getattr(unit_id, write._TAXONOMY_UNIQUE_ID.name))
+
+        not_a_unit = stage.DefinePrim(emil.GetPath().AppendChild("not_a_unit"))
+        with self.assertRaisesRegex(ValueError, "Missing or empty"):
+            write.unit_asset(not_a_unit)
+        with self.assertRaisesRegex(ValueError, "Expected a valid populated mapping"):
+            write._context(not_a_unit, {})
+        with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
+            write._edit_context(not_a_unit, stage.GetRootLayer())
+
     def test_create_many(self):
         stage = write.fetch_stage(self.root_asset)
         taxon = write.define_taxon(stage, "Another")

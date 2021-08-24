@@ -31,6 +31,15 @@ _DESCRIPTION_IDS_BY_LAYERS_KEY = 'indices_by_layers'
 _DESCRIPTION_PATHS_BY_IDS_KEY = 'paths_by_indices'
 
 
+
+@lru_cache(maxsize=None)
+def _edge_color(edge_arcs):
+    return dict(  # need to wrap color in quotes to allow multicolor
+        color=f'"{":".join(str(_ARCS_LEGEND[arc]["color"]) for arc in edge_arcs)}"',
+        colorscheme=_ARCS_COLOR_SCHEME,
+    )
+
+
 @lru_cache(maxsize=None)
 def _dot_exe():
     return shutil.which("dot")
@@ -135,14 +144,7 @@ def _compute_layerstack_graph(prims, url_prefix):
     def _freeze(dct):
         return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
 
-    @lru_cache(maxsize=None)
-    def edge_attrs(edge_arcs):
-        return dict(  # need to wrap color in quotes to allow multicolor
-            color=f'"{":".join(str(_ARCS_LEGEND[arc]["color"]) for arc in edge_arcs)}"',
-            colorscheme=_ARCS_COLOR_SCHEME
-        )
-
-    graph.add_edges_from((src, tgt, edge_attrs(tuple(v))) for (src, tgt), v in all_edges.items())
+    graph.add_edges_from((src, tgt, _edge_color(tuple(v))) for (src, tgt), v in all_edges.items())
     graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY] = _freeze(indices_by_sublayers)
     graph.graph[_DESCRIPTION_LEGEND_IDS_KEY] = tuple(legend_node_ids)
     graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY] = _freeze(paths_by_node_idx)
@@ -388,17 +390,17 @@ class LayerStackComposition(QtWidgets.QDialog):
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         node_ids = [index.data(_core._USD_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
         node_indices = set(chain.from_iterable(self._graph_view.graph.graph[_DESCRIPTION_IDS_BY_LAYERS_KEY][layer] for layer in node_ids))
-        paths = set(chain.from_iterable(
+
+        prims_model = self._prims.model
+        prims_model._traverse_predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
+        prims_model._root_paths = paths = set(chain.from_iterable(
             self._graph_view.graph.graph[_DESCRIPTION_PATHS_BY_IDS_KEY][i] for i in node_indices)
         )
 
         def _filter_predicate(p):
             return p.GetPath() in paths
 
-        prims_model = self._prims.model
-        prims_model._traverse_predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims_model._filter_predicate = _filter_predicate
-        prims_model._root_paths = paths
         prims_model.stage = self._stage
         self._prims.table.resizeColumnsToContents()
         self._prims.table.horizontalHeader()._updateVisualSections(0)
@@ -408,7 +410,7 @@ class LayerStackComposition(QtWidgets.QDialog):
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
-        predicate = _sheets._traverse_predicate(instance_proxies=True)
+        predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)
         graph = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._graph_view.graph = graph

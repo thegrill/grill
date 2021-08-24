@@ -154,7 +154,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
     return prim
 
 
-def _iter_taxa(stage, taxon1, *taxonN, predicate=Usd.PrimDefaultPredicate):
+def _iter_taxa(stage, taxon1, *taxonN, predicate=Usd.PrimAllPrimsPredicate):
     """Iterate over prims that inherit from the given taxa."""
     it = iter(Usd.PrimRange.Stage(stage, predicate=predicate))
     taxa_names = {i if isinstance(i, str) else i.GetName() for i in (taxon1, *taxonN)}
@@ -315,6 +315,8 @@ def _get_id_fields(prim):
 def _context(obj, tokens):
     # TODO: do we need to reverse the order of the layer stack?
     #   at the moment, goes from strongest -> weakest layers
+    if not tokens:
+        raise ValueError(f"Expected a valid populated mapping as 'tokens'. Got instad: '{tokens}'")
     layers = _layer_stack(obj)
     asset_layer = _find_layer_matching(tokens, layers)
     return _edit_context(obj, asset_layer)
@@ -362,7 +364,7 @@ def _(obj: Usd.Prim, layer):
         if target_node.path == _UNIT_ORIGIN_PATH and target_node.layerStack.identifier.rootLayer == layer:
             break
     else:
-        raise ValueError(f"Could not find appropiate node for edit target for {obj} matching {layer}")
+        raise ValueError(f"Could not find appropriate node for edit target for {obj} matching {layer}")
     target = Usd.EditTarget(layer, target_node)
     return Usd.EditContext(obj.GetStage(), target)
 
