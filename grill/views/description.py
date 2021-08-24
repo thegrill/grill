@@ -16,7 +16,6 @@ from PySide2 import QtWidgets, QtCore, QtWebEngineWidgets
 
 from . import sheets as _sheets, _core
 
-
 _ARCS_COLOR_SCHEME = "paired12"
 _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: dict(color=4, colorscheme=_ARCS_COLOR_SCHEME, fontcolor=4),       # green
@@ -29,7 +28,6 @@ _ARCS_LEGEND = MappingProxyType({
 _DESCRIPTION_LEGEND_IDS_KEY = 'legend_indices'
 _DESCRIPTION_IDS_BY_LAYERS_KEY = 'indices_by_layers'
 _DESCRIPTION_PATHS_BY_IDS_KEY = 'paths_by_indices'
-
 
 
 @lru_cache(maxsize=None)
@@ -75,10 +73,6 @@ def _compute_layerstack_graph(prims, url_prefix):
         for childtree in tree.childTrees:
             yield from _walk_layer_tree(childtree)
 
-    @lru_cache(maxsize=None)
-    def _sublayers(stack):
-        return tuple(layer for layer in _walk_layer_tree(stack.layerTree))
-
     def _add_node(pcp_node):
         layer_stack = pcp_node.layerStack
         root_layer = layer_stack.identifier.rootLayer
@@ -87,19 +81,18 @@ def _compute_layerstack_graph(prims, url_prefix):
         except KeyError:
             pass  # layerStack still not processed, let's add it
         node_indices[root_layer] = index = len(node_indices)
-        sublayers = _sublayers(layer_stack)
 
         attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}")
         label = f"{{{_layer_label(root_layer)}"
-        for layer in sublayers:
+        tooltip = "Layer Stack:"
+        for layer_index, layer in enumerate(_walk_layer_tree(layer_stack.layerTree)):
             indices_by_sublayers[layer].add(index)
             attrs['fillcolor'] = 'palegoldenrod' if layer.dirty else 'white'
+            # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
+            tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
             if layer != root_layer:  # root layer has been added at the start.
                 label += f"|{_layer_label(layer)}"
         label += "}"
-        ids = '\n'.join(f"{i}: {layer.realPath or layer.identifier}" for i, layer in enumerate(sublayers))
-        # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
-        tooltip = f"Layer Stack:\n{ids}".replace('\n', '&#10;'),
         graph.add_node(index, label=label, tooltip=tooltip, **attrs)
         return index
 

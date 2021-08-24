@@ -249,7 +249,7 @@ class TestViews(unittest.TestCase):
         widget.model._root_paths = {over.GetPath(), over.GetPath()}
         widget.model._prune_children = {over.GetPath()}
         widget.setStage(stage)
-        
+
     def test_dot_call(self):
         """Test execution of function by mocking dot with python call"""
         with mock.patch("grill.views.description._dot_exe") as patch:
