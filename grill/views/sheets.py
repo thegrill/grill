@@ -51,24 +51,14 @@ def _filter_predicate(*, orphaned, classes, defined, active, inactive, logical_o
     return lambda prim: logical_op(specifier(prim), status(prim))
 
 
-def _common_prefixes(paths):
-    root_path = Sdf.Path.absoluteRootPath
-    if len(paths) < 2:
-        # If our size is less than 2, nothing to check. Return as-is.
-        return paths
-    common = set()
-    # keep track of combinations with and without common prefixes separately
-    matched = set()
-    unmatched = set()
-    for combination in itertools.combinations(paths, 2):
-        common_prefix = Sdf.Path.GetCommonPrefix(*combination)
-        if common_prefix == root_path:
-            unmatched.update(combination)
-        else:
-            matched.update(combination)
-            common.add(common_prefix)
-    common.update(unmatched - matched)
-    return common
+def _common_paths(paths):
+    """For the given paths, get those which are the common parents."""
+    unique = list()
+    for path in sorted(filter(lambda p: p and not p.IsAbsoluteRootPath(), paths)):
+        if unique and path.HasPrefix(unique[-1]):  # we're a child, so safe to continue.
+            continue
+        unique.append(path)
+    return unique
 
 
 def _pruned_prims(prim_range, predicate):
@@ -81,7 +71,7 @@ def _pruned_prims(prim_range, predicate):
 
 def _iprims(stage, root_paths=None, prune_predicate=None, traverse_predicate=Usd.PrimDefaultPredicate):
     if root_paths:  # Traverse only specific parts of the stage.
-        root_paths = _common_prefixes(root_paths)
+        root_paths = _common_paths(root_paths)
         # Usd.PrimRange already discards invalid prims, so no need to check.
         root_prims = map(stage.GetPrimAtPath, root_paths)
         ranges = (Usd.PrimRange(prim, traverse_predicate) for prim in root_prims)
@@ -249,17 +239,17 @@ class EmptyTableModel(QtGui.QStandardItemModel):
         self.setHorizontalHeaderLabels([''] * len(columns))
 
 
-class UsdObjectTableModel(QtCore.QAbstractTableModel):
-    """Base table model for USD objects.
+class _ObjectTableModel(QtCore.QAbstractTableModel):
+    """Table model objects whose getters / setters are provided via columns.
 
-    There is nothing really USD specific here, but it just establishes the main foundations of how this works on the grill.
+    Mainly used for USD objects like layers or prims.
     """
+
     def __init__(self, columns, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._columns_spec = columns
-        self._objects = []
-        self._filter_predicate = None
         self._locked_columns = set()
+        self._objects = []
 
     def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
         return len(self._objects)
@@ -268,14 +258,14 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
         return len(self._columns_spec)
 
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
-        if role == _core._USD_DATA_ROLE:  # raw data
+        if role == _core._QT_OBJECT_DATA_ROLE:  # raw data
             return self._objects[index.row()]
         elif role == QtCore.Qt.DisplayRole:
-            usdobj = self.data(index, role=_core._USD_DATA_ROLE)
-            return self._columns_spec[index.column()].getter(usdobj)
+            obj = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            return self._columns_spec[index.column()].getter(obj)
         elif role == QtCore.Qt.EditRole:
-            usdobj = self.data(index, role=_core._USD_DATA_ROLE)
-            return self._columns_spec[index.column()].getter(usdobj)
+            obj = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            return self._columns_spec[index.column()].getter(obj)
 
     def sort(self, column:int, order:QtCore.Qt.SortOrder=...) -> None:
         self.layoutAboutToBeChanged.emit()
@@ -287,8 +277,8 @@ class UsdObjectTableModel(QtCore.QAbstractTableModel):
             self.layoutChanged.emit()
 
     def setData(self, index:QtCore.QModelIndex, value:typing.Any, role:int=...) -> bool:
-        usdobj = self.data(index, role=_core._USD_DATA_ROLE)
-        result = self._columns_spec[index.column()].setter(usdobj, value)
+        obj = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+        result = self._columns_spec[index.column()].setter(obj, value)
         print(f"Result: {result}")
         # self.dataChanged.emit(topLeft, bottomRight)  # needed?
         return True
@@ -309,7 +299,7 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         self.sourceModel().sort(column, order)
 
 
-class StageTableModel(UsdObjectTableModel):
+class StageTableModel(_ObjectTableModel):
     """This model provides flexibility for:
 
     - Specifying traversal method
@@ -317,7 +307,6 @@ class StageTableModel(UsdObjectTableModel):
     - Specifying prim paths to prune from traversal
     - Filtering prims based on a provided predicate
     """
-
     # https://doc.qt.io/qtforpython/PySide6/QtCore/QAbstractItemModel.html
     # https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-pixelator-example.html#pixelator-example
     # I tried to implement fetchMore for 250k+ prims (for filtering operations) but
@@ -326,9 +315,10 @@ class StageTableModel(UsdObjectTableModel):
     def __init__(self, columns, *args, **kwargs):
         super().__init__(columns, *args, **kwargs)
         self._stage = None
-        self._traverse_predicate = Usd.PrimAllPrimsPredicate
         self._root_paths = set()
         self._prune_children = set()
+        self._filter_predicate = None
+        self._traverse_predicate = Usd.PrimAllPrimsPredicate
 
     @property
     def _prune_predicate(self):
@@ -360,7 +350,7 @@ class StageTableModel(UsdObjectTableModel):
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         # Keep consistency with USDView visual style
         if role == QtCore.Qt.ForegroundRole:
-            prim = self.data(index, role=_core._USD_DATA_ROLE)
+            prim = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
             active = prim.IsActive()
             if prim.IsInstance():
                 color = _PrimTextColor.INSTANCE
@@ -381,7 +371,7 @@ class StageTableModel(UsdObjectTableModel):
             return color.value
         elif role == QtCore.Qt.FontRole:
             # Keep similar USDView visual style, just  don't "bold" defined prims.
-            prim = self.data(index, role=_core._USD_DATA_ROLE)
+            prim = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
             return _prim_font(abstract=prim.IsAbstract(), orphaned=not prim.IsDefined())
         return super().data(index, role)
 
@@ -497,7 +487,7 @@ class _Spreadsheet(QtWidgets.QDialog):
         self.table = table = _Table()
 
         # TODO: item delegate per model type? For now it works ):<
-        column_delegate_cls = _ColumnItemDelegate if isinstance(model, UsdObjectTableModel) else _EmptyItemDelegate
+        column_delegate_cls = _ColumnItemDelegate if isinstance(model, _ObjectTableModel) else _EmptyItemDelegate
         self._column_options = header.section_options
 
         # for every column, create a proxy model and chain it to the next one
@@ -650,14 +640,14 @@ class _Spreadsheet(QtWidgets.QDialog):
                 # self._addPrimToRow(row_index, prim)
             else:
                 # model.data(index, )
-                prim = model.data(model.index(visual_row, 0), _core._USD_DATA_ROLE)
+                prim = model.data(model.index(visual_row, 0), _core._QT_OBJECT_DATA_ROLE)
                 # source_index = _sourceIndex(model.index(visual_row, 0))
-                # if isinstance(source_index.model(), UsdObjectTableModel):
+                # if isinstance(source_index.model(), _ObjectTableModel):
                 #     prim =
                 # source_item = self.model.itemFromIndex(source_index)
                 # # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
                 #
-                # prim = source_item.data(_core._USD_DATA_ROLE)
+                # prim = source_item.data(_core._QT_OBJECT_DATA_ROLE)
                 # print("Source model:")
                 print(prim)
                 # print("Table proxy model:")
@@ -670,7 +660,7 @@ class _Spreadsheet(QtWidgets.QDialog):
                     # item = model.item(row_index, column_index)
                     # s_index = _sourceIndex(model.index(visual_row, column_index))
                     # s_item = self.model.itemFromIndex(s_index)
-                    # assert s_item.data(_core._USD_DATA_ROLE) is prim
+                    # assert s_item.data(_core._QT_OBJECT_DATA_ROLE) is prim
 
                     setter = self._columns_spec[column_index].setter
                     if prim:
@@ -695,50 +685,36 @@ class _Spreadsheet(QtWidgets.QDialog):
         self.table.setSortingEnabled(orig_sort_enabled)
 
 
-class SpreadsheetEditor(_Spreadsheet):
+class _StageSpreadsheet(_Spreadsheet):
     """TODO:
             - Allow to filter via type inheritance
             - Allow setting root paths from selected paths
     """
-
-    def __init__(self, *args, **kwargs):
-        def _vis_value(prim):
-            # keep homogeneus array by returning a value of the same type for prims
-            # that are not imageable (e.g. untyped prims)
-            imageable = UsdGeom.Imageable(prim)
-            return imageable.GetVisibilityAttr().Get() if imageable else ""
-        columns = (
-            _Column("Path", lambda prim: str(prim.GetPath())),
-            _Column("Name", Usd.Prim.GetName),
-            _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, editor=_prim_type_combobox),
-            _Column("Documentation", Usd.Prim.GetDocumentation,
-                    Usd.Prim.SetDocumentation),
-            _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
-            _Column("Visibility", _vis_value),
-            _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
-        )
+    def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         model = StageTableModel(columns=columns)
-        super().__init__(model=model, columns=columns, *args, **kwargs)
+        super().__init__(model=model, columns=columns, options=options, *args, **kwargs)
         self._model_hierarchy = model_hierarchy = QtWidgets.QPushButton(_core._EMOJI.MODEL_HIERARCHY.value)
+        self._filter_predicate = None
         model_hierarchy.setToolTip(
             textwrap.dedent(f"""
                 {_core._EMOJI.MODEL_HIERARCHY.value} Valid Model Hierarchy:
-                
+    
                 The model hierarchy defines a contiguous set of prims descending from a root prim on a stage, all of which are models.
                 This means that each prim in the hierarchy is considered "important to consumers".
                 """
-            )
+                    )
         )
-        self._instances = instances = QtWidgets.QPushButton(_core._EMOJI.INSTANCE_PROXIES.value)
+        self._instances = instances = QtWidgets.QPushButton(
+            _core._EMOJI.INSTANCE_PROXIES.value)
         instances.setToolTip(
             textwrap.dedent(f"""
                 {_core._EMOJI.INSTANCE_PROXIES.value} Traverse Instance Proxies:
-        
+                
                 An instance proxy is a UsdPrim that represents a descendant prim beneath an instance.
                 An instance proxy can not be edited. If edits are required, the parent prim makred as "instanceable=True" must
                 be updated with "instanceable=False".
                 """
-            )
+                    )
         )
         self._orphaned = orphaned = QtWidgets.QPushButton(_core._EMOJI.ORPHANED.value)
         orphaned.setToolTip(f"{_core._EMOJI.ORPHANED.value} Orphaned Prims")
@@ -751,7 +727,8 @@ class SpreadsheetEditor(_Spreadsheet):
         self._inactive = inactive = QtWidgets.QPushButton(_core._EMOJI.INACTIVE.value)
         inactive.setToolTip(f"{_core._EMOJI.INACTIVE.value}")
 
-        for each in (model_hierarchy, instances, orphaned, classes, defined, active, inactive):
+        for each in (
+        model_hierarchy, instances, orphaned, classes, defined, active, inactive):
             each.setCheckable(True)
             each.clicked.connect(self._update_stage)
 
@@ -777,12 +754,11 @@ class SpreadsheetEditor(_Spreadsheet):
         self._vis_states = {f"{_core._EMOJI.VISIBILITY.value} Show All": True, hide_key: False}
         self._vis_key_by_value = {v: k for k, v in self._vis_states.items()}  # True: Show All
         self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
-        vis_all.clicked.connect(self._conformVisibility)
+
         lock_key = f"{_core._EMOJI.LOCK.value} Lock All"
         self._lock_states = {lock_key: True, f"{_core._EMOJI.UNLOCK.value} Unlock All": False}
         self._lock_key_by_value = {v: k for k, v in self._lock_states.items()}  # True: Lock All
         self._lock_all = lock_all = QtWidgets.QPushButton(lock_key)
-        lock_all.clicked.connect(self._conformLocked)
 
         # table options
         sorting_enabled = QtWidgets.QCheckBox("Sorting")
@@ -802,8 +778,12 @@ class SpreadsheetEditor(_Spreadsheet):
         options_layout.addWidget(prim_status_frame)
 
         options_layout.addWidget(sorting_enabled)
-        options_layout.addWidget(vis_all)
-        options_layout.addWidget(lock_all)
+        if _ColumnOptions.VISIBILITY in options:
+            vis_all.clicked.connect(self._conformVisibility)
+            options_layout.addWidget(vis_all)
+        if _ColumnOptions.LOCK in options:
+            lock_all.clicked.connect(self._conformLocked)
+            options_layout.addWidget(lock_all)
         options_layout.addStretch()
         sorting_enabled.toggled.connect(self.table.setSortingEnabled)
         self.sorting_enabled = sorting_enabled
@@ -864,7 +844,7 @@ class SpreadsheetEditor(_Spreadsheet):
 
     @_core.wait()
     def _update_stage(self, *args, stage=None):
-        self.model._filter_predicate = _filter_predicate(
+        filter_predicate = _filter_predicate(
             orphaned=self._orphaned.isChecked(),
             classes=self._classes.isChecked(),
             defined=self._defined.isChecked(),
@@ -872,8 +852,33 @@ class SpreadsheetEditor(_Spreadsheet):
             inactive=self._inactive.isChecked(),
             logical_op=self._filters_logical_op.currentData(QtCore.Qt.UserRole)
         )
+        if self._filter_predicate:
+            self.model._filter_predicate = lambda prim: self._filter_predicate(prim) and filter_predicate(prim)
+        else:
+            self.model._filter_predicate = filter_predicate
+
         self.model._traverse_predicate = _traverse_predicate(
             model_hierarchy=self._model_hierarchy.isChecked(),
             instance_proxies=self._instances.isChecked(),
         )
         self.model.stage = stage if stage else self.model.stage
+
+
+class SpreadsheetEditor(_StageSpreadsheet):
+    def __init__(self, *args, **kwargs):
+        def _vis_value(prim):
+            # keep homogeneus array by returning a value of the same type for prims
+            # that are not imageable (e.g. untyped prims)
+            imageable = UsdGeom.Imageable(prim)
+            return imageable.GetVisibilityAttr().Get() if imageable else ""
+        columns = (
+            _Column("Path", lambda prim: str(prim.GetPath())),
+            _Column("Name", Usd.Prim.GetName),
+            _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, editor=_prim_type_combobox),
+            _Column("Documentation", Usd.Prim.GetDocumentation,
+                    Usd.Prim.SetDocumentation),
+            _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
+            _Column("Visibility", _vis_value),
+            _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+        )
+        super().__init__(columns=columns, *args, **kwargs)

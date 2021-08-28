@@ -1,4 +1,6 @@
 """Views related to USD scene description"""
+from __future__ import annotations
+
 import shutil
 import typing
 import operator
@@ -26,14 +28,6 @@ _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypePayload: dict(color='darkslateblue', fontcolor='darkslateblue'),  # purple
     Pcp.ArcTypeSpecialize: dict(color='sienna', fontcolor='sienna'),  # brown
 })
-
-
-class _GraphInfo(typing.NamedTuple):
-    sticky_nodes: tuple
-    ids_by_layers: typing.Mapping
-    edges: typing.Mapping
-    nodes: typing.Mapping
-    paths_by_ids: typing.Mapping
 
 
 @lru_cache(maxsize=None)
@@ -76,8 +70,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             yield from _walk_layer_tree(childtree)
 
     @lru_cache(maxsize=None)
-    def _sublayers(layer_stack):
-        # {Sdf.Layer: int}
+    def _sublayers(layer_stack):        # {Sdf.Layer: int}
         return MappingProxyType({v: i for i, v in enumerate(_walk_layer_tree(layer_stack.layerTree))})
 
     def _add_node(pcp_node):
@@ -92,16 +85,21 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             pass  # layerStack still not processed, let's add it
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
-        attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}")
+        attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
+        # attrs = dict(style='"rounded,filled"', shape="none", href=f"{url_prefix}{index}")
         label = f"{{<0>{_layer_label(root_layer)}"
+        # label = f'<<table cellspacing="0">'
         tooltip = "Layer Stack:"
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
-            attrs['fillcolor'] = 'palegoldenrod' if layer.dirty else 'white'
+            if layer.dirty:
+                attrs['color'] = 'darkorange'  # can probably be dashed as well?
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
+            # label += f'\n<tr><td port="{layer_index}">{_layer_label(layer)}</td></tr>'
             if layer != root_layer:  # root layer has been added at the start.
                 label += f"|<{layer_index}>{_layer_label(layer)}"
+        # label += "</table>>"
         label += "}"
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
@@ -112,7 +110,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         query = Usd.PrimCompositionQuery(_prim)
         query.filter = query_filter
         affected_by = set()  # {int}  indices of nodes affecting this prim
-        prim_edges = defaultdict(dict)  # {(source_int, target_int): {Pcp.ArcType...}}
+        prim_edges = defaultdict(lambda: defaultdict(dict))  # {(source_int, target_int): {Pcp.ArcType...}}
         for arc in query.GetCompositionArcs():
             target_idx, __ = _add_node(arc.GetTargetNode())
             affected_by.add(target_idx)
@@ -120,17 +118,21 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             if source_layer:
                 source_idx, source_layers = _add_node(arc.GetIntroducingNode())
                 source_port = source_layers[source_layer]
-                prim_edges[source_idx, target_idx, source_port, None][arc.GetArcType()] = {}
+                prim_edges[source_idx, target_idx][source_port, None][arc.GetArcType()] = {}  # TODO: probably include useful info here?
         return affected_by, prim_edges
+
+    def _freeze(dct):
+        return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
 
     query_filter = Usd.PrimCompositionQuery.Filter()
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     all_nodes = dict()  # {int: dict}
-    all_edges = defaultdict(dict)  # {(int, int, int, int): {Pcp.ArcType: {}, ..., }}
+
+    all_edges = defaultdict(lambda: defaultdict(dict))  # {(int, int, int, int): {Pcp.ArcType: {}, ..., }}
     for arc_type, attributes in _ARCS_LEGEND.items():
         arc_label_node_ids = (len(all_nodes), len(all_nodes) + 1)
         all_nodes.update(dict.fromkeys(arc_label_node_ids, dict(style='invis')))
-        all_edges[(*arc_label_node_ids, None, None)][arc_type] = dict(label=f" {arc_type.displayName}", **attributes)
+        all_edges[arc_label_node_ids][None, None][arc_type] = dict(label=f" {arc_type.displayName}", **attributes)
 
     legend_node_ids = tuple(all_nodes)
     ids_by_root_layer = dict()
@@ -146,9 +148,6 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         for affected_by_idx in affected_by_indices:
             paths_by_node_idx[affected_by_idx].add(prim_path)
 
-    def _freeze(dct):
-        return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
-
     return _GraphInfo(
         edges=MappingProxyType(all_edges),
         nodes=MappingProxyType(all_nodes),
@@ -156,6 +155,14 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         paths_by_ids=_freeze(paths_by_node_idx),
         ids_by_layers=_freeze(indices_by_sublayers),
     )
+
+
+class _GraphInfo(typing.NamedTuple):
+    sticky_nodes: tuple
+    ids_by_layers: typing.Mapping
+    edges: typing.Mapping
+    nodes: typing.Mapping
+    paths_by_ids: typing.Mapping
 
 
 class _Dot2SvgSignals(QtCore.QObject):
@@ -244,7 +251,6 @@ class _GraphViewer(_DotViewer):
 
     @lru_cache(maxsize=None)
     def _subgraph_dot_path(self, node_indices: tuple):
-        print(f"Getting subgraph for: {node_indices}")
         graph = self.graph
         successors = chain.from_iterable(graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(graph.predecessors(index) for index in node_indices)
@@ -336,7 +342,14 @@ class PrimComposition(QtWidgets.QDialog):
         self._dot_view.setDotPath(fp)
 
 
-class LayerTableModel(_sheets.UsdObjectTableModel):
+class LayerTableModel(_sheets._ObjectTableModel):
+    def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
+        if role == QtCore.Qt.ForegroundRole:
+            layer = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            color = _sheets._PrimTextColor.ARCS if layer.dirty else _sheets._PrimTextColor.NONE
+            return color.value
+        return super().data(index, role)
+
     def setLayers(self, value):
         self.beginResetModel()
         self._objects = list(value)
@@ -348,7 +361,6 @@ class LayerStackComposition(QtWidgets.QDialog):
         _sheets._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
         _sheets._Column("🚧 Dirty", operator.attrgetter('dirty')),
     )
-
     _PRIM_COLUMNS = (
         _sheets._Column("🧩 Opinion on Prim Path", lambda prim: str(prim.GetPath())),
         _sheets._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
@@ -359,12 +371,15 @@ class LayerStackComposition(QtWidgets.QDialog):
         options = _sheets._ColumnOptions.SEARCH
         layers_model = LayerTableModel(columns=self._LAYERS_COLUMNS)
         self._layers = _sheets._Spreadsheet(layers_model, self._LAYERS_COLUMNS, options)
-        prims_model = _sheets.StageTableModel(self._PRIM_COLUMNS)
-        self._prims = _sheets._Spreadsheet(prims_model, self._PRIM_COLUMNS, options)
-
+        self._prims = _sheets._StageSpreadsheet(columns=self._PRIM_COLUMNS, options=options)
+        # TODO: better APIs for this default setup?
+        self._prims.sorting_enabled.setVisible(False)
+        self._prims._model_hierarchy.setChecked(False)
+        for each in (self._prims._classes, self._prims._orphaned, self._prims._inactive):
+            each.setChecked(True)
+        self._prims._filters_logical_op.setCurrentIndex(1)
         for each in self._layers, self._prims:
             each.layout().setContentsMargins(0,0,0,0)
-            each.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(self._layers)
@@ -388,40 +403,29 @@ class LayerStackComposition(QtWidgets.QDialog):
             arc_btn.clicked.connect(lambda: self._update_graph_from_graph_info(self._computed_graph_info))
         _graph_controls_layout.addWidget(self._graph_precise_source_ports)
         _graph_controls_layout.addStretch(0)
+        _graph_legend_controls.setFixedHeight(_graph_legend_controls.sizeHint().height())
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(horizontal)
         vertical.addWidget(_graph_legend_controls)
         vertical.addWidget(self._graph_view)
-
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(vertical)
-
         self.setLayout(layout)
-        # self._viewing_nodes = set()
+        selectionModel = self._layers.table.selectionModel()
+        selectionModel.selectionChanged.connect(self._selectionChanged)
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Layer Stack Composition")
 
-        selectionModel = self._layers.table.selectionModel()
-        selectionModel.selectionChanged.connect(self._selectionChanged)
-        self._paths = dict()
-
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
-        node_ids = [index.data(_core._USD_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
+        node_ids = [index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
         node_indices = set(chain.from_iterable(self._computed_graph_info.ids_by_layers[layer] for layer in node_ids))
 
         prims_model = self._prims.model
-        prims_model._traverse_predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims_model._root_paths = paths = set(chain.from_iterable(
             self._computed_graph_info.paths_by_ids[i] for i in node_indices)
         )
-
-        def _filter_predicate(p):
-            return p.GetPath() in paths
-
-        prims_model._filter_predicate = _filter_predicate
-        prims_model.stage = self._stage
-        self._prims.table.resizeColumnsToContents()
-        self._prims.table.horizontalHeader()._updateVisualSections(0)
+        self._prims._filter_predicate = lambda prim: prim.GetPath() in paths
+        self._prims._update_stage()
         self._graph_view.view(node_indices)
 
     @_core.wait()
@@ -431,11 +435,13 @@ class LayerStackComposition(QtWidgets.QDialog):
         predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)
         graph_info = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
+        self._prims.setStage(stage)
         self._update_graph_from_graph_info(graph_info)
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
         self._computed_graph_info = graph_info
-        graph = nx.DiGraph(tooltip="LayerStack Composition")
+        graph = nx.MultiDiGraph()
+        graph.graph['graph'] = dict(tooltip="LayerStack Composition")
         graph.add_nodes_from(self._computed_graph_info.nodes.items())
         graph.add_edges_from(self._iedges(graph_info))
         self._graph_view.graph = graph
@@ -445,9 +451,14 @@ class LayerStackComposition(QtWidgets.QDialog):
 
     def _iedges(self, graph_info: _GraphInfo):
         checked_arcs = {arc for arc, control in self._graph_edge_include.items() if control.isChecked()}
-        for (src, tgt, tailport, headport), arcs in graph_info.edges.items():
-            visible_arcs = {arc: attrs for arc, attrs in arcs.items() if (arc in checked_arcs or {src, tgt}.issubset(graph_info.sticky_nodes))}
-            if visible_arcs:
-                ports = {"tailport": tailport} if self._graph_precise_source_ports.isChecked() else {}
-                color = _edge_color(tuple(visible_arcs))
-                yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
+        precise_ports = self._graph_precise_source_ports.isChecked()
+        for (src, tgt), edge_info in graph_info.edges.items():
+            arc_ports = edge_info if precise_ports else {(None, None): collections.ChainMap(*edge_info.values())}
+            for (src_port, tgt_port), arcs in arc_ports.items():
+                visible_arcs = {arc: attrs for arc, attrs in arcs.items() if (arc in checked_arcs or {src, tgt}.issubset(graph_info.sticky_nodes))}
+                if visible_arcs:
+                    # Composition arcs target layer stacks, so we don't specify port on our target nodes
+                    # since it does not change and visually helps for network layout.
+                    ports = {"tailport": src_port, "headport":None} if precise_ports else {}
+                    color = _edge_color(tuple(visible_arcs))
+                    yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())

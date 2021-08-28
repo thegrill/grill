@@ -12,6 +12,44 @@ from grill import write
 from grill.views import description, sheets, create
 
 
+class TestPrivate(unittest.TestCase):
+    def test_common_paths(self):
+        input_paths = [
+            Sdf.Path("/world/hi"),
+            Sdf.Path.absoluteRootPath,
+            Sdf.Path("/hola/hello/new1"),
+            Sdf.Path("/world/child/nested"),
+            Sdf.Path("/invalid/1"),
+            Sdf.Path("/hola/hello/new2"),
+            Sdf.Path("/hola/hello/new2/twochild"),
+            Sdf.Path("/hola/hello/new2/twochild/more"),
+            Sdf.Path("/hola/hello/new2/a"),
+            Sdf.Path("/hola/hello/new2/zzzzzzzzzzzzzzzzzzz"),
+            Sdf.Path("/hola/hello/new3"),
+            Sdf.Path("/hola/hello/n9/nested/one"),
+            Sdf.Path("/hola/hello/new01/nested/deep"),
+            Sdf.Path("/hola/hello/n9/nested/two"),
+            Sdf.Path("/hola/bye/child"),
+            Sdf.Path("/deep/nested/unique/path"),
+            Sdf.Path("/alone"),
+        ]
+        actual = sheets._common_paths(input_paths)
+        expected = [
+            Sdf.Path('/alone'),
+            Sdf.Path('/deep/nested/unique/path'),
+            Sdf.Path('/hola/bye/child'),
+            Sdf.Path('/hola/hello/n9/nested/one'),
+            Sdf.Path('/hola/hello/n9/nested/two'),
+            Sdf.Path('/hola/hello/new01/nested/deep'),
+            Sdf.Path('/hola/hello/new1'),
+            Sdf.Path('/hola/hello/new2'),
+            Sdf.Path('/hola/hello/new3'),
+            Sdf.Path('/world/child/nested'),
+            Sdf.Path('/world/hi'),
+        ]
+        self.assertEqual(actual, expected)
+
+
 class TestViews(unittest.TestCase):
     def setUp(self):
         self._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])

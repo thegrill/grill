@@ -252,7 +252,7 @@ class TaxonomyEditor(_CreatePrims):
         self.setStage(self._stage)
 
     def _existingSelectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
-        prims = (index.data(_core._USD_DATA_ROLE) for index in self._existing.table.selectedIndexes())
+        prims = (index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._existing.table.selectedIndexes())
         node_ids = [self._ids_by_taxa[prim.GetName()] for prim in prims]
         self._graph_view.view(node_ids)
 

@@ -58,7 +58,7 @@ _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
 _TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster  # High level organization of our assets.
 _TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
-_UNIT_ORIGIN_PATH = Sdf.Path("/Origin")
+_UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
 
 # Composition filters for asset edits
 _ASSET_UNIT_QUERY_FILTER = Usd.PrimCompositionQuery.Filter()
@@ -195,7 +195,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
-    taxonomy_reference = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+    taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
 
     scope_path = stage.GetPseudoRoot().GetPath().AppendPath(taxon.GetName())
     scope = stage.GetPrimAtPath(scope_path)
@@ -207,7 +207,8 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             return prim
         assetid = new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name})
         asset_stage = fetch_stage(assetid)
-        asset_stage.GetRootLayer().subLayerPaths.append(taxonomy_reference)
+        asset_layer = asset_stage.GetRootLayer()
+        asset_layer.subLayerPaths.append(taxonomy_id)
         asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
         asset_origin.GetInherits().AddInherit(taxon_path)
         asset_stage.SetDefaultPrim(asset_origin)
@@ -216,8 +217,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             label_attr.Set(label)
 
         over_prim = stage.OverridePrim(path)
-        over_prim.GetPayloads().AddPayload(
-            asset_stage.GetRootLayer().identifier)
+        over_prim.GetReferences().AddReference(asset_layer.identifier)
         return over_prim
 
     labels = itertools.chain(labels, itertools.repeat(""))
@@ -259,8 +259,8 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
         taxonomy_stage = fetch_stage(taxonomy_asset)
         taxonomy_layer = taxonomy_stage.GetRootLayer()
         # Use paths relative to our repository to guarantee portability
-        taxonomy_reference = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
-        root_layer.subLayerPaths.append(taxonomy_reference)
+        taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+        root_layer.subLayerPaths.append(taxonomy_id)
 
         if not taxonomy_stage.GetDefaultPrim():
             default_prim = taxonomy_stage.CreateClassPrim(_TAXONOMY_ROOT_PATH)
@@ -354,13 +354,13 @@ def _(obj: Usd.Stage, layer):
 
 @_edit_context.register
 def _(obj: Usd.Prim, layer):
-    # We need to explicitely construct our edit target since our layer is not on the layer stack of the stage.
+    # We need to explicitly construct our edit target since our layer is not on the layer stack of the stage.
     # TODO: this is specific about "localised edits" for an asset. Dispatch no longer looking solid?
     query = Usd.PrimCompositionQuery(obj)
     query.filter = _ASSET_UNIT_QUERY_FILTER
-    arcs = query.GetCompositionArcs()
-    for arc in arcs:
+    for arc in query.GetCompositionArcs():
         target_node = arc.GetTargetNode()
+        # contract: we consider the "unit" target node the one matching origin path and the given layer
         if target_node.path == _UNIT_ORIGIN_PATH and target_node.layerStack.identifier.rootLayer == layer:
             break
     else:
