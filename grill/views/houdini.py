@@ -46,7 +46,7 @@ def _spreadsheet():
         node = viewer.currentNode()
         node.cook(force=True)
 
-    widget.model.itemChanged.connect(refresh_ui)
+    # widget.table.itemChanged.connect(refresh_ui)  # TODO: disabled since new model does not have refresh capabilities yet!
     return widget
 
 
