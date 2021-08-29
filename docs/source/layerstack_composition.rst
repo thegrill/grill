@@ -15,15 +15,20 @@ each of them.
 
 .. tab:: USDView
 
-    .. image:: https://user-images.githubusercontent.com/8294116/100603669-8a47cf80-3359-11eb-85fd-ce0e2aa96d60.gif
+    .. image:: https://user-images.githubusercontent.com/8294116/131240483-9b428c4a-92fc-4d79-b464-8b1d07f982e0.gif
 
 .. tab:: Houdini
 
-    .. image:: https://user-images.githubusercontent.com/8294116/100744825-7cb24880-3432-11eb-8906-9c2c4019678e.gif
+    .. image:: https://user-images.githubusercontent.com/8294116/131242061-a42c2637-b550-4e1f-89e5-2328f8491333.gif
 
 .. tab:: Maya
 
-    .. image:: https://user-images.githubusercontent.com/8294116/115137947-6668fa00-a06c-11eb-8ec6-3fce8d92627f.gif
+    .. image:: https://user-images.githubusercontent.com/8294116/131242058-68f20283-0894-463b-9af0-914941356f8c.gif
+
+.. hint::
+    It is also possible to compute the graph from currently selected prims:
+
+    .. image:: https://user-images.githubusercontent.com/8294116/131242428-7b06729d-f96e-4b92-b02f-1608e99859bd.gif
 
 .. _layer stacks: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack
 .. _layers: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Layer
