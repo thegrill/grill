@@ -1,114 +1,111 @@
 import io
 import csv
 import enum
+import typing
 import inspect
 import logging
+import operator
+import textwrap
 import itertools
-import contextlib
-
-from typing import NamedTuple
 from collections import Counter
 from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtCore, QtWidgets, QtGui
 
+from . import _core
+
 logger = logging.getLogger(__name__)
 
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
-options = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
-
-_read_only = lambda x, y: x
-
-
-@lru_cache(maxsize=None)
-def _emoji_suffix():
-    # Maya widgets strip the last character of widgets with emoji on them.
-    # Remove this workaround when QtWidgets.QLabel("🔎 Hello") does not show as "🔎 Hell".
-    text_test = "🔎 Hello"
-    return "" if QtWidgets.QLabel(text_test).text() == text_test else " "
-
-
-@contextlib.contextmanager
-def wait():
-    try:
-        QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
-        yield
-    finally:
-        QtWidgets.QApplication.restoreOverrideCursor()
-
-
-@lru_cache(maxsize=None)
-def _property_name_from_option_type(optype):
-    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QItemEditorFactory.html
-    # https://doc.qt.io/qtforpython-5.12/PySide2/QtWidgets/QAbstractItemDelegate.html#PySide2.QtWidgets.PySide2.QtWidgets.QAbstractItemDelegate.createEditor
-    # https://discourse.techart.online/t/pyside2-qitemeditorfactory-and-missing-qvariant-qmetatype/11387/2
-    factory = QtWidgets.QItemEditorFactory.defaultFactory()
-    property_name = factory.valuePropertyName(optype)  # e.g. QtCore.QByteArray(b'text')
-    return property_name.data().decode()  # e.g. from b'text' to "text", "value", ...
+_PRIM_TYPE_OPTIONS = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
 
 
 def _prim_type_combobox(parent, option, index):
+    # TODO: see if we can lru_cache as well
     combobox = QtWidgets.QComboBox(parent=parent)
-    combobox.addItems(list(options.keys()))
+    combobox.addItems(sorted(_PRIM_TYPE_OPTIONS))
     return combobox
 
 
-_OBJECT = QtCore.Qt.UserRole + 0
-_VALUE_GETTER = QtCore.Qt.UserRole + 1
-_VALUE_SETTER = QtCore.Qt.UserRole + 2
+@lru_cache(maxsize=None)
+def _traverse_predicate(*, model_hierarchy: bool = False, instance_proxies: bool = False):
+    predicate = Usd.PrimIsModel if model_hierarchy else Usd.PrimAllPrimsPredicate
+    return Usd.TraverseInstanceProxies(predicate) if instance_proxies else predicate
 
 
-class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
-    """
-    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
-    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+@lru_cache(maxsize=None)
+def _filter_predicate(*, orphaned, classes, defined, active, inactive, logical_op):
+    def specifier(prim):
+        is_class = prim.IsAbstract()
+        is_defined = prim.IsDefined()
+        return ((classes and is_class) or
+                (orphaned and not is_defined) or
+                (defined and is_defined and not is_class))
 
-    Contract:
-    Object - UserRole
-    ValueGetter - UserRole + 1
-    ValueSetter - UserRole + 2
-    Widget - UserRole + 3
-    """
+    def status(prim):
+        is_active = prim.IsActive()
+        return (active and is_active) or (inactive and not is_active)
 
-    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        creator = getattr(self, "_editor") or super().createEditor
-        editor = creator(parent, option, index)
-        editor._property_name = _property_name_from_option_type(option.type)
-        return editor
+    return lambda prim: logical_op(specifier(prim), status(prim))
 
-    # def setEditorData(self, editor:QtWidgets.QWidget, index:QtCore.QModelIndex) -> None:
 
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-        # setModelData = getattr(self, "_model_data_setter") or super().setModelData
-        # we would always fallback to _property_name but it looks like there's no
-        # consistency, so we always prefer to check for "value" and only if it's None
-        # we check the property name found from the option when the editor was created.
-        value = editor.property("value")
-        # value will usually work for "bool"
-        print(f"From property 'value': {value}, type: {type(value)}")
-        # text will work for line edits and other text editors.
-        if value is None:
-            value = editor.property(editor._property_name)
-            print(f"From property '{editor._property_name}': {value}, type: {type(value)}")
-        # currentText will work for combo boxes.
-        if value is None:
-            value = editor.property("currentText")
-            print(f"From property 'currentText': {value}, type: {type(value)}")
-        # there's also datetime, time, but those should be coming from editor._property_name
-        # fail if we find something we don't know how to translate
-        if value is None:
-            raise ValueError(f"Can not obtain value to set from editor: {editor} on index {index}")
-        obj = index.data(_OBJECT)
-        setter = index.data(_VALUE_SETTER)
-        if setter:
-            print(f"Setting: {value} on object {obj} via {setter}")
-            setter(obj, value)
-        else:
-            print(f"No custom setter found for {obj} from {index}. Nothing else will be set")
-        setModelData = getattr(self, "_model_setter") or super().setModelData
-        return setModelData(editor, model, index)
+def _common_paths(paths):
+    """For the given paths, get those which are the common parents."""
+    unique = list()
+    for path in sorted(filter(lambda p: p and not p.IsAbsoluteRootPath(), paths)):
+        if unique and path.HasPrefix(unique[-1]):  # we're a child, so safe to continue.
+            continue
+        unique.append(path)
+    return unique
+
+
+def _pruned_prims(prim_range, predicate):
+    """Convenience generator that prunes a prim range based on the given predicate"""
+    for prim in prim_range:
+        if predicate(prim):
+            prim_range.PruneChildren()
+        yield prim
+
+
+def _iprims(stage, root_paths=None, prune_predicate=None, traverse_predicate=Usd.PrimDefaultPredicate):
+    if root_paths:  # Traverse only specific parts of the stage.
+        root_paths = _common_paths(root_paths)
+        # Usd.PrimRange already discards invalid prims, so no need to check.
+        root_prims = map(stage.GetPrimAtPath, root_paths)
+        ranges = (Usd.PrimRange(prim, traverse_predicate) for prim in root_prims)
+    else:
+        ranges = [Usd.PrimRange.Stage(stage, traverse_predicate)]
+
+    if prune_predicate:
+        ranges = (_pruned_prims(iter(r), prune_predicate) for r in ranges)
+
+    return itertools.chain.from_iterable(ranges)
+
+
+@lru_cache(maxsize=None)
+def _prim_font(*, abstract=False, orphaned=False):
+    # Passing arguments via the constructor does not work even though docs say they should
+    font = QtGui.QFont()
+    # Abstract prims are also considered defined; since we want to distinguish abstract
+    # defined prims from non-abstract defined prims, we check for abstract first.
+    if abstract:
+        font.setWeight(QtGui.QFont.ExtraLight)
+        font.setLetterSpacing(QtGui.QFont.PercentageSpacing, 120)
+    elif orphaned:
+        font.setWeight(QtGui.QFont.Light)
+        font.setItalic(True)
+    else:
+        font.setWeight(QtGui.QFont.Normal)
+    return font
+
+
+class _Column(typing.NamedTuple):
+    name: str
+    getter: callable = None
+    setter: callable = None
+    editor: callable = None
 
 
 class _ColumnOptions(enum.Flag):
@@ -120,8 +117,36 @@ class _ColumnOptions(enum.Flag):
     ALL = SEARCH | VISIBILITY | LOCK
 
 
+class _PrimTextColor(enum.Enum):
+    NONE = None
+    INSTANCE = QtGui.QColor('lightskyblue')
+    PROTOTYPE = QtGui.QColor('cornflowerblue')
+    INACTIVE = QtGui.QColor('darkgray')
+    INACTIVE_ARCS = QtGui.QColor('orange').darker(150)
+    ARCS = QtGui.QColor('orange')
+
+
+class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    https://doc.qt.io/qtforpython/overviews/sql-presenting.html
+    https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-spinboxdelegate-example.html
+    """
+
+    def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
+        creator = self.parent()._columns_spec[index.column()].editor or super().createEditor
+        return creator(parent, option, index)
+
+
+class _EmptyItemDelegate(_ColumnItemDelegate):
+    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
+        setter = self.parent()._columns_spec[index.column()].setter or super().setModelData
+        return setter(editor, model, index)
+
+
 class _ColumnHeaderOptions(QtWidgets.QWidget):
-    """A widget to be used within a header for columns on a USD spreadsheet."""
+    """A widget to be used within a header for columns on a USD spreadsheet.
+
+    """
     def __init__(self, name, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
@@ -131,10 +156,11 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         # Search filter
         self._line_filter = line_filter = QtWidgets.QLineEdit()
         line_filter.setPlaceholderText("Filter")
+        # TODO: add functionality for "inverse regex"
         line_filter.setToolTip(r"Negative lookahead: ^((?!{expression}).)*$")
 
         # Visibility
-        self._vis_button = vis_button = QtWidgets.QPushButton(f"👀{_emoji_suffix()}")
+        self._vis_button = vis_button = QtWidgets.QPushButton(_core._EMOJI.VISIBILITY.value)
         vis_button.setCheckable(True)
         vis_button.setChecked(True)
         vis_button.setFlat(True)
@@ -152,7 +178,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
         options_layout.addStretch()
         layout.addLayout(options_layout)
         self._filter_layout = filter_layout = QtWidgets.QFormLayout()
-        filter_layout.addRow(f"🔎{_emoji_suffix()}", line_filter)
+        filter_layout.addRow(_core._EMOJI.SEARCH.value, line_filter)
         if _ColumnOptions.SEARCH in options:
             layout.addLayout(filter_layout)
         self._options = options
@@ -189,56 +215,179 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
 
     def _decorateLockButton(self, button, locked):
         if locked:
-            text = "🔐"
+            text = _core._EMOJI.LOCK.value
             tip = "Column is non-editable (locked).\nClick to allow edits."
         else:
-            text = "🔓"
+            text = _core._EMOJI.UNLOCK.value
             tip = "Edits are allowed on this column (unlocked).\nClick to block edits."
-        button.setText(f"{text}{_emoji_suffix()}")
+        button.setText(text)
         button.setToolTip(tip)
 
     def _setHidden(self, value):
         self._vis_button.setChecked(not value)
 
 
-class _ProxyModel(QtCore.QSortFilterProxyModel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # TODO: move model hierarchy filter logic to a different class
-        self._useModelHierarchy = False
+class EmptyTableModel(QtGui.QStandardItemModel):
+    """Minimal empty table for new data (unlike existing USD stages or layers).
 
+    This is a "transient" model which will eventually have data translated into USD.
+    """
+    def __init__(self, columns, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_spec = columns
+        self._locked_columns = set()  # TODO: make sure this plays well with this and USD table
+        self.setHorizontalHeaderLabels([''] * len(columns))
+
+
+class _ObjectTableModel(QtCore.QAbstractTableModel):
+    """Table model objects whose getters / setters are provided via columns.
+
+    Mainly used for USD objects like layers or prims.
+    """
+
+    def __init__(self, columns, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_spec = columns
+        self._locked_columns = set()
+        self._objects = []
+
+    def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
+        return len(self._objects)
+
+    def columnCount(self, parent:QtCore.QModelIndex=...) -> int:
+        return len(self._columns_spec)
+
+    def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
+        if role == _core._QT_OBJECT_DATA_ROLE:  # raw data
+            return self._objects[index.row()]
+        elif role == QtCore.Qt.DisplayRole:
+            obj = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            return self._columns_spec[index.column()].getter(obj)
+        elif role == QtCore.Qt.EditRole:
+            obj = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            return self._columns_spec[index.column()].getter(obj)
+
+    def sort(self, column:int, order:QtCore.Qt.SortOrder=...) -> None:
+        self.layoutAboutToBeChanged.emit()
+        key = self._columns_spec[column].getter
+        reverse = order == QtCore.Qt.SortOrder.AscendingOrder
+        try:
+            self._objects = sorted(self._objects, key=key, reverse=reverse)
+        finally:
+            self.layoutChanged.emit()
+
+    def setData(self, index:QtCore.QModelIndex, value:typing.Any, role:int=...) -> bool:
+        obj = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+        result = self._columns_spec[index.column()].setter(obj, value)
+        print(f"Result: {result}")
+        # self.dataChanged.emit(topLeft, bottomRight)  # needed?
+        return True
+
+
+class _ProxyModel(QtCore.QSortFilterProxyModel):
     def headerData(self, section: int, orientation: QtCore.Qt.Orientation, role: int = ...):
         """For a vertical header, display a sequential visual index instead of the logical from the model."""
         # https://www.walletfox.com/course/qsortfilterproxymodelexample.php
-        if role == QtCore.Qt.DisplayRole and orientation == QtCore.Qt.Vertical:
-            return section + 1
+        if role == QtCore.Qt.DisplayRole:
+            if orientation == QtCore.Qt.Vertical:
+                return section + 1
+            elif orientation == QtCore.Qt.Horizontal:
+                return ""  # our horizontal header labels are drawn by custom header
         return super().headerData(section, orientation, role)
 
-    def _extraFilters(self, source_row, source_parent):
-        source_column = self.filterKeyColumn()
-        source_model = self.sourceModel()
-        index = source_model.index(source_row, source_column, source_parent)
-        if not index.isValid():
-            raise ValueError(f"Invalid index from source_row={source_row}, source_column={source_column}, source_parent={source_parent}")
+    def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
+        self.sourceModel().sort(column, order)
 
-        prim = index.data(_OBJECT)
-        if not prim:
-            # row may have been just inserted as a result of a model.insertRow or
-            # model.appendRow call, so no prim yet. Mmmm see how to prevent this?
-            # blocking signals before adding row on setStage does not work around this.
-            return True
-        if self._useModelHierarchy:
-            return prim.IsModel()
-        return True
+# for older USD versions (houdini ships with 20.08 but has master API)
+_PRIM_PROTOTYPE_QUERY_METHOD = Usd.Prim.IsInPrototype if hasattr(Usd.Prim, "IsInPrototype") else Usd.Prim.IsInMaster
 
-    def filterAcceptsRow(self, source_row:int, source_parent:QtCore.QModelIndex) -> bool:
-        result = super().filterAcceptsRow(source_row, source_parent)
-        if result:
-            result = self._extraFilters(source_row, source_parent)
-        return result
 
-    def _setModelHierarchyEnabled(self, value):
-        self._useModelHierarchy = value
+class StageTableModel(_ObjectTableModel):
+    """This model provides flexibility for:
+
+    - Specifying traversal method
+    - Specifying root prims to traverse
+    - Specifying prim paths to prune from traversal
+    - Filtering prims based on a provided predicate
+    """
+    # https://doc.qt.io/qtforpython/PySide6/QtCore/QAbstractItemModel.html
+    # https://doc.qt.io/qtforpython/overviews/qtwidgets-itemviews-pixelator-example.html#pixelator-example
+    # I tried to implement fetchMore for 250k+ prims (for filtering operations) but
+    # it's not as pleasant experience and filtering first on path is a better tactic.
+    # https://doc.qt.io/qt-5/qtwidgets-itemviews-fetchmore-example.html
+    def __init__(self, columns, *args, **kwargs):
+        super().__init__(columns, *args, **kwargs)
+        self._stage = None
+        self._root_paths = set()
+        self._prune_children = set()
+        self._filter_predicate = None
+        self._traverse_predicate = Usd.PrimAllPrimsPredicate
+
+    @property
+    def _prune_predicate(self):
+        def prune(prim):
+            path = prim.GetPath()
+            return any(path.HasPrefix(p) for p in self._prune_children)
+        return prune
+
+    @property
+    def stage(self):
+        return self._stage
+
+    @stage.setter
+    def stage(self, value):
+        self.beginResetModel()
+        self._stage = value
+        if value:
+            prims = _iprims(
+                value,
+                root_paths=self._root_paths,
+                prune_predicate=self._prune_predicate if self._prune_children else None,
+                traverse_predicate=self._traverse_predicate
+            )
+            self._objects = list(filter(self._filter_predicate, prims))
+        else:
+            self._objects = []
+        self.endResetModel()
+
+    def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
+        # Keep consistency with USDView visual style
+        if role == QtCore.Qt.ForegroundRole:
+            prim = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            active = prim.IsActive()
+            if prim.IsInstance():
+                color = _PrimTextColor.INSTANCE
+            elif _PRIM_PROTOTYPE_QUERY_METHOD(prim) or prim.IsInstanceProxy():
+                color = _PrimTextColor.PROTOTYPE
+            elif (
+                prim.HasAuthoredReferences() or
+                prim.HasAuthoredPayloads() or
+                prim.HasAuthoredInherits() or
+                prim.HasAuthoredSpecializes() or
+                prim.HasVariantSets()
+            ):
+                color = _PrimTextColor.ARCS if active else _PrimTextColor.INACTIVE_ARCS
+            elif not active:
+                color = _PrimTextColor.INACTIVE
+            else:
+                color = _PrimTextColor.NONE
+            return color.value
+        elif role == QtCore.Qt.FontRole:
+            # Keep similar USDView visual style, just  don't "bold" defined prims.
+            prim = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            return _prim_font(abstract=prim.IsAbstract(), orphaned=not prim.IsDefined())
+        return super().data(index, role)
+
+    def flags(self, index:QtCore.QModelIndex) -> QtCore.Qt.ItemFlags:
+        flags = super().flags(index)
+        col_index = index.column()
+        # only allow edits when:
+        if (col_index not in self._locked_columns  # column is unlocked
+            and self._columns_spec[col_index].setter  # a setter has been provided
+            and not self._objects[index.row()].IsInstanceProxy()  # Not an instance proxy
+        ):
+            return flags | QtCore.Qt.ItemIsEditable
+        return flags
 
 
 class _Header(QtWidgets.QHeaderView):
@@ -253,7 +402,6 @@ class _Header(QtWidgets.QHeaderView):
         super().__init__(*args, **kwargs)
         self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
-
         for index, name in enumerate(columns):
             column_options = _ColumnHeaderOptions(name, options=options, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
@@ -263,13 +411,14 @@ class _Header(QtWidgets.QHeaderView):
             # we keep track of the column options label but our proxy will bypass clicks
             # allowing for UX when clicking on column headers
             proxy_label = QtWidgets.QLabel(parent=self)
-            proxy_label.setText(f"{column_options.label.text()}{_emoji_suffix()}")
+            proxy_label.setText(column_options.label.text())
             proxy_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             self._proxy_labels[column_options.label] = proxy_label
 
         self.setSectionsMovable(True)
         self.sectionResized.connect(self._handleSectionResized)
         self.sectionMoved.connect(self._handleSectionMoved)
+        self.sectionClicked.connect(self._handleSectionClicked)
 
     def _updateOptionsGeometry(self, logical_index: int):
         """Updates the options geometry for the column at the logical index"""
@@ -304,6 +453,13 @@ class _Header(QtWidgets.QHeaderView):
     def _handleSectionMoved(self, __, old_visual_index, new_visual_index):
         self._updateVisualSections(min(old_visual_index, new_visual_index))
 
+    def _handleSectionClicked(self, index):
+        """Without this, when a section is clicked (e.g. when sorting),
+        we'd have a mismatch on the proxy geometry label.
+        """
+        self._handleSectionResized(0)
+        self._updateVisualSections(0)
+
     def _geometryForWidget(self, index):
         """Main geometry for the widget to show at the given index"""
         return self.sectionViewportPosition(index) + 10, 10, self.sectionSize(index) - 20, self.height() - 20
@@ -321,78 +477,62 @@ class _Table(QtWidgets.QTableView):
 
 
 class _Spreadsheet(QtWidgets.QDialog):
-    def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
+    """TODO:
+        - Make paste work with filtered items (paste has been disabled)
+        - Setting a prim as instanceable invalidates child prims.
+            - Quickest workaround is to invalidate model?
+    """
+    def __init__(self, model, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = model = QtGui.QStandardItemModel(0, len(columns))
+        self.model = model
         self._columns_spec = columns
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
         self.table = table = _Table()
 
-        # for every column, create a proxy model and chain it to the next one
-        proxy_model = source_model = model
+        # TODO: item delegate per model type? For now it works ):<
+        column_delegate_cls = _ColumnItemDelegate if isinstance(model, _ObjectTableModel) else _EmptyItemDelegate
+        self._column_options = header.section_options
 
-        self._column_options = dict()
+        # for every column, create a proxy model and chain it to the next one
         for column_index, column_data in enumerate(columns):
             proxy_model = _ProxyModel()
-            proxy_model.setSourceModel(source_model)
+            proxy_model.setSourceModel(model)
             proxy_model.setFilterKeyColumn(column_index)
-            source_model = proxy_model  # chain so next proxy model takes this one
 
             column_options = header.section_options[column_index]
             if _ColumnOptions.SEARCH in options:
-                column_options.filterChanged.connect(proxy_model.setFilterRegExp)
+                column_options.filterChanged.connect(proxy_model.setFilterRegularExpression)
             if _ColumnOptions.VISIBILITY in options:
                 column_options.toggled.connect(partial(self._setColumnVisibility, column_index))
+
             if _ColumnOptions.LOCK in options:
                 column_options.locked.connect(partial(self._setColumnLocked, column_index))
 
-            delegate = _ColumnItemDelegate()
-            delegate._editor = column_data.editor
-            delegate._model_setter = column_data.model_setter
-            # delegate._model_data_setter = column_data.model_data_setter
+            delegate = column_delegate_cls(parent=self)
             table.setItemDelegateForColumn(column_index, delegate)
-            # for custom delegates we need to keep a reference, otherwise they're
-            # garbage collected and might cause crashes.
-            setattr(self, f"_delegate_{column_index}", delegate)
 
-            self._column_options[column_index] = column_options
-            self._connectProxyModel(proxy_model)  # TODO: only reason of this is model hierarchy. explore to remove soon.
+            model = proxy_model
 
-        header.setModel(proxy_model)
+        header.setModel(model)
         header.setSectionsClickable(True)
 
-        table.setModel(proxy_model)
+        table.setModel(model)
         table.setHorizontalHeader(header)
         table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.SelectedClicked)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
+        table.setSortingEnabled(True)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(table)
         self.installEventFilter(self)
         self.setLayout(layout)
 
-    def _connectProxyModel(self, proxy_model):
-        # TODO: only reason of this is model hierarchy. explore to remove soon.
-        pass
-
     def _setColumnVisibility(self, index: int, visible: bool):
         self.table.setColumnHidden(index, not visible)
 
     def _setColumnLocked(self, column_index, value):
-        model = self.model
-        for row_index in range(model.rowCount()):
-            item = model.item(row_index, column_index)
-            if not item:
-                # add an item here if it's missing?
-                logger.warning(f"Creating new item for: {row_index}, {column_index}")
-                item = QtGui.QStandardItem()
-                item.setData(None, _OBJECT)
-                column_data = self._columns_spec[column_index]
-                item.setData(column_data.getter, _VALUE_GETTER)
-                item.setData(column_data.setter, _VALUE_SETTER)
-                model.setItem(row_index, column_index, item)
-
-            item.setEditable(not value)
+        method = set.add if value else set.discard
+        method(self.model._locked_columns, column_index)
 
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.KeyPress and event.matches(QtGui.QKeySequence.Copy):
@@ -420,8 +560,9 @@ class _Spreadsheet(QtWidgets.QDialog):
             QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
 
     def _pasteClipboard(self):
+        logger.warning("Pasting is still experimental")
         text = QtWidgets.QApplication.instance().clipboard().text()
-        logger.info(f"Creating rows with:\n{text}")
+        logger.info(f"Pasting rows with:\n{text}")
         if not text:
             logger.info("Nothing to do!")
             return
@@ -469,7 +610,7 @@ class _Spreadsheet(QtWidgets.QDialog):
 
         maxrow = max(selected_row + len(data),  # either the amount of rows to paste
                      max(selected_rows, default=current_count) + 1)  # or the current row count
-        print(f"maxrow, {maxrow}")
+        logger.debug(f"maxrow, {maxrow}")
 
         # this is a bit broken. When pasting a single row on N non-sequential selected items,
         # we are pasting the same value on all the inbetween non selected rows. please fix
@@ -483,115 +624,141 @@ class _Spreadsheet(QtWidgets.QDialog):
 
         for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
             if visual_row > maxrow:
-                print(f"Visual row {visual_row} maxed maxrow {maxrow}. Stopping. Bye!")
+                logger.debug(f"Visual row {visual_row} maxed maxrow {maxrow}. Stopping. Bye!")
                 break
             if single_row_source and visual_row not in selected_rows:
-                print(f"Visual row {visual_row} not in selected rows {selected_rows}. Continue")
+                logger.debug(f"Visual row {visual_row} not in selected rows {selected_rows}. Continue")
                 continue
-
-            print(f"visual_row={visual_row}")
-            print(f"pasting data={rowdata}")
-
+            logger.debug(f"visual_row={visual_row}")
+            logger.debug(f"pasting data={rowdata}")
             if visual_row == current_count:
-                # we're at the end of the rows.
+                # TODO: we're at the end of the rows.
                 # If we are in a filtered place, alert the user if they want to paste rest
-                print(f"inserting a row at row_index {visual_row}???")
-                # model.insertRow(row_index)
-                # time_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                # prim = stage.DefinePrim(f"/root/test_{row_index}_{time_str}")
-                # print(prim)
-                # self._addPrimToRow(row_index, prim)
+                logger.warning(f">> No more visual rows to paste on: {visual_row}")
             else:
-                source_index = _sourceIndex(model.index(visual_row, 0))
-                source_item = self.model.itemFromIndex(source_index)
-                # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
-
-                prim = source_item.data(_OBJECT)
-                print("Source model:")
-                print(prim)
-                # print("Table proxy model:")
-                # print(self.table.model().index(row_index, 0).data(QtCore.Qt.UserRole))
-
+                prim = model.data(model.index(visual_row, 0), _core._QT_OBJECT_DATA_ROLE)
                 for column_index, column_data in enumerate(rowdata, start=selected_column):
-                    # item = model.map
-                    # mapped = table_model.mapToSource(table_model.index(row_index, column_index))
-                    # _sourceIndex(model.index(visual_row, column_index))
-                    # item = model.item(row_index, column_index)
-                    s_index = _sourceIndex(model.index(visual_row, column_index))
-                    s_item = self.model.itemFromIndex(s_index)
-                    assert s_item.data(_OBJECT) is prim
-
                     setter = self._columns_spec[column_index].setter
                     if prim:
-                        print(f"Setting {column_data} with type {type(column_data)} on {prim}")
-                        import json  # big hack. how to?
-                        # due to boolean types
+                        if not setter:
+                            logger.debug(f"Skipping since missing setter: {column_data}")
+                            continue
+                        logger.debug(f"Setting {column_data} with type {type(column_data)} on {prim}")
                         try:
                             setter(prim, column_data)
                         except Exception as exc:
-                            print(exc)
+                            logger.debug(exc)
+                            import json  # big hack. how to? this happens when pasting boolean types
                             column_data = json.loads(column_data.lower())
-                            print(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
+                            logger.debug(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
                             setter(prim, column_data)
-
-                    s_item.setData(column_data, QtCore.Qt.DisplayRole)
+                    else:
+                        s_index = _sourceIndex(model.index(visual_row, column_index))
+                        s_item = self.model.itemFromIndex(s_index)
+                        s_item.setData(column_data, QtCore.Qt.DisplayRole)
 
         self.table.setSortingEnabled(orig_sort_enabled)
 
 
-class _Column(NamedTuple):
-    name: str
-    getter: callable
-    setter: callable = _read_only  # "Read-only" by default
-    editor: callable = None
-    model_setter: callable = None  # TODO: reconcile this with the object data flags (object vs model data getter / setter)
-    # createEditor() returns the widget used to change data from the model and can be reimplemented to customize editing behavior.
-    #
-    # setEditorData() provides the widget with data to manipulate.
-    #
-    # updateEditorGeometry() ensures that the editor is displayed correctly with respect to the item view.
-    #
-    # setModelData() returns updated data to the model.
-
-
-class SpreadsheetEditor(_Spreadsheet):
-    _COLUMNS = (
-        _Column("Name", Usd.Prim.GetName),
-        _Column("Path", lambda prim: str(prim.GetPath())),
-        _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, _prim_type_combobox),
-        _Column("Documentation", Usd.Prim.GetDocumentation, Usd.Prim.SetDocumentation),
-        _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
-        _Column("Visibility", lambda prim: UsdGeom.Imageable(prim).GetVisibilityAttr().Get()),
-        _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
-    )
+class _StageSpreadsheet(_Spreadsheet):
     """TODO:
-        - Make paste work with filtered items (paste has been disabled)
+            - Allow to filter via type inheritance
+            - Allow setting root paths from selected paths
     """
-    def __init__(self, stage=None, parent=None, **kwargs):
-        columns = self._COLUMNS
-        self._model_hierarchy = model_hierarchy = QtWidgets.QCheckBox(f"🏡 Model Hierarchy{_emoji_suffix()}")
-        super().__init__(columns, parent=parent, **kwargs)
+    def __init__(self, columns, options: _ColumnOptions = _ColumnOptions.ALL, *args, **kwargs):
+        model = StageTableModel(columns=columns)
+        super().__init__(model=model, columns=columns, options=options, *args, **kwargs)
+        self._model_hierarchy = model_hierarchy = QtWidgets.QPushButton(_core._EMOJI.MODEL_HIERARCHY.value)
+        self._filter_predicate = None
+        model_hierarchy.setToolTip(
+            textwrap.dedent(f"""
+                {_core._EMOJI.MODEL_HIERARCHY.value} Valid Model Hierarchy:
+    
+                The model hierarchy defines a contiguous set of prims descending from a root prim on a stage, all of which are models.
+                This means that each prim in the hierarchy is considered "important to consumers".
+                """
+                    )
+        )
+        self._instances = instances = QtWidgets.QPushButton(
+            _core._EMOJI.INSTANCE_PROXIES.value)
+        instances.setToolTip(
+            textwrap.dedent(f"""
+                {_core._EMOJI.INSTANCE_PROXIES.value} Traverse Instance Proxies:
+                
+                An instance proxy is a UsdPrim that represents a descendant prim beneath an instance.
+                An instance proxy can not be edited. If edits are required, the parent prim makred as "instanceable=True" must
+                be updated with "instanceable=False".
+                """
+                    )
+        )
+        self._orphaned = orphaned = QtWidgets.QPushButton(_core._EMOJI.ORPHANED.value)
+        orphaned.setToolTip(f"{_core._EMOJI.ORPHANED.value} Orphaned Prims")
+        self._classes = classes = QtWidgets.QPushButton(_core._EMOJI.CLASSES.value)
+        classes.setToolTip(f"{_core._EMOJI.CLASSES.value} Classes (Abstract Prims)")
+        self._defined = defined = QtWidgets.QPushButton(_core._EMOJI.DEFINED.value)
+        defined.setToolTip(f"{_core._EMOJI.DEFINED.value} Defined Prims")
+        self._active = active = QtWidgets.QPushButton(_core._EMOJI.ACTIVE.value)
+        active.setToolTip(f"{_core._EMOJI.ACTIVE.value}")
+        self._inactive = inactive = QtWidgets.QPushButton(_core._EMOJI.INACTIVE.value)
+        inactive.setToolTip(f"{_core._EMOJI.INACTIVE.value}")
 
-        hide_key = "👀 Hide All"
-        self._vis_states = {"👀 Show All": True, hide_key: False}
+        for each in (
+        model_hierarchy, instances, orphaned, classes, defined, active, inactive):
+            each.setCheckable(True)
+            each.clicked.connect(self._update_stage)
+
+        for each in (model_hierarchy, instances, defined, active):
+            each.setChecked(True)
+
+        def _buttons_on_frame(*buttons):
+            frame = QtWidgets.QFrame()
+            layout = QtWidgets.QHBoxLayout()
+            layout.setSpacing(0)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setMargin(0)
+            for button in buttons:
+                layout.addWidget(button)
+            frame.setLayout(layout)
+            return frame
+
+        prim_traversal_frame = _buttons_on_frame(model_hierarchy, instances)
+        prim_specifier_frame = _buttons_on_frame(orphaned, classes, defined)
+        prim_status_frame = _buttons_on_frame(active, inactive)
+
+        hide_key = f"{_core._EMOJI.VISIBILITY.value} Hide All"
+        self._vis_states = {f"{_core._EMOJI.VISIBILITY.value} Show All": True, hide_key: False}
         self._vis_key_by_value = {v: k for k, v in self._vis_states.items()}  # True: Show All
-        self._vis_all = vis_all = QtWidgets.QPushButton(f"{hide_key}{_emoji_suffix()}")
-        vis_all.clicked.connect(self._conformVisibility)
-        lock_key = "🔐 Lock All"
-        self._lock_states = {lock_key: True, "🔓 Unlock All": False}
+        self._vis_all = vis_all = QtWidgets.QPushButton(hide_key)
+
+        lock_key = f"{_core._EMOJI.LOCK.value} Lock All"
+        self._lock_states = {lock_key: True, f"{_core._EMOJI.UNLOCK.value} Unlock All": False}
         self._lock_key_by_value = {v: k for k, v in self._lock_states.items()}  # True: Lock All
-        self._lock_all = lock_all = QtWidgets.QPushButton(f"{lock_key}{_emoji_suffix()}")
-        lock_all.clicked.connect(self._conformLocked)
+        self._lock_all = lock_all = QtWidgets.QPushButton(lock_key)
 
         # table options
-        sorting_enabled = QtWidgets.QCheckBox("Sorting Enabled")
+        sorting_enabled = QtWidgets.QCheckBox("Sorting")
         sorting_enabled.setChecked(True)
 
         options_layout = QtWidgets.QHBoxLayout()
+        options_layout.addWidget(prim_traversal_frame)
+        options_layout.addWidget(prim_specifier_frame)
+
+        self._filters_logical_op = filters_logical_op = QtWidgets.QComboBox()
+        for op in (operator.and_, operator.or_):
+            op_text = op.__name__.strip("_")
+            filters_logical_op.addItem(op_text, userData=op)
+        self._filters_logical_op.currentIndexChanged.connect(self._update_stage)
+
+        options_layout.addWidget(filters_logical_op)
+        options_layout.addWidget(prim_status_frame)
+
         options_layout.addWidget(sorting_enabled)
-        options_layout.addWidget(model_hierarchy)
-        options_layout.addWidget(vis_all)
-        options_layout.addWidget(lock_all)
+        if _ColumnOptions.VISIBILITY in options:
+            vis_all.clicked.connect(self._conformVisibility)
+            options_layout.addWidget(vis_all)
+        if _ColumnOptions.LOCK in options:
+            lock_all.clicked.connect(self._conformLocked)
+            options_layout.addWidget(lock_all)
         options_layout.addStretch()
         sorting_enabled.toggled.connect(self.table.setSortingEnabled)
         self.sorting_enabled = sorting_enabled
@@ -599,30 +766,26 @@ class SpreadsheetEditor(_Spreadsheet):
         layout = self.layout()
         layout.addLayout(options_layout)
         layout.addWidget(self.table)
-        self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Spreadsheet Editor")
 
+        # these are here because of the "higher level methods"
         for column_index, column_options in self._column_options.items():
+            # TODO: move this to be "public" signals
             column_options._vis_button.clicked.connect(self._conformVisibilitySwitch)
             column_options._lock_button.clicked.connect(self._conformLockSwitch)
-
-    def _connectProxyModel(self, proxy_model):
-        super()._connectProxyModel(proxy_model)
-        self._model_hierarchy.toggled.connect(proxy_model._setModelHierarchyEnabled)
-        self._model_hierarchy.clicked.connect(proxy_model.invalidateFilter)
 
     def _conformVisibilitySwitch(self):
         """Make vis option offer inverse depending on how much is currently hidden"""
         counter = Counter(self.table.isColumnHidden(i) for i in self._column_options)
         current, count = next(iter(counter.most_common(1)))
-        self._vis_all.setText(f"{self._vis_key_by_value[current]}{_emoji_suffix()}")
+        self._vis_all.setText(self._vis_key_by_value[current])
         return current
 
     def _conformLockSwitch(self):
         """Make lock option offer inverse depending on how much is currently locked"""
         counter = Counter(widget._lock_button.isChecked() for widget in self._column_options.values())
         current, count = next(iter(counter.most_common(1)))
-        self._lock_all.setText(f"{self._lock_key_by_value[not current]}{_emoji_suffix()}")
+        self._lock_all.setText(self._lock_key_by_value[not current])
         return current
 
     def _conformVisibility(self):
@@ -631,42 +794,66 @@ class SpreadsheetEditor(_Spreadsheet):
             self._setColumnVisibility(index, value)
             options._setHidden(not value)
 
-        self._vis_all.setText(f"{self._vis_key_by_value[not value]}{_emoji_suffix()}")
+        self._vis_all.setText(self._vis_key_by_value[not value])
         self.table.horizontalHeader()._handleSectionResized(0)
 
-    @wait()
+    @_core.wait()
     def _conformLocked(self):
         value = self._lock_states[self._lock_all.text()]
         for index, options in self._column_options.items():
             options._lock_button.setChecked(value)
             self._setColumnLocked(index, value)
-        self._lock_all.setText(f"{self._lock_key_by_value[not value]}{_emoji_suffix()}")
+        self._lock_all.setText(self._lock_key_by_value[not value])
 
-    @wait()
-    def setStage(self, stage):
+    @property
+    def stage(self):
+        return self.model.stage
+
+    @stage.setter
+    def stage(self, value):
+        self._update_stage(stage=value)
+
+    def setStage(self, stage):  # TODO: remove in favor of property
         """Sets the USD stage the spreadsheet is looking at."""
-        self._stage = stage
-        table = self.table
-        model = self.model
-        model.clear()
-        # labels are on the header widgets
-        model.setHorizontalHeaderLabels([''] * len(self._COLUMNS))
-        table.setSortingEnabled(False)
-        items = list(enumerate(stage.TraverseAll()))
-        model.setRowCount(len(items))
-        model.blockSignals(True)  # prevent unneeded events from computing
-        for index, prim in enumerate(stage.TraverseAll()):
-            self._addPrimToRow(index, prim)
-        model.blockSignals(False)
-        table.setSortingEnabled(self.sorting_enabled.isChecked())
+        self._update_stage(stage=stage)
 
-    def _addPrimToRow(self, row_index, prim):
-        model = self.model
-        for column_index, column_data in enumerate(self._COLUMNS):
-            attribute = column_data.getter(prim)
-            item = QtGui.QStandardItem()
-            item.setData(attribute, QtCore.Qt.DisplayRole)
-            item.setData(prim, _OBJECT)
-            item.setData(column_data.getter, _VALUE_GETTER)
-            item.setData(column_data.setter, _VALUE_SETTER)
-            model.setItem(row_index, column_index, item)
+    @_core.wait()
+    def _update_stage(self, *args, stage=None):
+        filter_predicate = _filter_predicate(
+            orphaned=self._orphaned.isChecked(),
+            classes=self._classes.isChecked(),
+            defined=self._defined.isChecked(),
+            active=self._active.isChecked(),
+            inactive=self._inactive.isChecked(),
+            logical_op=self._filters_logical_op.currentData(QtCore.Qt.UserRole)
+        )
+        if self._filter_predicate:
+            self.model._filter_predicate = lambda prim: self._filter_predicate(prim) and filter_predicate(prim)
+        else:
+            self.model._filter_predicate = filter_predicate
+
+        self.model._traverse_predicate = _traverse_predicate(
+            model_hierarchy=self._model_hierarchy.isChecked(),
+            instance_proxies=self._instances.isChecked(),
+        )
+        self.model.stage = stage if stage else self.model.stage
+
+
+class SpreadsheetEditor(_StageSpreadsheet):
+    def __init__(self, *args, **kwargs):
+        def _vis_value(prim):
+            # keep homogeneus array by returning a value of the same type for prims
+            # that are not imageable (e.g. untyped prims)
+            imageable = UsdGeom.Imageable(prim)
+            return imageable.GetVisibilityAttr().Get() if imageable else ""
+        columns = (
+            _Column("Path", lambda prim: str(prim.GetPath())),
+            _Column("Name", Usd.Prim.GetName),
+            _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, editor=_prim_type_combobox),
+            _Column("Documentation", Usd.Prim.GetDocumentation,
+                    Usd.Prim.SetDocumentation),
+            _Column("Instanceable", Usd.Prim.IsInstance, Usd.Prim.SetInstanceable),
+            _Column("Visibility", _vis_value),
+            _Column("Hidden", Usd.Prim.IsHidden, Usd.Prim.SetHidden),
+        )
+        super().__init__(columns=columns, *args, **kwargs)

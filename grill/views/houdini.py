@@ -8,7 +8,6 @@ from . import sheets as _sheets, description as _description, create as _create
 def _stage_on_widget(widget_creator):
     @lru_cache(maxsize=None)
     def _launcher():
-        print(f"Launching {widget_creator}!")
         widget = widget_creator(parent=hou.qt.mainWindow())
         # TODO: Get stage from current node or from current viewport?
         #       Investigate pros & cons and decide.
@@ -25,7 +24,6 @@ def _stage_on_widget(widget_creator):
 @lru_cache(maxsize=None)
 def _creator(widget_creator):
     widget = _stage_on_widget(widget_creator)()
-    print(widget)
     def refresh_ui():
         viewer = toolutils.sceneViewer()
         node = viewer.currentNode()
@@ -43,8 +41,6 @@ def _spreadsheet():
     :return:
     """
     widget = _stage_on_widget(_sheets.SpreadsheetEditor)()
-    print("Connecting Spreadsheet Editor Updates")
-
     def refresh_ui():
         viewer = toolutils.sceneViewer()
         node = viewer.currentNode()
@@ -55,9 +51,6 @@ def _spreadsheet():
 
 
 def _prim_composition():
-    print("Launching Prim Composition!")
-    import importlib
-    importlib.reload(_description)
     editor = _description.PrimComposition(parent=hou.qt.mainWindow())
     editor._prim = None
 

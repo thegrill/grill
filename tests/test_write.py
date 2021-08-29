@@ -26,10 +26,10 @@ class TestWrite(unittest.TestCase):
         tempdir = tempfile.mkdtemp()
         logger.debug(f"Repository root directory: {tempdir}")
         self.root_asset = write.UsdAsset.get_anonymous()
-        self.token = write.repo.set(Path(tempdir) / "repo")
+        self.token = write.Repository.set(Path(tempdir) / "repo")
 
     def tearDown(self) -> None:
-        write.repo.reset(self.token)
+        write.Repository.reset(self.token)
 
     def test_fetch_stage(self):
         root_asset = self.root_asset
@@ -38,7 +38,7 @@ class TestWrite(unittest.TestCase):
         # fetching stage outside of AR _context should resolve to same stage
         self.assertIs(root_stage, write.fetch_stage(root_asset))
 
-        repo_path = write.repo.get()
+        repo_path = write.Repository.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
         with Ar.ResolverContextBinder(resolver_ctx):
             # inside an AR resolver _context, a new layer and custom stage should end up
@@ -113,19 +113,19 @@ class TestWrite(unittest.TestCase):
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {'invalid': 42})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {'invalid': 42})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: 42})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {write._FIELDS_KEY: 42})
         with self.assertRaises(TypeError):
             write.create(not_taxon, "WillFail")
 
-        not_taxon.SetCustomDataByKey(write._PRIM_GRILL_KEY, {write._PRIM_FIELDS_KEY: {}})
+        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {write._FIELDS_KEY: {}})
         with self.assertRaises(ValueError):
             write.create(not_taxon, "WillFail")
 
@@ -134,3 +134,34 @@ class TestWrite(unittest.TestCase):
 
         with write.unit_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")
+
+        hero = write.define_taxon(root_stage, "Hero", references=(person,))
+        batman = write.create(hero, "Batman")
+        expected_people = [emil, batman]  # batman is also a person
+        expected_heroes = [batman]
+        self.assertEqual(expected_people, list(write._iter_taxa(root_stage, person)))
+        self.assertEqual(expected_heroes, list(write._iter_taxa(root_stage, hero)))
+
+    def test_asset_unit(self):
+        stage = write.fetch_stage(self.root_asset)
+        taxon_name = "Person"
+        person = write.define_taxon(stage, taxon_name)
+        unit_name = "EmilSinclair"
+        emil = write.create(person, unit_name, label="Emil Sinclair")
+        unit_asset = write.unit_asset(emil)
+        unit_id = write.UsdAsset(unit_asset.identifier)
+        self.assertEqual(unit_name, getattr(unit_id, write._UNIT_UNIQUE_ID.name))
+        self.assertEqual(taxon_name, getattr(unit_id, write._TAXONOMY_UNIQUE_ID.name))
+
+        not_a_unit = stage.DefinePrim(emil.GetPath().AppendChild("not_a_unit"))
+        with self.assertRaisesRegex(ValueError, "Missing or empty"):
+            write.unit_asset(not_a_unit)
+        with self.assertRaisesRegex(ValueError, "Expected a valid populated mapping"):
+            write._context(not_a_unit, {})
+        with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
+            write._edit_context(not_a_unit, stage.GetRootLayer())
+
+    def test_create_many(self):
+        stage = write.fetch_stage(self.root_asset)
+        taxon = write.define_taxon(stage, "Another")
+        write.create_many(taxon, (f"new_{x}" for x in range(10)))
