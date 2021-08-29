@@ -298,6 +298,9 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
     def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
         self.sourceModel().sort(column, order)
 
+# for older USD versions (houdini ships with 20.08 but has master API)
+_PRIM_PROTOTYPE_QUERY_METHOD = Usd.Prim.IsInPrototype if hasattr(Usd.Prim, "IsInPrototype") else Usd.Prim.IsInMaster
+
 
 class StageTableModel(_ObjectTableModel):
     """This model provides flexibility for:
@@ -354,7 +357,7 @@ class StageTableModel(_ObjectTableModel):
             active = prim.IsActive()
             if prim.IsInstance():
                 color = _PrimTextColor.INSTANCE
-            elif prim.IsInPrototype() or prim.IsInstanceProxy():
+            elif _PRIM_PROTOTYPE_QUERY_METHOD(prim) or prim.IsInstanceProxy():
                 color = _PrimTextColor.PROTOTYPE
             elif (
                 prim.HasAuthoredReferences() or
