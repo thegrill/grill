@@ -86,6 +86,10 @@ class TestViews(unittest.TestCase):
         self._tmpf = tempfile.mkdtemp()
         self._token = write.Repository.set(write.Path(self._tmpf) / "repo")
         self.rootf = write.UsdAsset.get_anonymous()
+        self.grill_world = gworld = write.fetch_stage(self.rootf.name)
+        self.person = write.define_taxon(gworld, "Person")
+        self.agent = write.define_taxon(gworld, "Agent", references=(self.person,))
+        self.generic_agent = write.create(self.agent, "GenericAgent")
 
     def tearDown(self) -> None:
         write.Repository.reset(self._token)
@@ -164,7 +168,7 @@ class TestViews(unittest.TestCase):
         widget._apply()
 
     def test_taxonomy_editor(self):
-        stage = write.fetch_stage(str(self.rootf))
+        stage = write.fetch_stage(str(self.rootf.get_anonymous()))
 
         existing = [write.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
 
@@ -269,6 +273,23 @@ class TestViews(unittest.TestCase):
         widget._model_hierarchy.click()  # disables model hierarchy, which we don't have any
         widget.table.selectAll()
         widget._pasteClipboard()
+
+        widget.model._prune_children = {Sdf.Path("/inactive")}
+        gworld = self.grill_world
+        with write.unit_context(self.generic_agent):
+            child_agent = gworld.DefinePrim(self.generic_agent.GetPath().AppendChild("child"))
+            child_attr = child_agent.CreateAttribute("agent_greet", Sdf.ValueTypeNames.String, custom=False)
+            child_attr.Set("aloha")
+        agent_id = write.unit_asset(self.generic_agent)
+        for i in range(3):
+            agent = gworld.DefinePrim(f"/Instanced/Agent{i}")
+            agent.GetReferences().AddReference(agent_id.identifier)
+            agent.SetInstanceable(True)
+        gworld.OverridePrim("/non/existing/prim")
+        inactive = gworld.DefinePrim("/inactive/prim")
+        inactive.SetActive(False)
+        widget.setStage(self.grill_world)
+
 
     def test_prim_filter_data(self):
         stage = write.fetch_stage(self.rootf)

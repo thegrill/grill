@@ -77,9 +77,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         layer_stack = pcp_node.layerStack
         root_layer = layer_stack.identifier.rootLayer
         sublayers = _sublayers(layer_stack)
-        try:
-            # thought: we could lru_cache here but need to test hashability of Pcp objects
-            # for now, we use the root layers themselves
+        try:  # lru_cache not compatible with Pcp objects, so we "cache" at the layer level
             return ids_by_root_layer[root_layer], sublayers
         except KeyError:
             pass  # layerStack still not processed, let's add it
@@ -342,6 +340,7 @@ class LayerTableModel(_sheets._ObjectTableModel):
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if role == QtCore.Qt.ForegroundRole:
             layer = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
+            # TODO: add a concrete color value for "dirty" layers?
             color = _sheets._PrimTextColor.ARCS if layer.dirty else _sheets._PrimTextColor.NONE
             return color.value
         return super().data(index, role)
