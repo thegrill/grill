@@ -1,4 +1,5 @@
 # USDView not on pypi yet, so not possible to test this on CI
+import operator
 import types
 from functools import lru_cache, partial
 
@@ -20,6 +21,14 @@ def _stage_on_widget(widget_creator):
     return _launcher
 
 
+def _layer_stack_from_prims(usdviewApi):
+    widget = _description.LayerStackComposition(parent=usdviewApi.qMainWindow)
+    widget.setStyleSheet(_core._USDVIEW_PUSH_BUTTON_STYLE)
+    widget.setPrimPaths(usdviewApi.dataModel.selection.getPrimPaths())
+    widget.setStage(usdviewApi.stage)
+    return widget
+
+
 @lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
     widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
@@ -36,9 +45,8 @@ def prim_composition(usdviewApi):
 
 def save_changes(usdviewApi):
     def show():
-        text = "All changes will be saved to disk.\n\nContiue?"
         if QtWidgets.QMessageBox.question(
-                usdviewApi.qMainWindow, "Save Changes", text
+            usdviewApi.qMainWindow, "Save Changes", "All changes will be saved to disk.\n\nContiue?"
         ) == QtWidgets.QMessageBox.Yes:
             usdviewApi.stage.Save()
     return types.SimpleNamespace(show=show)
@@ -62,27 +70,35 @@ class GrillPlugin(PluginContainer):
             )
 
         self._menu_items = [
-            _menu_item(title, launcher)
+            *(_menu_item(title, launcher)
             for (title, launcher) in (
                 ("Create Assets", _stage_on_widget(_create.CreateAssets)),
                 ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
                 ("Prim Composition", prim_composition),
-                ("LayerStack Composition", _stage_on_widget(_description.LayerStackComposition)),
-                ("Save Changes", save_changes),
-            )
+            )),
+            {"LayerStack Composition": [
+                _menu_item("From Current Stage", _stage_on_widget(_description.LayerStackComposition)),
+                _menu_item("From Selected Prims", _layer_stack_from_prims),
+            ]},
+            _menu_item("Save Changes", save_changes),
+            operator.methodcaller("addSeparator"),
+            {"Preferences": [_menu_item("Repository Path", repository_path)],},
         ]
 
-        self._preferences_items = [_menu_item("Repository Path", repository_path)]
-
     def configureView(self, plugRegistry, plugUIBuilder):
+        def _populate_menu(menu, items):
+            for item in items:
+                if isinstance(item, operator.methodcaller):
+                    item(menu)
+                elif isinstance(item, dict):
+                    for child_menu_name, child_items in item.items():
+                        child_menu = menu.findOrCreateSubmenu(child_menu_name)
+                        _populate_menu(child_menu, child_items)
+                else:
+                    menu.addItem(item)
         grill_menu = plugUIBuilder.findOrCreateMenu("👨‍🍳 Grill")
-        for item in self._menu_items:
-            grill_menu.addItem(item)
-        grill_menu.addSeparator()
-        preferences = grill_menu.findOrCreateSubmenu("Preferences")
-        for item in self._preferences_items:
-            preferences.addItem(item)
+        _populate_menu(grill_menu, self._menu_items)
 
 
 Tf.Type.Define(GrillPlugin)

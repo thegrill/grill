@@ -75,6 +75,7 @@ class TestViews(unittest.TestCase):
 
         world = Usd.Stage.CreateInMemory()
         self.nested = world.DefinePrim("/nested/child")
+        self.sibling = world.DefinePrim("/nested/sibling")
         self.nested.GetReferences().AddReference(merge.GetRootLayer().identifier)
 
         self.capsule = capsule
@@ -98,7 +99,7 @@ class TestViews(unittest.TestCase):
         affectedPaths = dict.fromkeys((i.GetRootLayer() for i in (self.capsule, self.sphere, self.merge)), 1)
 
         # the world affects both root and the nested prims
-        affectedPaths[self.world.GetRootLayer()] = 2
+        affectedPaths[self.world.GetRootLayer()] = 3
 
         for row in range(widget._layers.model.rowCount()):
             layer = widget._layers.model._objects[row]
@@ -106,6 +107,18 @@ class TestViews(unittest.TestCase):
             expectedAffectedPrims = affectedPaths[layer]
             actualListedPrims = widget._prims.model.rowCount()
             self.assertEqual(expectedAffectedPrims, actualListedPrims)
+
+        widget._layers.table.selectAll()
+        self.assertEqual(4, widget._layers.model.rowCount())
+        self.assertEqual(3, widget._prims.model.rowCount())
+
+        widget.setPrimPaths({"/nested/sibling"})
+        widget.setStage(self.world)
+
+        widget._layers.table.selectAll()
+        self.assertEqual(1, widget._layers.model.rowCount())
+        self.assertEqual(1, widget._prims.model.rowCount())
+
         widget.deleteLater()
 
     def test_prim_composition(self):
@@ -217,7 +230,7 @@ class TestViews(unittest.TestCase):
         widget.table.scrollContentsBy(10, 10)
 
         widget.table.selectAll()
-        expected_rows = {0, 1}  # 2 prims from path: /nested & /nested/child
+        expected_rows = {0, 1, 2}  # 3 prims from path: /nested, /nested/child, /nested/sibling
         visible_rows = ({i.row() for i in widget.table.selectedIndexes()})
         self.assertEqual(expected_rows, visible_rows)
 

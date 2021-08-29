@@ -15,8 +15,8 @@ from collections import defaultdict
 from types import MappingProxyType
 
 import networkx as nx
-from pxr import Usd, Pcp, UsdUtils
 from networkx.drawing import nx_pydot
+from pxr import Sdf, Usd, Pcp, UsdUtils
 from PySide2 import QtWidgets, QtCore, QtWebEngineWidgets
 
 from . import sheets as _sheets, _core
@@ -33,7 +33,7 @@ _ARCS_LEGEND = MappingProxyType({
 @lru_cache(maxsize=None)
 def _edge_color(edge_arcs):
     return dict(  # need to wrap color in quotes to allow multicolor
-        color=f'"{":".join(str(_ARCS_LEGEND[arc]["color"]) for arc in edge_arcs)}"',
+        color=f'"{":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs)}"',
     )
 
 
@@ -70,7 +70,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             yield from _walk_layer_tree(childtree)
 
     @lru_cache(maxsize=None)
-    def _sublayers(layer_stack):        # {Sdf.Layer: int}
+    def _sublayers(layer_stack):  # {Sdf.Layer: int}
         return MappingProxyType({v: i for i, v in enumerate(_walk_layer_tree(layer_stack.layerTree))})
 
     def _add_node(pcp_node):
@@ -86,9 +86,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        # attrs = dict(style='"rounded,filled"', shape="none", href=f"{url_prefix}{index}")
         label = f"{{<0>{_layer_label(root_layer)}"
-        # label = f'<<table cellspacing="0">'
         tooltip = "Layer Stack:"
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
@@ -96,10 +94,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
                 attrs['color'] = 'darkorange'  # can probably be dashed as well?
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
-            # label += f'\n<tr><td port="{layer_index}">{_layer_label(layer)}</td></tr>'
             if layer != root_layer:  # root layer has been added at the start.
                 label += f"|<{layer_index}>{_layer_label(layer)}"
-        # label += "</table>>"
         label += "}"
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
@@ -413,6 +409,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         self.setLayout(layout)
         selectionModel = self._layers.table.selectionModel()
         selectionModel.selectionChanged.connect(self._selectionChanged)
+        self._prim_paths_to_compute = set()
         self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Layer Stack Composition")
 
@@ -422,9 +419,11 @@ class LayerStackComposition(QtWidgets.QDialog):
 
         prims_model = self._prims.model
         prims_model._root_paths = paths = set(chain.from_iterable(
-            self._computed_graph_info.paths_by_ids[i] for i in node_indices)
+            # some layers from the layer stack might be on our selected indices but they wont be on the paths_by_ids
+            self._computed_graph_info.paths_by_ids[i] for i in node_indices if i in self._computed_graph_info.paths_by_ids)
         )
-        self._prims._filter_predicate = lambda prim: prim.GetPath() in paths
+        all_paths = set(chain.from_iterable(self._computed_graph_info.paths_by_ids.values()))
+        self._prims._filter_predicate = lambda prim: prim.GetPath() in (paths or all_paths)
         self._prims._update_stage()
         self._graph_view.view(node_indices)
 
@@ -434,9 +433,17 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._stage = stage
         predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)
+        if self._prim_paths_to_compute:
+            prims = (p for p in prims if p.GetPath() in self._prim_paths_to_compute)
+
         graph_info = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._prims.setStage(stage)
         self._update_graph_from_graph_info(graph_info)
+        self._selectionChanged(None, None)
+
+    def setPrimPaths(self, value):
+        self._prim_paths_to_compute = {p if isinstance(p, Sdf.Path) else Sdf.Path(p) for p in value}
+        print(self._prim_paths_to_compute)
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
         self._computed_graph_info = graph_info
@@ -447,7 +454,9 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._graph_view.graph = graph
         self._graph_view.sticky_nodes.extend(graph_info.sticky_nodes)
         self._layers.model.setLayers(graph_info.ids_by_layers)
-        self._graph_view.view(self._graph_view._viewing)
+        # view intersection as we might be seeing nodes that no longer exist
+        # self._graph_view.view(self._graph_view._viewing)  # TODO: check if this is better <- and reset _viewing somewhere else
+        self._graph_view.view(self._graph_view._viewing.intersection(graph_info.nodes))
 
     def _iedges(self, graph_info: _GraphInfo):
         checked_arcs = {arc for arc, control in self._graph_edge_include.items() if control.isChecked()}
