@@ -20,7 +20,6 @@ def _main_window():
 def _stage_on_widget(widget_creator):
     @lru_cache(maxsize=None)
     def _launcher():
-        print(f"Launching {widget_creator}!")
         widget = widget_creator(parent=_main_window())
         widget.setStyleSheet(
             # Maya checked buttons style look ugly (all black),
@@ -40,7 +39,6 @@ def _stage_on_widget(widget_creator):
 
 @lru_cache(maxsize=None)
 def _prim_composition():
-    print("Launching PRIM COMP!")
     widget = _description.PrimComposition(parent=_main_window())
 
     def selection_changed(*_, **__):
