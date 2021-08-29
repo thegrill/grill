@@ -560,8 +560,9 @@ class _Spreadsheet(QtWidgets.QDialog):
             QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
 
     def _pasteClipboard(self):
+        logger.warning("Pasting is still experimental")
         text = QtWidgets.QApplication.instance().clipboard().text()
-        logger.info(f"Creating rows with:\n{text}")
+        logger.info(f"Pasting rows with:\n{text}")
         if not text:
             logger.info("Nothing to do!")
             return
@@ -609,7 +610,7 @@ class _Spreadsheet(QtWidgets.QDialog):
 
         maxrow = max(selected_row + len(data),  # either the amount of rows to paste
                      max(selected_rows, default=current_count) + 1)  # or the current row count
-        print(f"maxrow, {maxrow}")
+        logger.debug(f"maxrow, {maxrow}")
 
         # this is a bit broken. When pasting a single row on N non-sequential selected items,
         # we are pasting the same value on all the inbetween non selected rows. please fix
@@ -623,62 +624,33 @@ class _Spreadsheet(QtWidgets.QDialog):
 
         for visual_row, rowdata in enumerate(itertools.cycle(data), start=selected_row):
             if visual_row > maxrow:
-                print(f"Visual row {visual_row} maxed maxrow {maxrow}. Stopping. Bye!")
+                logger.debug(f"Visual row {visual_row} maxed maxrow {maxrow}. Stopping. Bye!")
                 break
             if single_row_source and visual_row not in selected_rows:
-                print(f"Visual row {visual_row} not in selected rows {selected_rows}. Continue")
+                logger.debug(f"Visual row {visual_row} not in selected rows {selected_rows}. Continue")
                 continue
-
-            print(f"visual_row={visual_row}")
-            print(f"pasting data={rowdata}")
-
+            logger.debug(f"visual_row={visual_row}")
+            logger.debug(f"pasting data={rowdata}")
             if visual_row == current_count:
-                # we're at the end of the rows.
+                # TODO: we're at the end of the rows.
                 # If we are in a filtered place, alert the user if they want to paste rest
-                print(f"inserting a row at row_index {visual_row}???")
-                # model.insertRow(row_index)
-                # time_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                # prim = stage.DefinePrim(f"/root/test_{row_index}_{time_str}")
-                # print(prim)
-                # self._addPrimToRow(row_index, prim)
+                logger.warning(f">> No more visual rows to paste on: {visual_row}")
             else:
-                # model.data(index, )
                 prim = model.data(model.index(visual_row, 0), _core._QT_OBJECT_DATA_ROLE)
-                # source_index = _sourceIndex(model.index(visual_row, 0))
-                # if isinstance(source_index.model(), _ObjectTableModel):
-                #     prim =
-                # source_item = self.model.itemFromIndex(source_index)
-                # # prim = self.model.index(row_index, 0).data(QtCore.Qt.UserRole)
-                #
-                # prim = source_item.data(_core._QT_OBJECT_DATA_ROLE)
-                # print("Source model:")
-                print(prim)
-                # print("Table proxy model:")
-                # print(self.table.model().index(row_index, 0).data(QtCore.Qt.UserRole))
-
                 for column_index, column_data in enumerate(rowdata, start=selected_column):
-                    # item = model.map
-                    # mapped = table_model.mapToSource(table_model.index(row_index, column_index))
-                    # _sourceIndex(model.index(visual_row, column_index))
-                    # item = model.item(row_index, column_index)
-                    # s_index = _sourceIndex(model.index(visual_row, column_index))
-                    # s_item = self.model.itemFromIndex(s_index)
-                    # assert s_item.data(_core._QT_OBJECT_DATA_ROLE) is prim
-
                     setter = self._columns_spec[column_index].setter
                     if prim:
                         if not setter:
-                            print(f"Skipping since missing setter: {column_data}")
+                            logger.debug(f"Skipping since missing setter: {column_data}")
                             continue
-                        print(f"Setting {column_data} with type {type(column_data)} on {prim}")
+                        logger.debug(f"Setting {column_data} with type {type(column_data)} on {prim}")
                         try:
                             setter(prim, column_data)
                         except Exception as exc:
-                            print(exc)
-                            import json  # big hack. how to?
-                            # due to boolean types
+                            logger.debug(exc)
+                            import json  # big hack. how to? this happens when pasting boolean types
                             column_data = json.loads(column_data.lower())
-                            print(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
+                            logger.debug(f"Attempting to parse an {column_data} with type {type(column_data)} on {prim}")
                             setter(prim, column_data)
                     else:
                         s_index = _sourceIndex(model.index(visual_row, column_index))
