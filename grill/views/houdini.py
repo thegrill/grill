@@ -46,6 +46,8 @@ def _spreadsheet():
         node = viewer.currentNode()
         node.cook(force=True)
 
+    # https://github.com/nexdatas/selector/blob/b4d6ae92f8887d1bee8bd45dd3cc5777be5ccceb/nxsselector/ElementModel.py#L501
+    # https://github.com/pyblish/pyblish-qml/blob/master/pyblish_qml/models.py
     # widget.table.itemChanged.connect(refresh_ui)  # TODO: disabled since new model does not have refresh capabilities yet!
     return widget
 

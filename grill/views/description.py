@@ -446,6 +446,7 @@ class LayerStackComposition(QtWidgets.QDialog):
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
         self._computed_graph_info = graph_info
+        # https://stackoverflow.com/questions/33262913/networkx-move-edges-in-nx-multidigraph-plot
         graph = nx.MultiDiGraph()
         graph.graph['graph'] = dict(tooltip="LayerStack Composition")
         graph.add_nodes_from(self._computed_graph_info.nodes.items())

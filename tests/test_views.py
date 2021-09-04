@@ -8,7 +8,7 @@ from unittest import mock
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
-from grill import write
+from grill import cook, usd
 from grill.views import description, sheets, create
 
 
@@ -33,7 +33,7 @@ class TestPrivate(unittest.TestCase):
             Sdf.Path("/deep/nested/unique/path"),
             Sdf.Path("/alone"),
         ]
-        actual = sheets._common_paths(input_paths)
+        actual = usd.common_paths(input_paths)
         expected = [
             Sdf.Path('/alone'),
             Sdf.Path('/deep/nested/unique/path'),
@@ -84,15 +84,15 @@ class TestViews(unittest.TestCase):
         self.world = world
 
         self._tmpf = tempfile.mkdtemp()
-        self._token = write.Repository.set(write.Path(self._tmpf) / "repo")
-        self.rootf = write.UsdAsset.get_anonymous()
-        self.grill_world = gworld = write.fetch_stage(self.rootf.name)
-        self.person = write.define_taxon(gworld, "Person")
-        self.agent = write.define_taxon(gworld, "Agent", references=(self.person,))
-        self.generic_agent = write.create(self.agent, "GenericAgent")
+        self._token = cook.Repository.set(cook.Path(self._tmpf) / "repo")
+        self.rootf = cook.UsdAsset.get_anonymous()
+        self.grill_world = gworld = cook.fetch_stage(self.rootf.name)
+        self.person = cook.define_taxon(gworld, "Person")
+        self.agent = cook.define_taxon(gworld, "Agent", references=(self.person,))
+        self.generic_agent = cook.create(self.agent, "GenericAgent")
 
     def tearDown(self) -> None:
-        write.Repository.reset(self._token)
+        cook.Repository.reset(self._token)
         shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
@@ -137,10 +137,10 @@ class TestViews(unittest.TestCase):
         widget.clear()
 
     def test_create_assets(self):
-        stage = write.fetch_stage(str(self.rootf))
+        stage = cook.fetch_stage(str(self.rootf))
 
         for each in range(1, 6):
-            write.define_taxon(stage, f"Option{each}")
+            cook.define_taxon(stage, f"Option{each}")
 
         widget = create.CreateAssets()
         widget.setStage(stage)
@@ -168,9 +168,9 @@ class TestViews(unittest.TestCase):
         widget._apply()
 
     def test_taxonomy_editor(self):
-        stage = write.fetch_stage(str(self.rootf.get_anonymous()))
+        stage = cook.fetch_stage(str(self.rootf.get_anonymous()))
 
-        existing = [write.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
+        existing = [cook.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
 
         widget = create.TaxonomyEditor()
         with self.assertRaises(ValueError):
@@ -200,7 +200,7 @@ class TestViews(unittest.TestCase):
         widget._create()
 
         for name, __, __ in valid_data:
-            created = stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH).GetPrimAtPath(name)
+            created = stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH).GetPrimAtPath(name)
             self.assertTrue(created.IsValid())
 
         sheet_model = widget.sheet.model
@@ -276,11 +276,11 @@ class TestViews(unittest.TestCase):
 
         widget.model._prune_children = {Sdf.Path("/inactive")}
         gworld = self.grill_world
-        with write.unit_context(self.generic_agent):
+        with cook.unit_context(self.generic_agent):
             child_agent = gworld.DefinePrim(self.generic_agent.GetPath().AppendChild("child"))
             child_attr = child_agent.CreateAttribute("agent_greet", Sdf.ValueTypeNames.String, custom=False)
             child_attr.Set("aloha")
-        agent_id = write.unit_asset(self.generic_agent)
+        agent_id = cook.unit_asset(self.generic_agent)
         for i in range(3):
             agent = gworld.DefinePrim(f"/Instanced/Agent{i}")
             agent.GetReferences().AddReference(agent_id.identifier)
@@ -290,15 +290,14 @@ class TestViews(unittest.TestCase):
         inactive.SetActive(False)
         widget.setStage(self.grill_world)
 
-
     def test_prim_filter_data(self):
-        stage = write.fetch_stage(self.rootf)
-        person = write.define_taxon(stage, "Person")
-        agent = write.define_taxon(stage, "Agent", references=(person,))
-        generic = write.create(agent, "GenericAgent")
-        with write.unit_context(generic):
+        stage = cook.fetch_stage(self.rootf)
+        person = cook.define_taxon(stage, "Person")
+        agent = cook.define_taxon(stage, "Agent", references=(person,))
+        generic = cook.create(agent, "GenericAgent")
+        with cook.unit_context(generic):
             stage.DefinePrim(generic.GetPath().AppendChild("ChildPrim"))
-        generic_asset = write.unit_asset(generic)
+        generic_asset = cook.unit_asset(generic)
         for each in range(10):
             path = Sdf.Path.absoluteRootPath.AppendChild(f"Instance{each}")
             instance = stage.DefinePrim(path)
