@@ -1,4 +1,4 @@
-"""Authoring and editing foundational tools for the pipeline.
+"""Inspecting, authoring and editing foundational tools for the pipeline.
 
 .. data:: Repository
 
@@ -45,6 +45,12 @@ from grill.tokens import ids
 logger = logging.getLogger(__name__)
 
 Repository = contextvars.ContextVar('Repository')
+
+_TAXA_KEY = 'taxa'
+_FIELDS_KEY = 'fields'
+_ASSETINFO_KEY = 'grill'
+_ASSETINFO_TAXA_KEY = f'{_ASSETINFO_KEY}:{_TAXA_KEY}'
+_ASSETINFO_FIELDS_KEY = f'{_ASSETINFO_KEY}:{_FIELDS_KEY}'
 
 # Taxonomy rank handles the grill classification and grouping of assets.
 _TAXONOMY_NAME = 'Taxonomy'
@@ -146,6 +152,12 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
         prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
     return prim
+
+
+def itaxa(prims, taxon, *taxa):
+    """Yields prims that are part of the given taxa."""
+    taxa_names = {i if isinstance(i, str) else i.GetName() for i in (taxon, *taxa)}
+    return (prim for prim in prims if taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}))
 
 
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
