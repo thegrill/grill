@@ -46,12 +46,6 @@ logger = logging.getLogger(__name__)
 
 Repository = contextvars.ContextVar('Repository')
 
-_TAXA_KEY = 'taxa'
-_FIELDS_KEY = 'fields'
-_ASSETINFO_KEY = 'grill'
-_ASSETINFO_TAXA_KEY = f'{_ASSETINFO_KEY}:{_TAXA_KEY}'
-_ASSETINFO_FIELDS_KEY = f'{_ASSETINFO_KEY}:{_FIELDS_KEY}'
-
 # Taxonomy rank handles the grill classification and grouping of assets.
 _TAXONOMY_NAME = 'Taxonomy'
 _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
@@ -152,19 +146,6 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
         prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
     return prim
-
-
-def _iter_taxa(stage, taxon1, *taxonN, predicate=Usd.PrimAllPrimsPredicate):
-    """Iterate over prims that inherit from the given taxa."""
-    it = iter(Usd.PrimRange.Stage(stage, predicate=predicate))
-    taxa_names = {i if isinstance(i, str) else i.GetName() for i in (taxon1, *taxonN)}
-    for prim in it:
-        if prim.GetPath().HasPrefix(_TAXONOMY_ROOT_PATH):
-            # Ignore prims from the taxonomy hierarchy as they're not
-            # taxa members but the definition themselves.
-            it.PruneChildren()
-        elif taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}):
-            yield prim
 
 
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
