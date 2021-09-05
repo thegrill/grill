@@ -57,6 +57,8 @@ _TAXONOMY_NAME = 'Taxonomy'
 _TAXONOMY_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_TAXONOMY_NAME)
 _TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster  # High level organization of our assets.
 _TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
+_ASSETINFO_TAXON_KEY = f'{_ASSETINFO_FIELDS_KEY}:{_TAXONOMY_UNIQUE_ID.name}'
+
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 _UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
 
@@ -160,6 +162,11 @@ def itaxa(prims, taxon, *taxa):
     return (prim for prim in prims if taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}))
 
 
+def taxon_name(prim) -> str:
+    """Taxon name for the given prim, if any."""
+    return prim.GetAssetInfoByKey(_ASSETINFO_TAXON_KEY) or ""
+
+
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
@@ -203,6 +210,9 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         asset_layer = asset_stage.GetRootLayer()
         asset_layer.subLayerPaths.append(taxonomy_id)
         asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
+        modelAPI = Usd.ModelAPI(asset_origin)
+        modelAPI.SetAssetName(name)
+        modelAPI.SetAssetIdentifier(str(assetid))
         asset_origin.GetInherits().AddInherit(taxon_path)
         asset_stage.SetDefaultPrim(asset_origin)
         if label:
