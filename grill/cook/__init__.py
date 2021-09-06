@@ -59,6 +59,11 @@ _TAXONOMY_UNIQUE_ID = ids.CGAsset.cluster  # High level organization of our asse
 _TAXONOMY_FIELDS = types.MappingProxyType({_TAXONOMY_UNIQUE_ID.name: _TAXONOMY_NAME})
 _ASSETINFO_TAXON_KEY = f'{_ASSETINFO_FIELDS_KEY}:{_TAXONOMY_UNIQUE_ID.name}'
 
+_CATALOGUE_NAME = 'Catalogue'
+_CATALOGUE_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_CATALOGUE_NAME)
+_CATALOGUE_ID = ids.CGAsset.kingdom  # where all existing units will be "discoverable"
+_CATALOGUE_FIELDS = types.MappingProxyType({_CATALOGUE_ID.name: _CATALOGUE_NAME})
+
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 _UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
 
@@ -187,17 +192,28 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     # Edits will go to the first layer that matches a valid pipeline identifier
     # TODO: Evaluate if this agreement is robust enough for different workflows.
 
-    # Some workflows like houdini might load layers without permissions to edit
-    # Since we know we are in a valid pipeline layer, temporarily allow edits
-    # for our operations, then restore original permissions.
-    current_permission = root_layer.permissionToEdit
-    root_layer.SetPermissionToEdit(True)
-
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
     taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
 
-    scope_path = stage.GetPseudoRoot().GetPath().AppendPath(taxon.GetName())
+    try:
+        catalogue_layer = _find_layer_matching(_CATALOGUE_FIELDS, stage.GetLayerStack())
+        catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
+    except ValueError:  # first time adding the catalogue layer
+        catalogue_asset = current_asset_name.get(**_CATALOGUE_FIELDS)
+        catalogue_stage = fetch_stage(catalogue_asset)
+        catalogue_layer = catalogue_stage.GetRootLayer()
+        catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
+        # Use paths relative to our repository to guarantee portability
+        root_layer.subLayerPaths.insert(0, catalogue_id)
+
+    # Some workflows like houdini might load layers without permissions to edit
+    # Since we know we are in a valid pipeline layer, temporarily allow edits
+    # for our operations, then restore original permissions.
+    current_permission = catalogue_layer.permissionToEdit
+    catalogue_layer.SetPermissionToEdit(True)
+
+    scope_path = _CATALOGUE_ROOT_PATH.AppendChild(taxon.GetName())
     scope = stage.GetPrimAtPath(scope_path)
 
     def _create(name, label):
@@ -207,7 +223,12 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             return prim
         assetid = new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name})
         asset_stage = fetch_stage(assetid)
+        # Deactivate "ourselves" as we are this item in the catalogue
+        # TODO: this is experimental, see how reasonable / scalable this is
+        # asset_stage.OverridePrim(path).SetActive(False)  # needed?
+        asset_stage.CreateClassPrim(_CATALOGUE_ROOT_PATH)
         asset_layer = asset_stage.GetRootLayer()
+        asset_layer.subLayerPaths.append(catalogue_id)
         asset_layer.subLayerPaths.append(taxonomy_id)
         asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
         modelAPI = Usd.ModelAPI(asset_origin)
@@ -224,7 +245,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         return over_prim
 
     labels = itertools.chain(labels, itertools.repeat(""))
-    with Usd.EditContext(stage, root_layer):
+    with Usd.EditContext(stage, catalogue_layer):
         # Scope collecting all assets of the same type
         if not scope:
             scope = stage.DefinePrim(scope_path)
@@ -232,7 +253,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             Usd.ModelAPI(scope).SetKind(Kind.Tokens.assembly)
         prims = [_create(name, label) for name, label in zip(names, labels)]
 
-    root_layer.SetPermissionToEdit(current_permission)
+    catalogue_layer.SetPermissionToEdit(current_permission)
     return prims
 
 
@@ -274,7 +295,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
 
 def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     """Get an `edit context <https://graphics.pixar.com/usd/docs/api/class_usd_edit_context.html>`_ where edits will target this `prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_'s unit root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_."""
-    fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
+    fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: Usd.ModelAPI(prim).GetAssetName() or ""}
     return _context(prim, fields)
 
 
@@ -359,8 +380,13 @@ def _(obj: Usd.Stage, layer):
 def _(obj: Usd.Prim, layer):
     # We need to explicitly construct our edit target since our layer is not on the layer stack of the stage.
     # TODO: this is specific about "localised edits" for an asset. Dispatch no longer looking solid?
+    # Warning: this targets the origin prim spec as the "entry point" edit target for a unit of a taxon.
+    # This means some operations like specializes, inherits or internal reference / payloads
+    # might not be able to be resolved (you will se an error like:
+    # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
     query = Usd.PrimCompositionQuery(obj)
     query.filter = _ASSET_UNIT_QUERY_FILTER
+    logger.debug(f"Searching for {layer=}")
     for arc in query.GetCompositionArcs():
         target_node = arc.GetTargetNode()
         # contract: we consider the "unit" target node the one matching origin path and the given layer
