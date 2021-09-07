@@ -71,7 +71,6 @@ _UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
 _ASSET_UNIT_QUERY_FILTER = Usd.PrimCompositionQuery.Filter()
 _ASSET_UNIT_QUERY_FILTER.dependencyTypeFilter = Usd.PrimCompositionQuery.DependencyTypeFilter.Direct
 _ASSET_UNIT_QUERY_FILTER.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
-_ASSET_UNIT_QUERY_FILTER.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.ReferenceOrPayload
 
 
 @functools.lru_cache(maxsize=None)
