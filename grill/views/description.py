@@ -337,6 +337,7 @@ class PrimComposition(QtWidgets.QDialog):
 
 
 class LayerTableModel(_sheets._ObjectTableModel):
+    # TODO: allow for right click -> Get pseudo USD layer text
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if role == QtCore.Qt.ForegroundRole:
             layer = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)

@@ -74,7 +74,7 @@ _ASSET_UNIT_QUERY_FILTER.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilte
 
 
 @functools.lru_cache(maxsize=None)
-def fetch_stage(identifier: str) -> Usd.Stage:
+def fetch_stage(identifier: str, resolver_ctx: Ar.ResolverContext = None) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
@@ -84,8 +84,12 @@ def fetch_stage(identifier: str) -> Usd.Stage:
     """
     layer_id = UsdAsset(identifier).name
     cache = UsdUtils.StageCache.Get()
-    repo_path = Repository.get()
-    resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
+    if not resolver_ctx:
+        repo_path = Repository.get()
+        resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
+    else:  # TODO: see how to make this work, seems very experimental atm.
+        repo_path = Path(resolver_ctx.Get()[0].GetSearchPath()[0])
+
     with Ar.ResolverContextBinder(resolver_ctx):
         logger.debug(f"Searching for {layer_id}")
         layer = Sdf.Layer.Find(layer_id)
@@ -302,6 +306,25 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     """Get the asset layer that acts as the 'entry point' for the given prim."""
     fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
     return _find_layer_matching(fields, _layer_stack(prim))
+
+
+def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
+    """Convenience function for bringing a unit prim as a descendant of another.
+
+    - Both parent and child must be existing units in the catalogue.
+    - If path is not provided, the name of child will be used.
+    """
+    # this is because at the moment it is not straight forward to bring catalogue units under others.
+    parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext())
+    origin = parent_stage.GetDefaultPrim()
+    path = origin.GetPath().AppendPath(path or child.GetName())
+    # TODO: turn into function to ensure creation and query are the same?
+    child_catalogue_unit_path = _CATALOGUE_ROOT_PATH.AppendChild(taxon_name(child)).AppendChild(Usd.ModelAPI(child).GetAssetName())
+    with unit_context(origin):
+        spawned = parent_stage.DefinePrim(path)
+        # NOTE: Experimenting to see if specializing from catalogue is a nice approach.
+        # TODO: use model hierarchy here?
+        spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
 
 
 def _root_asset(stage):
