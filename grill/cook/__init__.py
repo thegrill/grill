@@ -322,9 +322,11 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     child_catalogue_unit_path = _CATALOGUE_ROOT_PATH.AppendChild(taxon_name(child)).AppendChild(Usd.ModelAPI(child).GetAssetName())
     with unit_context(origin):
         spawned = parent_stage.DefinePrim(path)
-        # NOTE: Experimenting to see if specializing from catalogue is a nice approach.
-        # TODO: use model hierarchy here?
-        spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
+        with Sdf.ChangeBlock():
+            # NOTE: Experimenting to see if specializing from catalogue is a nice approach.
+            # TODO: use model hierarchy here?
+            spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
+            spawned.SetInstanceable(True)
 
 
 def _root_asset(stage):
