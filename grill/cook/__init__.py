@@ -39,7 +39,7 @@ from pprint import pformat
 
 import naming
 from pxr import UsdUtils, Usd, Sdf, Ar, Kind
-from grill import names
+from grill import names, usd
 from grill.tokens import ids
 
 logger = logging.getLogger(__name__)
@@ -234,6 +234,8 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         asset_layer.subLayerPaths.append(catalogue_id)
         asset_layer.subLayerPaths.append(taxonomy_id)
         asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
+        # all catalogue units start as components
+        Usd.ModelAPI(asset_origin).SetKind(Kind.Tokens.component)
         modelAPI = Usd.ModelAPI(asset_origin)
         modelAPI.SetAssetName(name)
         modelAPI.SetAssetIdentifier(str(assetid))
@@ -249,11 +251,13 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     labels = itertools.chain(labels, itertools.repeat(""))
     with Usd.EditContext(stage, catalogue_layer):
-        # Scope collecting all assets of the same type
+        # Scope collecting all units based on taxon
         if not scope:
             scope = stage.DefinePrim(scope_path)
         if not scope.IsModel():
-            Usd.ModelAPI(scope).SetKind(Kind.Tokens.assembly)
+            # We use groups to ensure our scope is part of a valid model hierarchy
+            for path in scope.GetPath().GetPrefixes():
+                Usd.ModelAPI(stage.GetPrimAtPath(path)).SetKind(Kind.Tokens.group)
         prims = [_create(name, label) for name, label in zip(names, labels)]
 
     catalogue_layer.SetPermissionToEdit(current_permission)
@@ -313,20 +317,31 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
 
     - Both parent and child must be existing units in the catalogue.
     - If path is not provided, the name of child will be used.
+    - Validity on model hierarchy is preserved by:
+        - turning parent into an assembly
+        - ensuring intermediate prims between parent and child are also models
+    - By default, spawned units are instanceable
     """
     # this is because at the moment it is not straight forward to bring catalogue units under others.
     parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext())
     origin = parent_stage.GetDefaultPrim()
-    path = origin.GetPath().AppendPath(path or child.GetName())
+    relpath = path or child.GetName()
+    path = origin.GetPath().AppendPath(relpath)
     # TODO: turn into function to ensure creation and query are the same?
     child_catalogue_unit_path = _CATALOGUE_ROOT_PATH.AppendChild(taxon_name(child)).AppendChild(Usd.ModelAPI(child).GetAssetName())
     with unit_context(origin):
+        # Action of bringing a unit from our catalogue turns parent into an assembly
+        Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
         spawned = parent_stage.DefinePrim(path)
         with Sdf.ChangeBlock():
-            # NOTE: Experimenting to see if specializing from catalogue is a nice approach.
-            # TODO: use model hierarchy here?
+            # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
+            for inner_parent in usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
+                if not inner_parent.IsModel():
+                    Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
+            # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
             spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
             spawned.SetInstanceable(True)
+    return parent.GetPrimAtPath(relpath)
 
 
 def _root_asset(stage):

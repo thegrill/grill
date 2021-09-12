@@ -814,9 +814,11 @@ class SpreadsheetEditor(_StageSpreadsheet):
             # that are not imageable (e.g. untyped prims)
             imageable = UsdGeom.Imageable(prim)
             return imageable.GetVisibilityAttr().Get() if imageable else ""
+
         columns = (
             _Column("Path", lambda prim: str(prim.GetPath())),
             _Column("Name", Usd.Prim.GetName),
+            _Column("Asset", lambda prim: Usd.ModelAPI(prim).GetAssetName()),
             _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, editor=_prim_type_combobox),
             _Column("Documentation", Usd.Prim.GetDocumentation,
                     Usd.Prim.SetDocumentation),
