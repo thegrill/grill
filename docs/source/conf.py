@@ -51,13 +51,12 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx_autodoc_typehints']
 
 # Offset to play well with copybutton
-toggleprompt_offset_right = 25
+toggleprompt_offset_right = 35
 togglebutton_hint = " "
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
     'naming': ('http://naming.readthedocs.io/en/latest/', None),
     'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
-
 }
 hoverxref_auto_ref = True
 # hoverxref_default_type = 'tooltip'
@@ -73,8 +72,8 @@ hoverxref_intersphinx = [
   'naming',
 ]
 hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, 'tooltip')
-
 hoverxref_domains = ['py']
+
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
 

@@ -7,25 +7,16 @@ from pathlib import Path
 
 from pxr import Usd, Sdf, Ar, UsdUtils
 
-from grill import cook
+from grill import cook, names
 
 logger = logging.getLogger(__name__)
-
-
-class TestUsdAsset(unittest.TestCase):
-    def test_usd_asset(self):
-        assetname = cook.UsdAsset.get_anonymous(stream='test', suffix='usdz')
-        self.assertEqual(assetname.stream, 'test')
-        self.assertEqual(assetname.suffix, 'usdz')
-        with self.assertRaises(ValueError):
-            cook.UsdAsset.get_anonymous(suffix='xyz')
 
 
 class TestWrite(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.mkdtemp()
         logger.debug(f"Repository root directory: {tempdir}")
-        self.root_asset = cook.UsdAsset.get_anonymous()
+        self.root_asset = names.UsdAsset.get_anonymous()
         self.token = cook.Repository.set(Path(tempdir) / "repo")
 
     def tearDown(self) -> None:
@@ -43,7 +34,7 @@ class TestWrite(unittest.TestCase):
         with Ar.ResolverContextBinder(resolver_ctx):
             # inside an AR resolver _context, a new layer and custom stage should end up
             # in that stage not resolving to the same as the one from write.fetch_stage
-            usd_opened = str(cook.UsdAsset.get_anonymous(item='usd_opened'))
+            usd_opened = str(names.UsdAsset.get_anonymous(item='usd_opened'))
             Sdf.Layer.CreateNew(str(repo_path / usd_opened))
             non_cache_stage = Usd.Stage.Open(usd_opened)
             cached_stage = cook.fetch_stage(usd_opened)
@@ -53,7 +44,7 @@ class TestWrite(unittest.TestCase):
 
             # creating a new layer + stage + adding it to the cache manually
             # should allow fetch_stage to retrieve it as well.
-            sdf_opened = str(cook.UsdAsset.get_default(item='sdf_opened'))
+            sdf_opened = str(names.UsdAsset.get_default(item='sdf_opened'))
             layer = Sdf.Layer.CreateNew(str(repo_path / sdf_opened))
             del layer
             cached_layer = Sdf.Layer.FindOrOpen(sdf_opened)
@@ -81,7 +72,7 @@ class TestWrite(unittest.TestCase):
         with self.assertRaises(ValueError):
             cook.define_taxon(anon_stage, "ShouldFail")
         # Same stage containing a grill anon layer on its stack should succeed.
-        anon_pipeline = cook.fetch_stage(cook.UsdAsset.get_anonymous())
+        anon_pipeline = cook.fetch_stage(names.UsdAsset.get_anonymous())
         anon_stage.GetRootLayer().subLayerPaths.append(anon_pipeline.GetRootLayer().realPath)
         self.assertTrue(cook.define_taxon(anon_stage, "ShouldSucceed").IsValid())
 
@@ -150,17 +141,17 @@ class TestWrite(unittest.TestCase):
         unit_name = "EmilSinclair"
         emil = cook.create(person, unit_name, label="Emil Sinclair")
         unit_asset = cook.unit_asset(emil)
-        unit_id = cook.UsdAsset(unit_asset.identifier)
+        unit_id = names.UsdAsset(unit_asset.identifier)
         self.assertEqual(unit_name, getattr(unit_id, cook._UNIT_UNIQUE_ID.name))
         self.assertEqual(taxon_name, getattr(unit_id, cook._TAXONOMY_UNIQUE_ID.name))
 
         not_a_unit = stage.DefinePrim(emil.GetPath().AppendChild("not_a_unit"))
         with self.assertRaisesRegex(ValueError, "Missing or empty"):
             cook.unit_asset(not_a_unit)
-        with self.assertRaisesRegex(ValueError, "Expected a valid populated mapping"):
-            cook._context(not_a_unit, {})
+
+        layer = Sdf.Layer.CreateAnonymous()
         with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-            cook._edit_context(not_a_unit, stage.GetRootLayer())
+            cook.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda node: node.layerStack.identifier.rootLayer == layer)
 
     def test_create_many(self):
         stage = cook.fetch_stage(self.root_asset)

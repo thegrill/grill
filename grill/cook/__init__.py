@@ -25,7 +25,6 @@
 
 from __future__ import annotations
 
-import uuid
 import types
 import typing
 import logging
@@ -33,13 +32,11 @@ import functools
 import itertools
 import contextlib
 import contextvars
-import collections
 from pathlib import Path
 from pprint import pformat
 
-import naming
 from pxr import UsdUtils, UsdGeom, Usd, Sdf, Kind, Ar, Tf
-from grill import names, usd
+from grill import usd as _usd, names as _names
 from grill.tokens import ids
 
 logger = logging.getLogger(__name__)
@@ -81,8 +78,12 @@ def fetch_stage(identifier: str, resolver_ctx: Ar.ResolverContext = None) -> Usd
 
     If an open matching `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ is found on the `global cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_, return it.
     Otherwise open it, populate the `cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_ and return it.
+
+    .. attention::
+        ``identifier`` must be a valid :class:`grill.names.UsdAsset` name.
+
     """
-    layer_id = UsdAsset(identifier).name
+    layer_id = _names.UsdAsset(identifier).name
     cache = UsdUtils.StageCache.Get()
     if not resolver_ctx:
         repo_path = Repository.get()
@@ -191,7 +192,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     taxon_fields = _get_id_fields(taxon)
 
     current_asset_name, root_layer = _root_asset(stage)
-    new_asset_name = UsdAsset(current_asset_name.get(**taxon_fields))
+    new_asset_name = _names.UsdAsset(current_asset_name.get(**taxon_fields))
     # Edits will go to the first layer that matches a valid pipeline identifier
     # TODO: Evaluate if this agreement is robust enough for different workflows.
 
@@ -282,7 +283,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
         If a valid taxonomy `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ is not found on the `layer stack <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack>`_, one is added to the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
     """
     try:
-        return _context(stage, _TAXONOMY_FIELDS)
+        taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
     except ValueError:
         # Our layer is not yet on the current layer stack. Let's bring it.
         # TODO: first valid pipeline layer is ok? or should it be current edit target?
@@ -298,11 +299,15 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
             default_prim = taxonomy_stage.CreateClassPrim(_TAXONOMY_ROOT_PATH)
             taxonomy_stage.SetDefaultPrim(default_prim)
 
-        return _context(stage, _TAXONOMY_FIELDS)
+    return edit_context(stage, taxonomy_layer)
 
 
 def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     """Get an `edit context <https://graphics.pixar.com/usd/docs/api/class_usd_edit_context.html>`_ where edits will target this `prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_'s unit root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_."""
+    # This targets the origin prim spec as the "entry point" edit target for a unit of a taxon.
+    # This means some operations like specializes, inherits or internal reference / payloads
+    # might not be able to be resolved (you will se an error like:
+    # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
     layer = unit_asset(prim)
 
     def target_predicate(node):
@@ -315,7 +320,10 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     """Get the asset layer that acts as the 'entry point' for the given prim."""
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
-        return Sdf.Layer.Find(Usd.ModelAPI(prim).GetAssetIdentifier().path)
+        if layer := Sdf.Layer.Find(Usd.ModelAPI(prim).GetAssetIdentifier().path):
+            return layer
+    fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: Usd.ModelAPI(prim).GetAssetName()}
+    return _find_layer_matching(fields, prim.GetPrimStack())
 
 
 def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
@@ -340,7 +348,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
         # Action of bringing a unit from our catalogue turns parent into an assembly
         Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
         # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-        for inner_parent in usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
+        for inner_parent in _usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
             if not inner_parent.IsModel():
                 Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
         # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
@@ -359,12 +367,12 @@ def _root_asset(stage):
     """
     with contextlib.suppress(ValueError):
         root_layer = stage.GetRootLayer()
-        return UsdAsset(Path(root_layer.identifier).name), root_layer
+        return _names.UsdAsset(Path(root_layer.identifier).name), root_layer
 
     seen = set()
     for layer in stage.GetLayerStack():
         try:
-            return UsdAsset(Path(layer.identifier).name), layer
+            return _names.UsdAsset(Path(layer.identifier).name), layer
         except ValueError:
             seen.add(layer)
             continue
@@ -380,16 +388,6 @@ def _get_id_fields(prim):
     return fields
 
 
-def _context(obj, tokens):
-    # TODO: do we need to reverse the order of the layer stack?
-    #   at the moment, goes from strongest -> weakest layers
-    if not tokens:
-        raise ValueError(f"Expected a valid populated mapping as 'tokens'. Got instead: '{tokens}'")
-    layers = _layer_stack(obj)
-    asset_layer = _find_layer_matching(tokens, layers)
-    return _edit_context(obj, asset_layer)
-
-
 def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
     """Find the first layer matching the given identifier tokens.
 
@@ -402,7 +400,7 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
     seen = set()
     for layer in layers:
         # anonymous layers realPath defaults to an empty string
-        name = UsdAsset(Path(layer.realPath).name)
+        name = _names.UsdAsset(Path(layer.realPath).name)
         if tokens.difference(name.values.items()):
             seen.add(layer)
             continue
@@ -411,43 +409,19 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
 
 
 @functools.singledispatch
-def _edit_context(obj, stage):
+def edit_context(obj, layer):
+    """No doc"""
     raise TypeError(f"Not implemented: {locals()}")  # lazy
 
 
-@_edit_context.register
-def _(obj: Usd.Stage, layer):
-    return Usd.EditContext(obj, layer)
+@edit_context.register
+def _(stage: Usd.Stage, layer):
+    """stage"""
+    return Usd.EditContext(stage, layer)
 
 
-# @_edit_context.register
-# def _(obj: Usd.Prim, layer):
-#     # We need to explicitly construct our edit target since our layer is not on the layer stack of the stage.
-#     # TODO: this is specific about "localised edits" for an asset. Dispatch no longer looking solid?
-#     # Warning: this targets the origin prim spec as the "entry point" edit target for a unit of a taxon.
-#     # This means some operations like specializes, inherits or internal reference / payloads
-#     # might not be able to be resolved (you will se an error like:
-#     # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
-#     def target_predicate(node):
-#         return node.path == _UNIT_ORIGIN_PATH and node.layerStack.identifier.rootLayer == layer
-#
-#     return edit_context(obj, _ASSET_UNIT_QUERY_FILTER, target_predicate)
-#     # query = Usd.PrimCompositionQuery(obj)
-#     # query.filter = _ASSET_UNIT_QUERY_FILTER
-#     # logger.debug(f"Searching for {layer}")
-#     # for arc in query.GetCompositionArcs():
-#     #     target_node = arc.GetTargetNode()
-#     #     # contract: we consider the "unit" target node the one matching origin path and the given layer
-#     #     if target_node.path == _UNIT_ORIGIN_PATH and target_node.layerStack.identifier.rootLayer == layer:
-#     #         break
-#     # else:
-#     #     raise ValueError(f"Could not find appropriate node for edit target for {obj} matching {layer}")
-#     # target = Usd.EditTarget(layer, target_node)
-#     # return Usd.EditContext(obj.GetStage(), target)
-
-
-@functools.singledispatch
-def edit_context(prim: Usd.Prim, query_filter, target_predicate):
+@edit_context.register
+def _(prim: Usd.Prim, query_filter, target_predicate):
     """Composition arcs target layer stacks. This is a convenience function to
     get an edit context from a query filter + a filter predicate, using the root layer
     of the matching target node as the edit target layer.
@@ -463,6 +437,7 @@ def edit_context(prim: Usd.Prim, query_filter, target_predicate):
 
 @edit_context.register
 def _(payload: Sdf.Payload, prim):
+    """Payload"""
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
         layer = Sdf.Layer.Find(payload.assetPath)
@@ -482,6 +457,7 @@ def _(payload: Sdf.Payload, prim):
 
 @edit_context.register
 def _(variant_set: Usd.VariantSet, layer):
+    """variant set"""
     with contextlib.suppress(Tf.ErrorException):
         return variant_set.GetVariantEditContext()
     # ----- From Pixar -----
@@ -503,76 +479,3 @@ def _(variant_set: Usd.VariantSet, layer):
     query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Variant
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     return edit_context(prim, query_filter, is_valid_target)
-
-
-@functools.singledispatch
-def _layer_stack(obj):
-    raise TypeError(f"Not implemented: {obj}")  # lazy
-
-
-@_layer_stack.register
-def _(obj: Usd.Stage):
-    return obj.GetLayerStack()
-
-
-@_layer_stack.register
-def _(obj: Usd.Prim):
-    seen = set()
-    for spec in obj.GetPrimStack():
-        layer = spec.layer
-        if layer in seen:
-            continue
-        seen.add(layer)
-        yield layer
-
-
-class UsdAsset(names.CGAssetFile):
-    """Specialized :class:`grill.names.CGAssetFile` name object for USD asset resources.
-
-    .. admonition:: Inheritance Diagram
-        :class: dropdown, hint
-
-        .. inheritance-diagram:: grill.write.UsdAsset
-
-    This is the currency for "identifiers" in the pipeline.
-
-    Examples:
-        >>> asset_id = UsdAsset.get_default()
-        >>> asset_id
-        UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
-        >>> asset_id.suffix = 'usdc'
-        >>> asset_id.version = 42
-        >>> asset_id
-        UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.usdc")
-        >>> asset_id.suffix = 'abc'
-        Traceback (most recent call last):
-        ...
-        ValueError: Can't set invalid name 'demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.abc' on UsdAsset("demo-3d-abc-entity-rnd-main-atom-lead-base-whole.42.usdc"). Valid convention is: '{code}-{media}-{kingdom}-{cluster}-{area}-{stream}-{item}-{step}-{variant}-{part}.{pipe}.{suffix}' with pattern: '^(?P<code>\w+)\-(?P<media>\w+)\-(?P<kingdom>\w+)\-(?P<cluster>\w+)\-(?P<area>\w+)\-(?P<stream>\w+)\-(?P<item>\w+)\-(?P<step>\w+)\-(?P<variant>\w+)\-(?P<part>\w+)(?P<pipe>(\.(?P<output>\w+))?\.(?P<version>\d+)(\.(?P<index>\d+))?)(\.(?P<suffix>sdf|usd|usda|usdc|usdz))$'
-
-    .. seealso::
-        :class:`grill.names.CGAsset` for a description of available fields, :class:`naming.Name` for an overview of the core API.
-
-    """
-    DEFAULT_SUFFIX = 'usda'
-    file_config = naming.NameConfig(
-        # NOTE: limit to only extensions starting with USD (some environments register other extensions untested by the grill)
-        {'suffix': "|".join(ext for ext in Sdf.FileFormat.FindAllFileFormatExtensions() if ext.startswith('usd'))}
-    )
-
-    @classmethod
-    def get_anonymous(cls, **values) -> UsdAsset:
-        """Get an anonymous :class:`UsdAsset` name with optional field overrides.
-
-        Useful for situations where a temporary but valid identifier is needed.
-
-        :param values: Variable keyword arguments with the keys referring to the name's
-            fields which will use the given values.
-
-        Example:
-            >>> UsdAsset.get_anonymous(stream='test')
-            UsdAsset("4209091047-34604-19646-169-123-test-4209091047-34604-19646-169.1.usda")
-
-        """
-        keys = cls.get_default().get_pattern_list()
-        anon = itertools.cycle(uuid.uuid4().fields)
-        return cls.get_default(**collections.ChainMap(values, dict(zip(keys, anon))))

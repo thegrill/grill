@@ -1,5 +1,5 @@
 API Reference
 -------------
 
-.. automodule:: grill.write
+.. automodule:: grill.cook
    :members:

@@ -8,7 +8,7 @@ from unittest import mock
 from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
-from grill import cook, usd
+from grill import cook, usd, names
 from grill.views import description, sheets, create
 
 
@@ -85,7 +85,7 @@ class TestViews(unittest.TestCase):
 
         self._tmpf = tempfile.mkdtemp()
         self._token = cook.Repository.set(cook.Path(self._tmpf) / "repo")
-        self.rootf = cook.UsdAsset.get_anonymous()
+        self.rootf = names.UsdAsset.get_anonymous()
         self.grill_world = gworld = cook.fetch_stage(self.rootf.name)
         self.person = cook.define_taxon(gworld, "Person")
         self.agent = cook.define_taxon(gworld, "Agent", references=(self.person,))
@@ -251,7 +251,7 @@ class TestViews(unittest.TestCase):
         widget._copySelection()
         clip = QtWidgets.QApplication.instance().clipboard().text()
         data = tuple(csv.reader(io.StringIO(clip), delimiter=csv.excel_tab.delimiter))
-        expected_data = (['/nested/child', 'child', '', '', 'False', '', 'False'],)
+        expected_data = (['/nested/child', 'child', '', '', '', 'False', '', 'False'],)
         self.assertEqual(data, expected_data)
 
         widget.table.clearSelection()
