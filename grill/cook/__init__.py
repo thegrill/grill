@@ -38,7 +38,7 @@ from pathlib import Path
 from pprint import pformat
 
 import naming
-from pxr import UsdUtils, Usd, Sdf, Ar, Kind
+from pxr import UsdUtils, UsdGeom, Usd, Sdf, Kind, Ar, Tf
 from grill import names, usd
 from grill.tokens import ids
 
@@ -236,6 +236,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
         # all catalogue units start as components
         Usd.ModelAPI(asset_origin).SetKind(Kind.Tokens.component)
+        UsdGeom.ModelAPI.Apply(asset_origin)
         modelAPI = Usd.ModelAPI(asset_origin)
         modelAPI.SetAssetName(name)
         modelAPI.SetAssetIdentifier(str(assetid))
@@ -302,14 +303,19 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
 
 def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     """Get an `edit context <https://graphics.pixar.com/usd/docs/api/class_usd_edit_context.html>`_ where edits will target this `prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_'s unit root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_."""
-    fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: Usd.ModelAPI(prim).GetAssetName() or ""}
-    return _context(prim, fields)
+    layer = unit_asset(prim)
+
+    def target_predicate(node):
+        return node.path == _UNIT_ORIGIN_PATH and node.layerStack.identifier.rootLayer == layer
+
+    return edit_context(prim, _ASSET_UNIT_QUERY_FILTER, target_predicate)
 
 
 def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     """Get the asset layer that acts as the 'entry point' for the given prim."""
-    fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: prim.GetName()}
-    return _find_layer_matching(fields, _layer_stack(prim))
+    with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
+        # Use Layer.Find since layer should have been open for the prim to exist.
+        return Sdf.Layer.Find(Usd.ModelAPI(prim).GetAssetIdentifier().path)
 
 
 def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
@@ -329,18 +335,17 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     path = origin.GetPath().AppendPath(relpath)
     # TODO: turn into function to ensure creation and query are the same?
     child_catalogue_unit_path = _CATALOGUE_ROOT_PATH.AppendChild(taxon_name(child)).AppendChild(Usd.ModelAPI(child).GetAssetName())
-    with unit_context(origin):
+    spawned = parent_stage.DefinePrim(path)
+    with Sdf.ChangeBlock():
         # Action of bringing a unit from our catalogue turns parent into an assembly
         Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
-        spawned = parent_stage.DefinePrim(path)
-        with Sdf.ChangeBlock():
-            # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-            for inner_parent in usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
-                if not inner_parent.IsModel():
-                    Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
-            # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
-            spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
-            spawned.SetInstanceable(True)
+        # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
+        for inner_parent in usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
+            if not inner_parent.IsModel():
+                Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
+        # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
+        spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
+        spawned.SetInstanceable(True)
     return parent.GetPrimAtPath(relpath)
 
 
@@ -379,7 +384,7 @@ def _context(obj, tokens):
     # TODO: do we need to reverse the order of the layer stack?
     #   at the moment, goes from strongest -> weakest layers
     if not tokens:
-        raise ValueError(f"Expected a valid populated mapping as 'tokens'. Got instad: '{tokens}'")
+        raise ValueError(f"Expected a valid populated mapping as 'tokens'. Got instead: '{tokens}'")
     layers = _layer_stack(obj)
     asset_layer = _find_layer_matching(tokens, layers)
     return _edit_context(obj, asset_layer)
@@ -415,26 +420,89 @@ def _(obj: Usd.Stage, layer):
     return Usd.EditContext(obj, layer)
 
 
-@_edit_context.register
-def _(obj: Usd.Prim, layer):
-    # We need to explicitly construct our edit target since our layer is not on the layer stack of the stage.
-    # TODO: this is specific about "localised edits" for an asset. Dispatch no longer looking solid?
-    # Warning: this targets the origin prim spec as the "entry point" edit target for a unit of a taxon.
-    # This means some operations like specializes, inherits or internal reference / payloads
-    # might not be able to be resolved (you will se an error like:
-    # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
-    query = Usd.PrimCompositionQuery(obj)
-    query.filter = _ASSET_UNIT_QUERY_FILTER
-    logger.debug(f"Searching for {layer=}")
+# @_edit_context.register
+# def _(obj: Usd.Prim, layer):
+#     # We need to explicitly construct our edit target since our layer is not on the layer stack of the stage.
+#     # TODO: this is specific about "localised edits" for an asset. Dispatch no longer looking solid?
+#     # Warning: this targets the origin prim spec as the "entry point" edit target for a unit of a taxon.
+#     # This means some operations like specializes, inherits or internal reference / payloads
+#     # might not be able to be resolved (you will se an error like:
+#     # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
+#     def target_predicate(node):
+#         return node.path == _UNIT_ORIGIN_PATH and node.layerStack.identifier.rootLayer == layer
+#
+#     return edit_context(obj, _ASSET_UNIT_QUERY_FILTER, target_predicate)
+#     # query = Usd.PrimCompositionQuery(obj)
+#     # query.filter = _ASSET_UNIT_QUERY_FILTER
+#     # logger.debug(f"Searching for {layer}")
+#     # for arc in query.GetCompositionArcs():
+#     #     target_node = arc.GetTargetNode()
+#     #     # contract: we consider the "unit" target node the one matching origin path and the given layer
+#     #     if target_node.path == _UNIT_ORIGIN_PATH and target_node.layerStack.identifier.rootLayer == layer:
+#     #         break
+#     # else:
+#     #     raise ValueError(f"Could not find appropriate node for edit target for {obj} matching {layer}")
+#     # target = Usd.EditTarget(layer, target_node)
+#     # return Usd.EditContext(obj.GetStage(), target)
+
+
+@functools.singledispatch
+def edit_context(prim: Usd.Prim, query_filter, target_predicate):
+    """Composition arcs target layer stacks. This is a convenience function to
+    get an edit context from a query filter + a filter predicate, using the root layer
+    of the matching target node as the edit target layer.
+    """
+    query = Usd.PrimCompositionQuery(prim)
+    query.filter = query_filter
     for arc in query.GetCompositionArcs():
-        target_node = arc.GetTargetNode()
-        # contract: we consider the "unit" target node the one matching origin path and the given layer
-        if target_node.path == _UNIT_ORIGIN_PATH and target_node.layerStack.identifier.rootLayer == layer:
-            break
-    else:
-        raise ValueError(f"Could not find appropriate node for edit target for {obj} matching {layer}")
-    target = Usd.EditTarget(layer, target_node)
-    return Usd.EditContext(obj.GetStage(), target)
+        if target_predicate(node := arc.GetTargetNode()):
+            target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
+            return Usd.EditContext(prim.GetStage(), target)
+    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {target_predicate}")
+
+
+@edit_context.register
+def _(payload: Sdf.Payload, prim):
+    with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
+        # Use Layer.Find since layer should have been open for the prim to exist.
+        layer = Sdf.Layer.Find(payload.assetPath)
+    if not (payload.primPath or layer.defaultPrim):
+        raise ValueError(f"Can't proceed without a prim path to target on payload {payload} for {layer}")
+    path = payload.primPath or layer.GetPrimAtPath(layer.defaultPrim).path
+    logger.debug(f"Searching to target {layer} on {path}")
+
+    def is_valid_target(node):
+        return node.path == path and node.layerStack.identifier.rootLayer == layer
+
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Payload
+    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
+    return edit_context(prim, query_filter, is_valid_target)
+
+
+@edit_context.register
+def _(variant_set: Usd.VariantSet, layer):
+    with contextlib.suppress(Tf.ErrorException):
+        return variant_set.GetVariantEditContext()
+    # ----- From Pixar -----
+    # pxr.Tf.ErrorException:
+    # 	Error in '...::UsdVariantSet::GetVariantEditTarget' ...: 'Layer <identifier> is not a local layer of stage rooted at layer <identifier>'
+    # https://graphics.pixar.com/usd/docs/api/class_usd_variant_set.html#a83f3adf614736a0b43fa1dd5271a9528
+    # Currently, we require layer to be in the stage's local LayerStack (see UsdStage::HasLocalLayer()), and will issue an error and return an invalid EditTarget if layer is not.
+    # We may relax this restriction in the future, if need arises, but it introduces several complications in specification and behavior.
+    # ---------------------
+    prim = variant_set.GetPrim()
+    name = variant_set.GetName()
+    selection = variant_set.GetVariantSelection()
+    logger.debug(f"Searching target for {prim} with variant {name}, {selection} on {layer}")
+
+    def is_valid_target(node):
+        return node.path.GetVariantSelection() == (name, selection) and layer == node.layerStack.identifier.rootLayer
+
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Variant
+    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
+    return edit_context(prim, query_filter, is_valid_target)
 
 
 @functools.singledispatch
