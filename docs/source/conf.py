@@ -60,15 +60,6 @@ intersphinx_mapping = {
 }
 hoverxref_auto_ref = True
 hoverxref_default_type = 'tooltip'
-# hoverxref_role_types = {
-#     'hoverxref': 'tooltip',
-#     'ref': 'tooltip',  # for hoverxref_auto_ref config
-#     'confval': 'tooltip',  # for custom object
-#     'mod': 'tooltip',  # for Python Sphinx Domain
-#     'class': 'tooltip',  # for Python Sphinx Domain
-#     'meth': 'tooltip',  # for Python Sphinx methods
-#     'func': 'tooltip',  # for Python Sphinx methods
-# }
 
 hoverxref_intersphinx = list(set(intersphinx_mapping) - {'python'})
 hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, hoverxref_default_type)

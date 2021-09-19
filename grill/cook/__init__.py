@@ -410,17 +410,17 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
 
 
 @typing.overload
-def edit_context(payload: Sdf.Payload, prim: Usd.Prim):
+def edit_context(payload: Sdf.Payload, prim: Usd.Prim) -> Usd.EditContext:
     """Payload overload"""
 
 
 @typing.overload
-def edit_context(prim: Usd.Prim, query_filter: Usd.PrimCompositionQuery.Filter, target_predicate: typing.Callable):
+def edit_context(prim: Usd.Prim, query_filter: Usd.PrimCompositionQuery.Filter, target_predicate: typing.Callable) -> Usd.EditContext:
     """Overload + new def"""
 
 
 @functools.singledispatch
-def edit_context(obj, layer):
+def edit_context(obj, layer) -> Usd.EditContext:
     """Doc must be here?"""
     raise TypeError(f"Not implemented: {locals()}")  # lazy
 
