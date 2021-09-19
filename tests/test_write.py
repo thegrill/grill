@@ -58,13 +58,9 @@ class TestWrite(unittest.TestCase):
         with self.assertRaises(ValueError):
             cook._find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
 
-    def test_invalid_stack(self):
-        with self.assertRaises(TypeError):
-            cook._layer_stack(object())
-
     def test_edit_context(self):
         with self.assertRaises(TypeError):
-            cook._edit_context(object(), cook.fetch_stage(self.root_asset))
+            cook.edit_context(object(), cook.fetch_stage(self.root_asset))
 
     def test_define_taxon(self):
         # An anonymous stage (non grill anonymous) should fail to define taxon.
