@@ -38,7 +38,7 @@ For asset organization, ``The Grill`` uses the concept of asset `taxonomy`_. Thi
 
 .. hint::
 
-   For quick prototyping, :py:meth:`grill.names.UsdAsset.get_anonymous` from :py:class:`grill.names.UsdAsset` can be used to get temporary but valid ``grill`` identifiers.
+   For quick prototyping, :py:meth:`grill.names.UsdAsset.get_anonymous` can be used to get temporary but valid ``grill`` identifiers.
 
 .. code-block::  python
 
