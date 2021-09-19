@@ -18,7 +18,7 @@ def _pruned_prims(prim_range: Usd.PrimRange, predicate):
         yield prim
 
 
-def common_paths(paths: typing.Iterable[Sdf.Path]) -> list[Sdf.Path]:
+def common_paths(paths: typing.Iterable[Sdf.Path]) -> typing.List[Sdf.Path]:
     """For the given paths, get those which are the common parents."""
     unique = list()
     for path in sorted(filter(lambda p: p and not p.IsAbsoluteRootPath(), paths)):
