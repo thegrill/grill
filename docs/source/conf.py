@@ -59,19 +59,19 @@ intersphinx_mapping = {
     'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
 }
 hoverxref_auto_ref = True
-# hoverxref_default_type = 'tooltip'
+hoverxref_default_type = 'tooltip'
 # hoverxref_role_types = {
-#     'hoverxref': 'modal',
-#     'ref': 'modal',  # for hoverxref_auto_ref config
+#     'hoverxref': 'tooltip',
+#     'ref': 'tooltip',  # for hoverxref_auto_ref config
 #     'confval': 'tooltip',  # for custom object
 #     'mod': 'tooltip',  # for Python Sphinx Domain
 #     'class': 'tooltip',  # for Python Sphinx Domain
+#     'meth': 'tooltip',  # for Python Sphinx methods
+#     'func': 'tooltip',  # for Python Sphinx methods
 # }
-hoverxref_intersphinx = [
-  'grill.names',
-  'naming',
-]
-hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, 'tooltip')
+
+hoverxref_intersphinx = list(intersphinx_mapping)
+hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, hoverxref_default_type)
 hoverxref_domains = ['py']
 
 always_document_param_types = True
