@@ -320,7 +320,8 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     """Get the asset layer that acts as the 'entry point' for the given prim."""
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
-        if layer := Sdf.Layer.Find(Usd.ModelAPI(prim).GetAssetIdentifier().path):
+        layer = Sdf.Layer.Find(Usd.ModelAPI(prim).GetAssetIdentifier().path)
+        if layer:
             return layer
     fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: Usd.ModelAPI(prim).GetAssetName()}
     return _find_layer_matching(fields, prim.GetPrimStack())
@@ -429,7 +430,8 @@ def _(prim: Usd.Prim, query_filter, target_predicate):
     query = Usd.PrimCompositionQuery(prim)
     query.filter = query_filter
     for arc in query.GetCompositionArcs():
-        if target_predicate(node := arc.GetTargetNode()):
+        node = arc.GetTargetNode()
+        if target_predicate(node):
             target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
             return Usd.EditContext(prim.GetStage(), target)
     raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {target_predicate}")
