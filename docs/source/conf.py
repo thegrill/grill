@@ -70,7 +70,7 @@ hoverxref_default_type = 'tooltip'
 #     'func': 'tooltip',  # for Python Sphinx methods
 # }
 
-hoverxref_intersphinx = list(intersphinx_mapping)
+hoverxref_intersphinx = list(set(intersphinx_mapping) - {'python'})
 hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, hoverxref_default_type)
 hoverxref_domains = ['py']
 
