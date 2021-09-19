@@ -9,7 +9,7 @@ Repository Path
 
 Creating assets requires a repository path to be set. This change lasts during the duration of the current application (or python process), so it is needed only once.
 
-**API:** :py:data:`grill.write.Repository`
+**API:** :py:data:`grill.cook.Repository`
 
 .. code-block::  python
 
@@ -34,15 +34,16 @@ Defining Taxonomy
 
 For asset organization, ``The Grill`` uses the concept of asset `taxonomy`_. This is a hierarchy for organizing assets into groups (``Taxa``) where members of each individual group (``Taxon``) share characteristics (e.g. ``Characters``, ``Props`` and ``Shots`` are common organizational groups found on ``Film`` and ``Animation`` projects).
 
-**API:** :py:func:`grill.write.define_taxon`
+**API:** :py:func:`grill.cook.define_taxon`
 
 .. hint::
 
-   For quick prototyping, :py:meth:`grill.write.UsdAsset.get_anonymous` can be used to get temporary but valid ``grill`` identifiers.
+   For quick prototyping, :py:meth:`grill.names.UsdAsset.get_anonymous` can be used to get temporary but valid ``grill`` identifiers.
 
 .. code-block::  python
 
-    >>> stage = write.fetch_stage(write.UsdAsset.get_anonymous())
+    >>> from grill import names
+    >>> stage = write.fetch_stage(names.UsdAsset.get_anonymous())
     >>> character = write.define_taxon(stage, "Character")
     >>> character
     Usd.Prim(</Taxonomy/Character>)
@@ -65,7 +66,7 @@ Creating Asset Units
 
 An ``Asset Unit`` is considered to be a meaningful, unique member for each ``taxon``. A ``taxon`` can contain any number of individual ``units``.
 
-**API:** :py:func:`grill.write.create`
+**API:** :py:func:`grill.cook.create`
 
 .. code-block::  python
 

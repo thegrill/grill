@@ -410,7 +410,7 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
 
 
 @typing.overload
-def edit_context(payload: Sdf.Payload, prim):
+def edit_context(payload: Sdf.Payload, prim: Usd.Prim):
     """Payload overload"""
 
 
