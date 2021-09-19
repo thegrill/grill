@@ -55,7 +55,7 @@ toggleprompt_offset_right = 35
 togglebutton_hint = " "
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
-    'naming': ('http://naming.readthedocs.io/en/latest/', None),
+    'naming': ('https://naming.readthedocs.io/en/latest/', None),
     'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
 }
 hoverxref_auto_ref = True
