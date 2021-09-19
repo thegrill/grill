@@ -299,7 +299,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
             default_prim = taxonomy_stage.CreateClassPrim(_TAXONOMY_ROOT_PATH)
             taxonomy_stage.SetDefaultPrim(default_prim)
 
-    return edit_context(stage, taxonomy_layer)
+    return Usd.EditContext(stage, taxonomy_layer)
 
 
 def unit_context(prim: Usd.Prim) -> Usd.EditContext:
@@ -409,16 +409,20 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
     raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
 
 
+@typing.overload
+def edit_context(payload: Sdf.Payload, prim):
+    """Payload overload"""
+
+
+@typing.overload
+def edit_context(prim: Usd.Prim, query_filter: Usd.PrimCompositionQuery.Filter, target_predicate: typing.Callable):
+    """Overload + new def"""
+
+
 @functools.singledispatch
 def edit_context(obj, layer):
-    """No doc"""
+    """Doc must be here?"""
     raise TypeError(f"Not implemented: {locals()}")  # lazy
-
-
-@edit_context.register
-def _(stage: Usd.Stage, layer):
-    """stage"""
-    return Usd.EditContext(stage, layer)
 
 
 @edit_context.register
