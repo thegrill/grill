@@ -140,7 +140,6 @@ html_theme = 'sphinx_typlog_theme'
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -162,7 +161,7 @@ html_sidebars = {
 }
 
 html_theme_options = {
-    'color': '#E8371A',
+    'color': '#7FFFD4',
     'description': 'Cook digital',
     'logo_name': '👨‍🍳 The Grill',
 }
