@@ -313,7 +313,7 @@ def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     def target_predicate(node):
         return node.path == _UNIT_ORIGIN_PATH and node.layerStack.identifier.rootLayer == layer
 
-    return edit_context(prim, _ASSET_UNIT_QUERY_FILTER, target_predicate)
+    return _usd.edit_context(prim, _ASSET_UNIT_QUERY_FILTER, target_predicate)
 
 
 def unit_asset(prim: Usd.Prim) -> Sdf.Layer:

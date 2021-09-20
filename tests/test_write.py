@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pxr import Usd, Sdf, Ar, UsdUtils
 
-from grill import cook, names
+from grill import cook, names, usd as gusd
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class TestWrite(unittest.TestCase):
 
     def test_edit_context(self):
         with self.assertRaises(TypeError):
-            cook.edit_context(object(), cook.fetch_stage(self.root_asset))
+            gusd.edit_context(object(), cook.fetch_stage(self.root_asset))
 
     def test_define_taxon(self):
         # An anonymous stage (non grill anonymous) should fail to define taxon.
@@ -147,7 +147,7 @@ class TestWrite(unittest.TestCase):
 
         layer = Sdf.Layer.CreateAnonymous()
         with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-            cook.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda node: node.layerStack.identifier.rootLayer == layer)
+            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda node: node.layerStack.identifier.rootLayer == layer)
 
     def test_create_many(self):
         stage = cook.fetch_stage(self.root_asset)
