@@ -58,6 +58,11 @@ def edit_context(payload: Sdf.Payload, prim: Usd.Prim) -> Usd.EditContext:
 
 
 @typing.overload
+def edit_context(reference: Sdf.Reference, prim: Usd.Prim) -> Usd.EditContext:
+    ...
+
+
+@typing.overload
 def edit_context(prim: Usd.Prim, query_filter: Usd.PrimCompositionQuery.Filter, target_predicate: typing.Callable) -> Usd.EditContext:
     ...
 
@@ -204,40 +209,27 @@ def _(prim: Usd.Prim, query_filter, target_predicate):
     raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {target_predicate}")
 
 
-@edit_context.register
-def _(payload: Sdf.Payload, prim):
+@edit_context.register(Sdf.Reference)
+@edit_context.register(Sdf.Payload)
+def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], prim):
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
-        layer = Sdf.Layer.Find(payload.assetPath)
-    if not (payload.primPath or layer.defaultPrim):
-        raise ValueError(f"Can't proceed without a prim path to target on payload {payload} for {layer}")
-    path = payload.primPath or layer.GetPrimAtPath(layer.defaultPrim).path
+        layer = Sdf.Layer.Find(arc.assetPath)
+    if not (arc.primPath or layer.defaultPrim):
+        raise ValueError(f"Can't proceed without a prim path to target on arc {arc} for {layer}")
+    path = arc.primPath or layer.GetPrimAtPath(layer.defaultPrim).path
     logger.debug(f"Searching to target {layer} on {path}")
 
     def is_valid_target(node):
         return node.path == path and node.layerStack.identifier.rootLayer == layer
 
     query_filter = Usd.PrimCompositionQuery.Filter()
-    query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Payload
-    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
-    return edit_context(prim, query_filter, is_valid_target)
-
-
-@edit_context.register
-def _(reference: Sdf.Reference, prim):
-    with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
-        # Use Layer.Find since layer should have been open for the prim to exist.
-        layer = Sdf.Layer.Find(reference.assetPath)
-    if not (reference.primPath or layer.defaultPrim):
-        raise ValueError(f"Can't proceed without a prim path to target on payload {reference} for {layer}")
-    path = reference.primPath or layer.GetPrimAtPath(layer.defaultPrim).path
-    logger.debug(f"Searching to target {layer} on {path}")
-
-    def is_valid_target(node):
-        return node.path == path and node.layerStack.identifier.rootLayer == layer
-
-    query_filter = Usd.PrimCompositionQuery.Filter()
-    query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Reference
+    if isinstance(arc, Sdf.Payload):
+        query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Payload
+    elif isinstance(arc, Sdf.Reference):
+        query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Reference
+    else:
+        raise TypeError
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     return edit_context(prim, query_filter, is_valid_target)
 
