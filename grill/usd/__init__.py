@@ -64,49 +64,130 @@ def edit_context(prim: Usd.Prim, query_filter: Usd.PrimCompositionQuery.Filter, 
 
 @functools.singledispatch
 def edit_context(obj, layer) -> Usd.EditContext:
-    """Composition arcs target layer stacks.
+    """Composition arcs target layer stacks. These functions help create EditTargets for the first matching node's root layer stack from prim's composition arcs.
 
-    These overloaded functions help construct EditTargets for the first matching node's root layer stack.
+    This allows for "chained" context switching while preserving the same stage objects.
 
-    Examples:
+    .. tip::
+
+        You can try the below code snippet on ``USDView`` (or any other USD DCC application)
+        Just swap the ``main = Usd.Stage.CreateInMemory()`` assignment for a stage on the viewport, e.g, for ``USDView``:
+
+        .. code-block::  python
+
+            >>> main = usdviewApi.stage
+
+        Then paste the rest of the code as-is:
+
+        .. image:: https://user-images.githubusercontent.com/8294116/133999486-b13e811a-91f4-4d8c-92d9-44c1f81b82d4.gif
+
+    Example:
         >>> from pxr import Usd, UsdGeom, Sdf
         >>> main = Usd.Stage.CreateInMemory()
-        >>> a = main.DefinePrim("/a")
+        >>> # Jump between 3 different layer stacks adding variants to the same set
+        >>> # main [variant blue] -> reference [variant green] -> payload [variant red]
+        >>> referenced = Usd.Stage.CreateInMemory()
+        >>> referenced.SetDefaultPrim(referenced.DefinePrim("/Referenced"))
+        >>> reference = Sdf.Reference(referenced.GetRootLayer().identifier)
+        >>>
         >>> payloaded = Usd.Stage.CreateInMemory()
-        >>> x = payloaded.DefinePrim("/x")
-        >>> payload = Sdf.Payload(payloaded.GetRootLayer().identifier, x.GetPath())
-        >>> a.GetPayloads().AddPayload(payload)
+        >>> payloaded.SetDefaultPrim(payloaded.DefinePrim("/Payloaded"))
+        >>> payload = Sdf.Payload(payloaded.GetRootLayer().identifier)
+        >>>
+        >>> top = main.DefinePrim("/Top")
+        >>> top.GetReferences().AddReference(reference)
         True
         >>> import grill.usd as gusd
-        >>> with gusd.edit_context(payload, a):
-        ...     geom = UsdGeom.Sphere.Define(main, a.GetPath().AppendPath("inner/child"))
+        >>> with gusd.edit_context(reference, top):
+        ...     top.GetPayloads().AddPayload(payload)
+        ...     with gusd.edit_context(payload, top):
+        ...         geom = UsdGeom.Sphere.Define(main, top.GetPath().AppendPath("inner/child"))
+        ...         color = geom.GetDisplayColorAttr()
+        ...         color_set = geom.GetPrim().GetVariantSets().AddVariantSet("color")
+        ...         color_set.AddVariant("from_payload")
+        ...         color_set.SetVariantSelection("from_payload")
+        ...         with gusd.edit_context(color_set, payloaded.GetRootLayer()):  # color_set.GetVariantEditContext() would fail here
+        ...             color.Set([(1,0,0)])
+        ...         color_set.ClearVariantSelection()
+        ...     color_set.AddVariant("from_reference")
+        ...     color_set.SetVariantSelection("from_reference")
+        ...     with gusd.edit_context(color_set, referenced.GetRootLayer()):
+        ...         color.Set([(0,1,0)])
+        ...     color_set.ClearVariantSelection()
         ...
-        >>> geom.GetPrim().GetStage() is main
         True
-        >>> geom.GetPath()
-        Sdf.Path('/a/inner/child')
-        >>> print(main.GetRootLayer().ExportToString())
+        >>> color_set.AddVariant("from_top")
+        >>> color_set.SetVariantSelection("from_top")
+        >>> with color_set.GetVariantEditContext():
+        ...     color.Set([(0,0,1)])
+        ...
+        >>> color_set.ClearVariantSelection()
+        True
+        >>> for each in main, referenced, payloaded:
+        ...     print(each.GetRootLayer().ExportToString())
+        ...
         #usda 1.0
-        def "a" (
-            prepend payload = @anon:0000029AB64DF6E0:tmp.usda@</x>
+        def "Top" (
+            prepend references = @anon:0000019B6BE92A70:tmp.usda@
         )
         {
+            over "inner"
+            {
+                over "child" (
+                    prepend variantSets = "color"
+                )
+                {
+                    variantSet "color" = {
+                        "from_top" {
+                            color3f[] primvars:displayColor = [(0, 0, 1)]
+                        }
+                    }
+                }
+            }
         }
-        >>> print(payloaded.GetRootLayer().ExportToString())
         #usda 1.0
-        def "x"
+        (
+            defaultPrim = "Referenced"
+        )
+        def "Referenced" (
+            prepend payload = @anon:0000019B6BE93270:tmp.usda@
+        )
+        {
+            over "inner"
+            {
+                over "child" (
+                    prepend variantSets = "color"
+                )
+                {
+                    variantSet "color" = {
+                        "from_reference" {
+                            color3f[] primvars:displayColor = [(0, 1, 0)]
+                        }
+                    }
+                }
+            }
+        }
+        #usda 1.0
+        (
+            defaultPrim = "Payloaded"
+        )
+        def "Payloaded"
         {
             def "inner"
             {
-                def Sphere "child"
+                def Sphere "child" (
+                    prepend variantSets = "color"
+                )
                 {
+                    variantSet "color" = {
+                        "from_payload" {
+                            color3f[] primvars:displayColor = [(1, 0, 0)]
+                        }
+                    }
                 }
             }
         }
 
-
-    get an edit context from a query filter + a filter predicate, using the root layer
-    of the matching target node as the edit target layer.
     """
     raise TypeError(f"Not implemented: {locals()}")  # lazy
 
@@ -138,6 +219,25 @@ def _(payload: Sdf.Payload, prim):
 
     query_filter = Usd.PrimCompositionQuery.Filter()
     query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Payload
+    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
+    return edit_context(prim, query_filter, is_valid_target)
+
+
+@edit_context.register
+def _(reference: Sdf.Reference, prim):
+    with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
+        # Use Layer.Find since layer should have been open for the prim to exist.
+        layer = Sdf.Layer.Find(reference.assetPath)
+    if not (reference.primPath or layer.defaultPrim):
+        raise ValueError(f"Can't proceed without a prim path to target on payload {reference} for {layer}")
+    path = reference.primPath or layer.GetPrimAtPath(layer.defaultPrim).path
+    logger.debug(f"Searching to target {layer} on {path}")
+
+    def is_valid_target(node):
+        return node.path == path and node.layerStack.identifier.rootLayer == layer
+
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Reference
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     return edit_context(prim, query_filter, is_valid_target)
 
