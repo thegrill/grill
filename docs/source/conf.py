@@ -161,7 +161,7 @@ html_sidebars = {
 }
 
 html_theme_options = {
-    'color': '#7FFFD4',
+    'color': 'Coral',
     'description': 'Cook digital',
     'logo_name': '👨‍🍳 The Grill',
 }
