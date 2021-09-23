@@ -48,11 +48,6 @@ def iprims(stage: Usd.Stage, root_paths: typing.Iterable[Sdf.Path] = tuple(), pr
 
 
 @typing.overload
-def edit_context(variant: Usd.VariantSet, layer: Sdf.Layer) -> Usd.EditContext:
-    ...
-
-
-@typing.overload
 def edit_context(payload: Sdf.Payload, prim: Usd.Prim) -> Usd.EditContext:
     ...
 
@@ -63,12 +58,17 @@ def edit_context(reference: Sdf.Reference, prim: Usd.Prim) -> Usd.EditContext:
 
 
 @typing.overload
+def edit_context(variant: Usd.VariantSet, layer: Sdf.Layer) -> Usd.EditContext:
+    ...
+
+
+@typing.overload
 def edit_context(prim: Usd.Prim, query_filter: Usd.PrimCompositionQuery.Filter, target_predicate: typing.Callable) -> Usd.EditContext:
     ...
 
 
 @functools.singledispatch
-def edit_context(obj, layer) -> Usd.EditContext:
+def edit_context(obj, *args, **kwargs) -> Usd.EditContext:
     """Composition arcs target layer stacks. These functions help create EditTargets for the first matching node's root layer stack from prim's composition arcs.
 
     This allows for "chained" context switching while preserving the same stage objects.

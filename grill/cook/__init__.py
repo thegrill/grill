@@ -35,7 +35,7 @@ import contextvars
 from pathlib import Path
 from pprint import pformat
 
-from pxr import UsdUtils, UsdGeom, Usd, Sdf, Kind, Ar, Tf
+from pxr import UsdUtils, UsdGeom, Usd, Sdf, Kind, Ar
 from grill import usd as _usd, names as _names
 from grill.tokens import ids
 
@@ -70,8 +70,19 @@ _ASSET_UNIT_QUERY_FILTER.dependencyTypeFilter = Usd.PrimCompositionQuery.Depende
 _ASSET_UNIT_QUERY_FILTER.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
 
 
+@typing.overload
+def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stage:
+    ...
+
+
+@typing.overload
+def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext = None) -> Usd.Stage:
+    ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
+
+
 @functools.lru_cache(maxsize=None)
-def fetch_stage(identifier: str, resolver_ctx: Ar.ResolverContext = None) -> Usd.Stage:
+@functools.singledispatch
+def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
@@ -85,13 +96,13 @@ def fetch_stage(identifier: str, resolver_ctx: Ar.ResolverContext = None) -> Usd
     """
     layer_id = _names.UsdAsset(identifier).name
     cache = UsdUtils.StageCache.Get()
-    if not resolver_ctx:
+    if not context:
         repo_path = Repository.get()
-        resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
+        context = Ar.DefaultResolverContext([str(repo_path)])
     else:  # TODO: see how to make this work, seems very experimental atm.
-        repo_path = Path(resolver_ctx.Get()[0].GetSearchPath()[0])
+        repo_path = Path(context.Get()[0].GetSearchPath()[0])
 
-    with Ar.ResolverContextBinder(resolver_ctx):
+    with Ar.ResolverContextBinder(context):
         logger.debug(f"Searching for {layer_id}")
         layer = Sdf.Layer.Find(layer_id)
         if not layer:
@@ -122,6 +133,11 @@ def fetch_stage(identifier: str, resolver_ctx: Ar.ResolverContext = None) -> Usd
                 logger.debug(f"Found stage: {stage}")
 
     return stage
+
+
+@fetch_stage.register(_names.UsdAsset)
+def _(identifier: _names.UsdAsset, *args, **kwargs) -> Usd.Stage:
+    return fetch_stage(str(identifier), *args, **kwargs)
 
 
 def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
@@ -185,7 +201,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     The new members will be created as `prims <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ on the given ``taxon``'s `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
 
-    .. seealso:: :func:`define_taxon` :func:`create`
+    .. seealso:: :func:`define_taxon` :func:`create_unit`
     """
     stage = taxon.GetStage()
     taxon_path = taxon.GetPath()
@@ -266,7 +282,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     return prims
 
 
-def create(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
+def create_unit(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
     """Create a unit member of the given ``taxon``, with an optional display label.
 
     The new member will be created as a `prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ on the given ``taxon``'s `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
@@ -328,15 +344,18 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
 
 
 def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
-    """Convenience function for bringing a unit prim as a descendant of another.
+    """Spawn a unit prim as a descendant of another.
 
-    - Both parent and child must be existing units in the catalogue.
-    - If path is not provided, the name of child will be used.
-    - Validity on model hierarchy is preserved by:
-        - turning parent into an assembly
-        - ensuring intermediate prims between parent and child are also models
-    - By default, spawned units are instanceable
+    * Both parent and child must be existing units in the catalogue.
+    * If `path <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Path>`_ is not provided, the name of child will be used.
+    * A valid `Model Hierarchy <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-ModelHierarchy>`_ is preserved by:
+
+      1. Turning parent into an `assembly <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Assembly>`_.
+      2. Ensuring intermediate prims between parent and child are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
+
+    * By default, spawned units are `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_.
     """
+    # TODO: spawn_many
     # this is because at the moment it is not straight forward to bring catalogue units under others.
     parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext())
     origin = parent_stage.GetDefaultPrim()
