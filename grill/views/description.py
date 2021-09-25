@@ -17,7 +17,7 @@ from types import MappingProxyType
 import networkx as nx
 from networkx.drawing import nx_pydot
 from pxr import Sdf, Usd, Pcp, UsdUtils
-from PySide2 import QtWidgets, QtCore, QtWebEngineWidgets
+from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from . import sheets as _sheets, _core
 
@@ -352,6 +352,65 @@ class LayerTableModel(_sheets._ObjectTableModel):
         self.endResetModel()
 
 
+import re
+import random
+# TODO: still slow on big files. Make this non blocking?
+_PATTERN = re.compile(r'(^(?P<comment>\#.*$)|^( *(?P<specifier>def|over|class)( (?P<type>\w+))? (?P<name>\"\w+\")| +((?P<metadata>doc|assetInfo|kind|subLayers|defaultPrim|upAxis|instanceable|elementSize|interpolation)|(?P<op>add|prepend) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet )(?P<set_string>\"\w+\")|(?P<interpolation_meta>uniform )?(?P<prop_type>int|double|float|float3|double3|token|point3f|string|asset|token|color3f|dictionary|rel)(?P<prop_array>\[\])? (?P<prop_name>[\w:\.]+))( (\(|((?P<value_assignment>= )(\[|\()?))|$))|(?P<name_string>\"[^\"]+\")|(?P<identifier>@[\w\-\.\/]+@)(?P<identifier_prim_path>\<[\/\w]+\>)?|(?P<relationship>\<[\/\w]+\>)|(?P<collapsed>\<\< \w+\[\d+\] \>\>)|(?P<boolean>true|false)|(?P<number>-?[\d\.]+))')
+
+
+class _Highlighter(QtGui.QSyntaxHighlighter):
+    def highlightBlock(self, text):
+        frmt = QtGui.QTextCharFormat()
+        for match in re.finditer(_PATTERN, text):
+            for group_name, value in match.groupdict().items():
+                if value == (-1, -1):
+                    continue
+                start, end = match.span(group_name)
+                frmt.setFontWeight(random.choice([0,1,2,3]))
+                frmt.setFontItalic(random.choice([True, False]))
+                frmt.setForeground(QtGui.QColor(random.choice(["purple", "green", "red", "blue", "cyan", "yellow", "magenta"])))
+                self.setFormat(start, end-start, frmt)
+
+
+class _LayersSheet(_sheets._Spreadsheet):
+    def contextMenuEvent(self, event):
+        self.menu = QtWidgets.QMenu(self)
+        contents = QtWidgets.QAction('Contents', self)
+        contents.triggered.connect(lambda: self._display_contents(event))
+        self.menu.addAction(contents)
+        # add other required actions
+        self.menu.popup(QtGui.QCursor.pos())
+
+    def _display_contents(self, *args, **kwargs):
+        selected = self.table.selectedIndexes()
+        layers = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in selected}
+        dialog = QtWidgets.QDialog(parent=self)
+        dialog.setWindowTitle("Layer Contents")
+        layout = QtWidgets.QVBoxLayout()
+        vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        for layer in layers:
+            result = _pseudo_layer(layer)
+            browser = QtWidgets.QTextBrowser(parent=dialog)
+            browser.setLineWrapMode(browser.NoWrap)
+            browser.setText(result.decode())
+            _Highlighter(browser)
+            vertical.addWidget(browser)
+        layout.addWidget(vertical)
+        dialog.setLayout(layout)
+        dialog.show()
+
+
+def _pseudo_layer(layer):
+    with tempfile.TemporaryDirectory() as target_dir:
+        name = Path(layer.realPath).stem if layer.realPath else layer.identifier
+        path = Path(target_dir) / f"{name}.usd"
+        layer.Export(str(path))
+        result = subprocess.run([shutil.which("sdffilter"), "--outputType", "pseudoLayer", path], capture_output=True)
+    if result.returncode:  # something went wrong
+        raise RuntimeError(result.stderr)
+    return result.stdout
+
+
 class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
         _sheets._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
@@ -366,7 +425,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         super().__init__(parent=parent, **kwargs)
         options = _sheets._ColumnOptions.SEARCH
         layers_model = LayerTableModel(columns=self._LAYERS_COLUMNS)
-        self._layers = _sheets._Spreadsheet(layers_model, self._LAYERS_COLUMNS, options)
+        self._layers = _LayersSheet(layers_model, self._LAYERS_COLUMNS, options)
         self._prims = _sheets._StageSpreadsheet(columns=self._PRIM_COLUMNS, options=options)
         # TODO: better APIs for this default setup?
         self._prims.sorting_enabled.setVisible(False)
@@ -414,7 +473,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         self.setWindowTitle("Layer Stack Composition")
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
-        node_ids = [index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
+        node_ids = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._layers.table.selectedIndexes()}
         node_indices = set(chain.from_iterable(self._computed_graph_info.ids_by_layers[layer] for layer in node_ids))
 
         prims_model = self._prims.model
