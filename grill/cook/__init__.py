@@ -80,8 +80,8 @@ def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext 
     ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
 
 
-@functools.lru_cache(maxsize=None)
 @functools.singledispatch
+@functools.lru_cache(maxsize=None)
 def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
