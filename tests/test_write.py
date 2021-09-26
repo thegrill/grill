@@ -98,32 +98,32 @@ class TestWrite(unittest.TestCase):
 
         not_taxon = root_stage.DefinePrim("/not/a/taxon")
         with self.assertRaises(ValueError):
-            cook.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {})
         with self.assertRaises(ValueError):
-            cook.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {'invalid': 42})
         with self.assertRaises(ValueError):
-            cook.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: 42})
         with self.assertRaises(TypeError):
-            cook.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: {}})
         with self.assertRaises(ValueError):
-            cook.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
-        emil = cook.create(person, "EmilSinclair", label="Emil Sinclair")
-        self.assertEqual(emil, cook.create(person, "EmilSinclair"))
+        emil = cook.create_unit(person, "EmilSinclair", label="Emil Sinclair")
+        self.assertEqual(emil, cook.create_unit(person, "EmilSinclair"))
 
         with cook.unit_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")
 
         hero = cook.define_taxon(root_stage, "Hero", references=(person,))
-        batman = cook.create(hero, "Batman")
+        batman = cook.create_unit(hero, "Batman")
         expected_people = [emil, batman]  # batman is also a person
         expected_heroes = [batman]
         stage_prims = root_stage.Traverse()
@@ -135,7 +135,7 @@ class TestWrite(unittest.TestCase):
         taxon_name = "Person"
         person = cook.define_taxon(stage, taxon_name)
         unit_name = "EmilSinclair"
-        emil = cook.create(person, unit_name, label="Emil Sinclair")
+        emil = cook.create_unit(person, unit_name, label="Emil Sinclair")
         unit_asset = cook.unit_asset(emil)
         unit_id = names.UsdAsset(unit_asset.identifier)
         self.assertEqual(unit_name, getattr(unit_id, cook._UNIT_UNIQUE_ID.name))

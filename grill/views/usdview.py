@@ -9,6 +9,7 @@ from pxr.Usdviewq.plugin import PluginContainer
 from PySide2 import QtWidgets
 
 from . import sheets as _sheets, description as _description, create as _create, _core
+_description._DARKEN_HIGHLIGHT_COLORS_BY = 100
 
 
 def _stage_on_widget(widget_creator):

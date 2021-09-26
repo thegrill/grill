@@ -108,7 +108,7 @@ class CreateAssets(_CreatePrims):
                 print(f"An asset name is required! Missing on row: {row}")
                 continue
             label = model.data(model.index(row, 2))
-            cook.create(taxon, asset_name, label)
+            cook.create_unit(taxon, asset_name, label)
 
     def setStage(self, stage):
         self._stage = stage

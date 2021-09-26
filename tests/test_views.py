@@ -89,7 +89,7 @@ class TestViews(unittest.TestCase):
         self.grill_world = gworld = cook.fetch_stage(self.rootf.name)
         self.person = cook.define_taxon(gworld, "Person")
         self.agent = cook.define_taxon(gworld, "Agent", references=(self.person,))
-        self.generic_agent = cook.create(self.agent, "GenericAgent")
+        self.generic_agent = cook.create_unit(self.agent, "GenericAgent")
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
@@ -294,7 +294,7 @@ class TestViews(unittest.TestCase):
         stage = cook.fetch_stage(self.rootf)
         person = cook.define_taxon(stage, "Person")
         agent = cook.define_taxon(stage, "Agent", references=(person,))
-        generic = cook.create(agent, "GenericAgent")
+        generic = cook.create_unit(agent, "GenericAgent")
         with cook.unit_context(generic):
             stage.DefinePrim(generic.GetPath().AppendChild("ChildPrim"))
         generic_asset = cook.unit_asset(generic)

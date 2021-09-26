@@ -66,11 +66,11 @@ Creating Asset Units
 
 An ``Asset Unit`` is considered to be a meaningful, unique member for each ``taxon``. A ``taxon`` can contain any number of individual ``units``.
 
-**API:** :py:func:`grill.cook.create`
+**API:** :py:func:`grill.cook.create_unit`
 
 .. code-block::  python
 
-    >>> write.create(character, "Hero01", label="Hero 01 🦸")
+    >>> write.create_unit(character, "Hero01", label="Hero 01 🦸")
     Usd.Prim(</Character/Hero01>)
 
 **GUI:** Create Assets
