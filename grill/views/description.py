@@ -367,10 +367,10 @@ _HIGHLIGHT_COLORS = MappingProxyType(
         ("metadata", "#b5e7a0"),
         # arc_selection, arc
         ("inherits", _ARCS_LEGEND[Pcp.ArcTypeInherit]['color']),
-        ("variantSets", _ARCS_LEGEND[Pcp.ArcTypeVariant]['color']),
-        ("variantSet", _ARCS_LEGEND[Pcp.ArcTypeVariant]['color']),
-        ("variants", _ARCS_LEGEND[Pcp.ArcTypeVariant]['color']),
-        ("references", _ARCS_LEGEND[Pcp.ArcTypeReference]['color']),
+        ("variantSets", "#feb236"),
+        ("variantSet", "#feb236"),
+        ("variants", "#feb236"),
+        ("references", "#d64161"),
         ("payload", "#6b5b95"),  # legend color too dark
         ("specializes", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color']),
         ("apiSchemas", "#eeac99"),
@@ -407,6 +407,13 @@ def _highlight_syntax_format(key, value):
             key = "timeSamples"
     elif key == "arc_selection":
         key = value
+    elif key == "comment":
+        text_fmt.setFontItalic(True)
+    elif key == "specifier":
+        if value == "over":
+            text_fmt.setFontItalic(True)
+        elif value == "class":
+            text_fmt.setFontLetterSpacing(135)
     color = _HIGHLIGHT_COLORS[key]
     color = color.darker(_DARKEN_HIGHLIGHT_COLORS_BY)
     text_fmt.setForeground(color)
@@ -414,7 +421,6 @@ def _highlight_syntax_format(key, value):
 
 
 class _Highlighter(QtGui.QSyntaxHighlighter):
-    # TODO: Slow fir big files (+5k lines) on open. Make this non blocking?
     _HIGHLIGHT_PATTERN = re.compile(
         r'(^(?P<comment>\#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>doc|assetInfo|kind|displayName|subLayers|defaultPrim|upAxis|framesPerSecond|metersPerUnit|timeCodesPerSecond|startTimeCode|endTimeCode|instanceable|elementSize|interpolation|(?P<arc_selection>variants|payload))|(?P<list_op>add|prepend) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>int|bool|normal3f|double|float|float3|double3|token|point3f|string|asset|color3f|vector3f|float2|vector3d|texCoord2f|dictionary|rel)(?P<prop_array>\[\])? (?P<prop_name>[\w:\.]+))( (\(|((?P<value_assignment>= )(\[|\()?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path>\<[\/\w]+\>)?|(?P<relationship>\<[\/\w:.]+\>)|(?P<collapsed>\<\< \w+\[\d+\] \>\>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
     )
@@ -448,8 +454,8 @@ class _LayersSheet(_sheets._Spreadsheet):
             result = _pseudo_layer(layer)
             browser = QtWidgets.QTextBrowser(parent=dialog)
             browser.setLineWrapMode(browser.NoWrap)
-            browser.setText(result.decode())
             _Highlighter(browser)
+            browser.setText(result.decode())
             vertical.addWidget(browser)
         layout.addWidget(vertical)
         dialog.setLayout(layout)
