@@ -30,8 +30,6 @@ _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeSpecialize: dict(color='sienna', fontcolor='sienna'),  # brown
 })
 
-_DARKEN_HIGHLIGHT_COLORS_BY = 120  # TODO: please find another way (dark | light palette)
-
 
 @lru_cache(maxsize=None)
 def _edge_color(edge_arcs):
@@ -355,40 +353,26 @@ class LayerTableModel(_sheets._ObjectTableModel):
         self.endResetModel()
 
 
+
 _HIGHLIGHT_COLORS = MappingProxyType(
     {name: QtGui.QColor(value) for name, value in (
         ("comment", "gray"),
-        ("specifier", "#f7786b"),
-        ("prim_type", "#92a8d1"),
-        # namespacing
-        ("prim_name", "#f7cac9"),
-        ("identifier_prim_path", "#f7cac9"),
-        ("relationship", "#f7cac9"),
-        ("metadata", "#b5e7a0"),
-        # arc_selection, arc
+
+        *((group_key, "#f7786b") for group_key in ("specifier", "rel_op", "value_assignment", "references")),
+        *((group_key, "#f7cac9") for group_key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
+        *((group_key, "#b5e7a0") for group_key in ("metadata", "interpolation_meta", "custom_meta")),
+        *((group_key, "#ffcc5c") for group_key in ("identifier", "variantSets", "variantSet", "variants")),
+
         ("inherits", _ARCS_LEGEND[Pcp.ArcTypeInherit]['color']),
-        ("variantSets", "#feb236"),
-        ("variantSet", "#feb236"),
-        ("variants", "#feb236"),
-        ("references", "#d64161"),
-        ("payload", "#6b5b95"),  # legend color too dark
-        ("specializes", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color']),
-        ("apiSchemas", "#eeac99"),
+        ("payload", "#6c71c4"),
+        ("specializes", "#bd5734"),
+
         ("list_op", "#e3eaa7"),
-        ("rel_op", "#ff6f69"),
-        ("custom_meta", "#b8a9c9"),
-        ("interpolation_meta", "#d6d4e0"),
-        ("prop_type", "#5b9aa0"),
-        ("primvars", "#f4a688"),
-        ("timeSamples", "#f9ccac"),
-        ("prop_array", "#77a8a8"),
-        ("prop_name", "#d9ad7c"),
-        ("rel_name", "#d9ad7c"),
-        ("value_assignment", "#d96459"),
-        ("set_string", "#daebe8"),
-        ("string_value", "#daebe8"),
-        ("identifier", "#ffcc5c"),
-        ("collapsed", "#87bdd8"),
+
+        *((group_key, "#5b9aa0") for group_key in ("prim_type", "prop_type", "prop_array")),
+        *((group_key, "#ffcc5c") for group_key in ("prop_name", "rel_name")),
+        *((group_key, "#87bdd8") for group_key in ("set_string", "string_value")),
+        ("collapsed", "#92a8d1"),
         ("boolean", "#b7d7e8"),
         ("number", "#bccad6"),
     )}
@@ -400,11 +384,6 @@ def _highlight_syntax_format(key, value):
     text_fmt = QtGui.QTextCharFormat()
     if key == "arc":
         key = "rel_op" if value.startswith("rel") else value
-    elif key == "prop_name":
-        if value.startswith("primvars"):
-            key = "primvars"
-        elif value.endswith("timeSamples"):
-            key = "timeSamples"
     elif key == "arc_selection":
         key = value
     elif key == "comment":
@@ -415,14 +394,13 @@ def _highlight_syntax_format(key, value):
         elif value == "class":
             text_fmt.setFontLetterSpacing(135)
     color = _HIGHLIGHT_COLORS[key]
-    color = color.darker(_DARKEN_HIGHLIGHT_COLORS_BY)
     text_fmt.setForeground(color)
     return text_fmt
 
 
 class _Highlighter(QtGui.QSyntaxHighlighter):
     _HIGHLIGHT_PATTERN = re.compile(
-        r'(^(?P<comment>\#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>doc|assetInfo|kind|displayName|subLayers|defaultPrim|upAxis|framesPerSecond|metersPerUnit|timeCodesPerSecond|startTimeCode|endTimeCode|instanceable|elementSize|interpolation|(?P<arc_selection>variants|payload))|(?P<list_op>add|prepend) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>int|bool|normal3f|double|float|float3|double3|token|point3f|string|asset|color3f|vector3f|float2|vector3d|texCoord2f|dictionary|rel)(?P<prop_array>\[\])? (?P<prop_name>[\w:\.]+))( (\(|((?P<value_assignment>= )(\[|\()?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path>\<[\/\w]+\>)?|(?P<relationship>\<[\/\w:.]+\>)|(?P<collapsed>\<\< \w+\[\d+\] \>\>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+        r'(^(?P<comment>\#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>doc|assetInfo|kind|displayName|subLayers|defaultPrim|upAxis|framesPerSecond|metersPerUnit|timeCodesPerSecond|startTimeCode|endTimeCode|instanceable|elementSize|interpolation|(?P<arc_selection>variants|payload))|(?P<list_op>add|(ap|pre)pend) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>int|bool|normal3f|double|float|float3|double3|token|point3f|string|asset|color3f|vector3f|float2|vector3d|texCoord2f|dictionary|rel)(?P<prop_array>\[\])? (?P<prop_name>[\w:\.]+))( (\(|((?P<value_assignment>= )(\[|\()?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path>\<[\/\w]+\>)?|(?P<relationship>\<[\/\w:.]+\>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
     )
 
     def highlightBlock(self, text):
@@ -463,11 +441,15 @@ class _LayersSheet(_sheets._Spreadsheet):
 
 
 def _pseudo_layer(layer):
+    # TODO: Houdini does not provide sdffilter ): so can't test it there atm
+    kwargs = {}
+    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on linux
+        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
     with tempfile.TemporaryDirectory() as target_dir:
         name = Path(layer.realPath).stem if layer.realPath else layer.identifier
         path = Path(target_dir) / f"{name}.usd"
         layer.Export(str(path))
-        result = subprocess.run([shutil.which("sdffilter"), "--outputType", "pseudoLayer", path], capture_output=True)
+        result = subprocess.run([shutil.which("sdffilter"), "--outputType", "pseudoLayer", str(path)], capture_output=True, **kwargs)
     if result.returncode:  # something went wrong
         raise RuntimeError(result.stderr)
     return result.stdout
