@@ -1,15 +1,18 @@
 # USDView not on pypi yet, so not possible to test this on CI
-import operator
 import types
+import operator
+import contextvars
 from functools import lru_cache, partial
 
 from pxr import Tf
-from pxr.Usdviewq.plugin import PluginContainer
+from pxr.Usdviewq import plugin, layerStackContextMenu
 
 from PySide2 import QtWidgets
 
 from . import sheets as _sheets, description as _description, create as _create, _core
-_description._DARKEN_HIGHLIGHT_COLORS_BY = 100
+
+_mainWindow = contextvars.ContextVar("_mainWindow")  # TODO: is there a better way?
+_description._PALETTE = 0  # TODO 2: same question
 
 
 def _stage_on_widget(widget_creator):
@@ -58,9 +61,32 @@ def repository_path(usdviewApi):
     return types.SimpleNamespace(show=show)
 
 
-class GrillPlugin(PluginContainer):
+_original = layerStackContextMenu._GetContextMenuItems
+
+
+def _extended(item):
+    return [  # if it looks like a duck
+        GrillContentBrowserLayerMenuItem(item),
+    ] + _original(item)
+
+
+layerStackContextMenu._GetContextMenuItems = _extended
+
+
+class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMenuItem):
+    def GetText(self):
+        return _description._BROWSE_CONTENTS_MENU_TITLE
+
+    def RunCommand(self):
+        if self._item:  # USDView allows for single layer selection in composition tab :(
+            _description._launch_content_browser([self._item.layer], _mainWindow.get())
+
+
+class GrillPlugin(plugin.PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
+        _mainWindow.set(usdviewApi.qMainWindow)
+
         def show(_launcher, _usdviewAPI):
             return _launcher(_usdviewAPI).show()
 

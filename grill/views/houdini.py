@@ -3,6 +3,7 @@ import toolutils
 from functools import lru_cache, partial
 
 from . import sheets as _sheets, description as _description, create as _create
+_description._PALETTE = 0
 
 
 def _stage_on_widget(widget_creator):

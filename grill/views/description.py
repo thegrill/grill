@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import shutil
 import typing
+import inspect
 import operator
 import tempfile
 import subprocess
@@ -17,7 +18,7 @@ from types import MappingProxyType
 
 import networkx as nx
 from networkx.drawing import nx_pydot
-from pxr import Sdf, Usd, Pcp, UsdUtils
+from pxr import Sdf, Usd, UsdGeom, UsdUtils, Plug, Pcp
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from . import sheets as _sheets, _core
@@ -29,6 +30,8 @@ _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypePayload: dict(color='darkslateblue', fontcolor='darkslateblue'),  # purple
     Pcp.ArcTypeSpecialize: dict(color='sienna', fontcolor='sienna'),  # brown
 })
+_BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
+_PALETTE = 1  # 0: Dark, 1: Light
 
 
 @lru_cache(maxsize=None)
@@ -353,28 +356,22 @@ class LayerTableModel(_sheets._ObjectTableModel):
         self.endResetModel()
 
 
-
 _HIGHLIGHT_COLORS = MappingProxyType(
-    {name: QtGui.QColor(value) for name, value in (
-        ("comment", "gray"),
-
-        *((group_key, "#f7786b") for group_key in ("specifier", "rel_op", "value_assignment", "references")),
-        *((group_key, "#f7cac9") for group_key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
-        *((group_key, "#b5e7a0") for group_key in ("metadata", "interpolation_meta", "custom_meta")),
-        *((group_key, "#ffcc5c") for group_key in ("identifier", "variantSets", "variantSet", "variants")),
-
-        ("inherits", _ARCS_LEGEND[Pcp.ArcTypeInherit]['color']),
-        ("payload", "#6c71c4"),
-        ("specializes", "#bd5734"),
-
-        ("list_op", "#e3eaa7"),
-
-        *((group_key, "#5b9aa0") for group_key in ("prim_type", "prop_type", "prop_array")),
-        *((group_key, "#ffcc5c") for group_key in ("prop_name", "rel_name")),
-        *((group_key, "#87bdd8") for group_key in ("set_string", "string_value")),
-        ("collapsed", "#92a8d1"),
-        ("boolean", "#b7d7e8"),
-        ("number", "#bccad6"),
+    {name: (QtGui.QColor(dark), QtGui.QColor(light)) for name, (dark, light) in (
+        ("comment", ("gray", "gray")),
+        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references")),
+        *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
+        *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
+        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "prop_name", "rel_name")),
+        ("inherits", (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])),
+        ("payload", ("#6c71c4", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])),
+        ("specializes", ("#bd5734", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])),
+        ("list_op", ("#e3eaa7", "#2aa198")),
+        *((key, ("#5b9aa0", "#5b9aa0")) for key in ("prim_type", "prop_type", "prop_array")),
+        *((key, ("#87bdd8", "#034f84")) for key in ("set_string", "string_value")),
+        ("collapsed", ("#92a8d1", "#36486b")),
+        ("boolean", ("#b7d7e8", "#50394c")),
+        ("number", ("#bccad6", "#667292")),
     )}
 )
 
@@ -393,14 +390,42 @@ def _highlight_syntax_format(key, value):
             text_fmt.setFontItalic(True)
         elif value == "class":
             text_fmt.setFontLetterSpacing(135)
-    color = _HIGHLIGHT_COLORS[key]
-    text_fmt.setForeground(color)
+    elif key == "identifier":
+        print(key, value)
+        # text_fmt.setFontUnderline(True)
+        text_fmt.setAnchor(True)
+        # text_fmt.setAnchorHref(value)
+        text_fmt.setAnchorHref(r"http://example.com/index.html")
+        text_fmt.setAnchorNames([value])
+        text_fmt.setToolTip(value)
+    text_fmt.setForeground(_HIGHLIGHT_COLORS[key][_PALETTE])
     return text_fmt
+
+
+@lru_cache(maxsize=1)
+def _type_names():
+    values = inspect.getmembers(Sdf.ValueTypeNames, lambda v: isinstance(v, Sdf.ValueTypeName) and not v.isArray)
+    return frozenset(chain.from_iterable(obj.aliasesAsStrings for name, obj in values))
+
+
+@lru_cache(maxsize=1)
+def _metadata_keys():
+    # https://github.com/PixarAnimationStudios/USD/blob/7a5f8c4311fed3ef2271d5e4b51025fb0f513730/pxr/usd/sdf/textFileFormat.yy#L1400-L1409
+    keys = {"doc", "subLayers"}
+    keys.update(chain.from_iterable(p.metadata.get('SdfMetadata', {}) for p in Plug.Registry().GetAllPlugins()))
+
+    # TODO: investigate if there's another way of doing this, like via the registry above
+    stage = Usd.Stage.CreateInMemory()
+    UsdGeom.Scope.Define(stage, "/a").MakeInvisible()
+
+    layer = stage.GetRootLayer()
+    layer.Traverse(layer.pseudoRoot.path, lambda path: keys.update(layer.GetObjectAtPath(path).GetMetaDataInfoKeys()))
+    return frozenset(keys)
 
 
 class _Highlighter(QtGui.QSyntaxHighlighter):
     _HIGHLIGHT_PATTERN = re.compile(
-        r'(^(?P<comment>\#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>doc|assetInfo|kind|displayName|subLayers|defaultPrim|upAxis|framesPerSecond|metersPerUnit|timeCodesPerSecond|startTimeCode|endTimeCode|instanceable|elementSize|interpolation|(?P<arc_selection>variants|payload))|(?P<list_op>add|(ap|pre)pend) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>int|bool|normal3f|double|float|float3|double3|token|point3f|string|asset|color3f|vector3f|float2|vector3d|texCoord2f|dictionary|rel)(?P<prop_array>\[\])? (?P<prop_name>[\w:\.]+))( (\(|((?P<value_assignment>= )(\[|\()?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path>\<[\/\w]+\>)?|(?P<relationship>\<[\/\w:.]+\>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+        rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
     )
 
     def highlightBlock(self, text):
@@ -415,29 +440,30 @@ class _Highlighter(QtGui.QSyntaxHighlighter):
 class _LayersSheet(_sheets._Spreadsheet):
     def contextMenuEvent(self, event):
         self.menu = QtWidgets.QMenu(self)
-        contents = QtWidgets.QAction('Contents', self)
-        contents.triggered.connect(lambda: self._display_contents(event))
-        self.menu.addAction(contents)
-        # add other required actions
+        self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, lambda: self._display_contents(event))
         self.menu.popup(QtGui.QCursor.pos())
 
     def _display_contents(self, *args, **kwargs):
         selected = self.table.selectedIndexes()
         layers = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in selected}
-        dialog = QtWidgets.QDialog(parent=self)
-        dialog.setWindowTitle("Layer Contents")
-        layout = QtWidgets.QVBoxLayout()
-        vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        for layer in layers:
-            result = _pseudo_layer(layer)
-            browser = QtWidgets.QTextBrowser(parent=dialog)
-            browser.setLineWrapMode(browser.NoWrap)
-            _Highlighter(browser)
-            browser.setText(result.decode())
-            vertical.addWidget(browser)
-        layout.addWidget(vertical)
-        dialog.setLayout(layout)
-        dialog.show()
+        _launch_content_browser(layers, self)
+
+
+def _launch_content_browser(layers, parent):
+    dialog = QtWidgets.QDialog(parent=parent)
+    dialog.setWindowTitle("Layer Contents")
+    layout = QtWidgets.QVBoxLayout()
+    vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+    for layer in layers:
+        result = _pseudo_layer(layer)
+        browser = QtWidgets.QTextBrowser(parent=dialog)
+        browser.setLineWrapMode(browser.NoWrap)
+        _Highlighter(browser)
+        browser.setText(result.decode())
+        vertical.addWidget(browser)
+    layout.addWidget(vertical)
+    dialog.setLayout(layout)
+    dialog.show()
 
 
 def _pseudo_layer(layer):
@@ -449,7 +475,7 @@ def _pseudo_layer(layer):
         name = Path(layer.realPath).stem if layer.realPath else layer.identifier
         path = Path(target_dir) / f"{name}.usd"
         layer.Export(str(path))
-        result = subprocess.run([shutil.which("sdffilter"), "--outputType", "pseudoLayer", str(path)], capture_output=True, **kwargs)
+        result = subprocess.run([shutil.which("sdffilter"), "--outputType", "pseudoLayer", "--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6", str(path)], capture_output=True, **kwargs)
     if result.returncode:  # something went wrong
         raise RuntimeError(result.stderr)
     return result.stdout

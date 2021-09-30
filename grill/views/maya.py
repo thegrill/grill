@@ -10,6 +10,7 @@ import maya.OpenMayaUI as omui
 import maya.api.OpenMaya as om
 
 from . import description as _description, sheets as _sheets, create as _create, _core
+_description._PALETTE = 0
 
 
 @lru_cache(maxsize=None)
