@@ -11,7 +11,7 @@ from PySide2 import QtWidgets
 
 from . import sheets as _sheets, description as _description, create as _create, _core
 
-_mainWindow = contextvars.ContextVar("_mainWindow")  # TODO: is there a better way?
+_usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
 _description._PALETTE = 0  # TODO 2: same question
 
 
@@ -79,13 +79,14 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
 
     def RunCommand(self):
         if self._item:  # USDView allows for single layer selection in composition tab :(
-            _description._launch_content_browser([self._item.layer], _mainWindow.get())
+            usdview_api = _usdview_api.get()
+            _description._launch_content_browser([self._item.layer], usdview_api.qMainWindow, usdview_api.stage.GetPathResolverContext())
 
 
 class GrillPlugin(plugin.PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
-        _mainWindow.set(usdviewApi.qMainWindow)
+        _usdview_api.set(usdviewApi)
 
         def show(_launcher, _usdviewAPI):
             return _launcher(_usdviewAPI).show()

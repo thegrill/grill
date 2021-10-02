@@ -12,13 +12,13 @@ import collections
 
 from pathlib import Path
 from itertools import chain
-from functools import lru_cache
 from collections import defaultdict
+from functools import lru_cache, partial
 from types import MappingProxyType
 
 import networkx as nx
 from networkx.drawing import nx_pydot
-from pxr import Sdf, Usd, UsdGeom, UsdUtils, Plug, Pcp
+from pxr import Ar, Sdf, Usd, UsdGeom, UsdUtils, Plug, Pcp, Tf
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from . import sheets as _sheets, _core
@@ -50,21 +50,40 @@ def _dot_exe():
 def _dot_2_svg(sourcepath):
     print(f"Creating svg for: {sourcepath}")
     targetpath = f"{sourcepath}.svg"
-    dotargs = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
-    kwargs = {}
+    args = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
+    error, __ = _run_inprocess(args)
+    return error, targetpath
+
+
+def _run_inprocess(args: list):
+    kwargs = dict(capture_output=True)
     if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on linux
         kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
-    result = subprocess.run(dotargs, capture_output=True, **kwargs)
+    result = subprocess.run(args, **kwargs)
     error = result.stderr.decode() if result.returncode else None
-    return error, targetpath
+    return error, result.stdout.decode()
+
+
+def _pseudo_layer(layer):
+    # TODO: Houdini does not provide sdffilter ): so can't test it there atm
+    with tempfile.TemporaryDirectory() as target_dir:
+        name = Path(layer.realPath).stem if layer.realPath else layer.identifier
+        path = Path(target_dir) / f"{name}.usd"
+        layer.Export(str(path))
+        args = [shutil.which("sdffilter"), "--outputType", "pseudoLayer", "--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6", str(path)]
+        return _run_inprocess(args)
+
+
+def _layer_label(layer):
+    return Path(layer.realPath).stem or layer.identifier
 
 
 def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     """Compute layer stack graph info for the provided prims"""
 
     @lru_cache(maxsize=None)
-    def _layer_label(layer):
-        return Path(layer.realPath).stem or layer.identifier
+    def _cached_layer_label(layer):
+        return _layer_label(layer)
 
     def _walk_layer_tree(tree):
         tree_layer = tree.layer
@@ -88,7 +107,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        label = f"{{<0>{_layer_label(root_layer)}"
+        label = f"{{<0>{_cached_layer_label(root_layer)}"
         tooltip = "Layer Stack:"
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
@@ -97,7 +116,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
             if layer != root_layer:  # root layer has been added at the start.
-                label += f"|<{layer_index}>{_layer_label(layer)}"
+                label += f"|<{layer_index}>{_cached_layer_label(layer)}"
         label += "}"
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
@@ -359,6 +378,9 @@ class LayerTableModel(_sheets._ObjectTableModel):
 _HIGHLIGHT_COLORS = MappingProxyType(
     {name: (QtGui.QColor(dark), QtGui.QColor(light)) for name, (dark, light) in (
         ("comment", ("gray", "gray")),
+        # A mix between:
+        # https://en.wikipedia.org/wiki/Solarized#Colors
+        # https://www.w3schools.com/colors/colors_palettes.asp
         *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references")),
         *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
         *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
@@ -391,13 +413,7 @@ def _highlight_syntax_format(key, value):
         elif value == "class":
             text_fmt.setFontLetterSpacing(135)
     elif key == "identifier":
-        print(key, value)
-        # text_fmt.setFontUnderline(True)
-        text_fmt.setAnchor(True)
-        # text_fmt.setAnchorHref(value)
-        text_fmt.setAnchorHref(r"http://example.com/index.html")
-        text_fmt.setAnchorNames([value])
-        text_fmt.setToolTip(value)
+        text_fmt.setFontUnderline(True)
     text_fmt.setForeground(_HIGHLIGHT_COLORS[key][_PALETTE])
     return text_fmt
 
@@ -438,6 +454,10 @@ class _Highlighter(QtGui.QSyntaxHighlighter):
 
 
 class _LayersSheet(_sheets._Spreadsheet):
+    def __init__(self, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self._resolver_context = resolver_context
+
     def contextMenuEvent(self, event):
         self.menu = QtWidgets.QMenu(self)
         self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, lambda: self._display_contents(event))
@@ -446,39 +466,99 @@ class _LayersSheet(_sheets._Spreadsheet):
     def _display_contents(self, *args, **kwargs):
         selected = self.table.selectedIndexes()
         layers = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in selected}
-        _launch_content_browser(layers, self)
+        _launch_content_browser(layers, self, self._resolver_context)
 
 
-def _launch_content_browser(layers, parent):
+class _PseudoUSDBrowser(QtWidgets.QTabWidget):
+    def __init__(self, layer, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
+        super(_PseudoUSDBrowser, self).__init__(*args, **kwargs)
+        self._resolver_context = resolver_context
+        self._browsers_by_layer = dict()
+        self._addLayerTab(layer)
+
+    @_core.wait()
+    def _addLayerTab(self, layer):
+        try:
+            browser = self._browsers_by_layer[layer]
+        except KeyError:
+            error, text = _pseudo_layer(layer)
+            if error:
+                QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
+                return
+            browser = _PseudoUSDTabBrowser(parent=self)
+            browser.setText(text)
+            browser.setLineWrapMode(browser.NoWrap)
+            _Highlighter(browser)
+            browser.identifier_requested.connect(partial(self._on_identifier_requested, layer))
+            self.addTab(browser, _layer_label(layer))
+            self._browsers_by_layer[layer] = browser
+        self.setCurrentWidget(browser)
+
+    def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
+        with Ar.ResolverContextBinder(self._resolver_context):
+            print(f"Adding tab for {identifier=} and {anchor=}")
+            try:
+                layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier) or Sdf.Layer.FindOrOpen(identifier)
+            except Tf.ErrorException as exc:
+                title = "Error Opening File"
+                text = str(exc.args[0])
+            else:
+                if layer:
+                    self._addLayerTab(layer)
+                    return
+                title = "Layer Not Found"
+                text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context}"
+            QtWidgets.QMessageBox.warning(self, title, text)
+
+
+class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
+    # See: https://doc.qt.io/qt-5/qtextbrowser.html#navigation
+    # The anchorClicked() signal is emitted when the user clicks an anchor.
+    # we should be able to use anchor functionality but that does not seem to work with syntax highlighting ):
+    # https://stackoverflow.com/questions/35858340/clickable-hyperlink-in-qtextedit/61722734#61722734
+    # https://www.qtcentre.org/threads/26332-QPlainTextEdit-and-anchors
+    # https://stackoverflow.com/questions/66931106/make-all-matches-links-by-pattern
+    # https://fossies.org/dox/CuteMarkEd-0.11.3/markdownhighlighter_8cpp_source.html
+    identifier_requested = QtCore.Signal(str)
+
+    def mousePressEvent(self, event):
+        cursor = self.cursorForPosition(event.pos())
+        cursor.select(cursor.WordUnderCursor)
+        word = cursor.selectedText()
+        cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
+        text_before = f"{cursor.selectedText()}{word}"
+        # Take advantage that identifiers in pseudo sdffilter come always in separate lines
+        pattern = rf"@(?P<identifier>[^@]*({re.escape(word.strip('@'))})[^@]*)@"
+        # print(f"{word=}")
+        # print(f"{text_before=}")
+        # print(f"{pattern=}")
+        if (text_before.count('@') == 1) and (match := re.search(pattern, cursor.block().text())):
+            self._target = match.group("identifier")
+            QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.PointingHandCursor)
+        else:
+            self._target = None
+            super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._target:
+            QtWidgets.QApplication.restoreOverrideCursor()
+            self.identifier_requested.emit(self._target)
+            self._target = None
+        else:
+            super().mouseReleaseEvent(event)
+
+
+def _launch_content_browser(layers, parent, context):
     dialog = QtWidgets.QDialog(parent=parent)
-    dialog.setWindowTitle("Layer Contents")
+    dialog.setWindowTitle("Layer Content Browser")
     layout = QtWidgets.QVBoxLayout()
     vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
     for layer in layers:
-        result = _pseudo_layer(layer)
-        browser = QtWidgets.QTextBrowser(parent=dialog)
-        browser.setLineWrapMode(browser.NoWrap)
-        _Highlighter(browser)
-        browser.setText(result.decode())
+        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context)
         vertical.addWidget(browser)
     layout.addWidget(vertical)
     dialog.setLayout(layout)
     dialog.show()
-
-
-def _pseudo_layer(layer):
-    # TODO: Houdini does not provide sdffilter ): so can't test it there atm
-    kwargs = {}
-    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on linux
-        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
-    with tempfile.TemporaryDirectory() as target_dir:
-        name = Path(layer.realPath).stem if layer.realPath else layer.identifier
-        path = Path(target_dir) / f"{name}.usd"
-        layer.Export(str(path))
-        result = subprocess.run([shutil.which("sdffilter"), "--outputType", "pseudoLayer", "--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6", str(path)], capture_output=True, **kwargs)
-    if result.returncode:  # something went wrong
-        raise RuntimeError(result.stderr)
-    return result.stdout
 
 
 class LayerStackComposition(QtWidgets.QDialog):
@@ -560,6 +640,7 @@ class LayerStackComposition(QtWidgets.QDialog):
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
+        self._layers._resolver_context = stage.GetPathResolverContext()
         predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)
         if self._prim_paths_to_compute:
