@@ -8,6 +8,7 @@ import inspect
 import operator
 import tempfile
 import subprocess
+import contextvars
 import collections
 
 from pathlib import Path
@@ -31,7 +32,7 @@ _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeSpecialize: dict(color='sienna', fontcolor='sienna'),  # brown
 })
 _BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
-_PALETTE = 1  # 0: Dark, 1: Light
+_PALETTE = contextvars.ContextVar("_PALETTE", default=1)
 
 
 @lru_cache(maxsize=None)
@@ -59,9 +60,13 @@ def _run_inprocess(args: list):
     kwargs = dict(capture_output=True)
     if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on linux
         kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
-    result = subprocess.run(args, **kwargs)
-    error = result.stderr.decode() if result.returncode else None
-    return error, result.stdout.decode()
+    try:
+        result = subprocess.run(args, **kwargs)
+    except TypeError as exc:
+        return str(exc), ""
+    else:
+        error = result.stderr.decode() if result.returncode else None
+        return error, result.stdout.decode()
 
 
 def _pseudo_layer(layer):
@@ -414,7 +419,7 @@ def _highlight_syntax_format(key, value):
             text_fmt.setFontLetterSpacing(135)
     elif key == "identifier":
         text_fmt.setFontUnderline(True)
-    text_fmt.setForeground(_HIGHLIGHT_COLORS[key][_PALETTE])
+    text_fmt.setForeground(_HIGHLIGHT_COLORS[key][_PALETTE.get()])
     return text_fmt
 
 
@@ -486,19 +491,28 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
                 return
             browser = _PseudoUSDTabBrowser(parent=self)
-            browser.setText(text)
             browser.setLineWrapMode(browser.NoWrap)
             _Highlighter(browser)
             browser.identifier_requested.connect(partial(self._on_identifier_requested, layer))
+            browser.setText(text)
             self.addTab(browser, _layer_label(layer))
             self._browsers_by_layer[layer] = browser
         self.setCurrentWidget(browser)
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
+        def _resolve():
+            # Fallback mechanism not available in Maya-2022 atm.
+            layer = Sdf.Layer.FindOrOpen(identifier)
+            if not layer:
+                relmethod = getattr(Sdf.Layer, "FindOrOpenRelativeToLayer", None)
+                if relmethod:
+                    layer = relmethod(anchor, identifier)
+            return layer
+
         with Ar.ResolverContextBinder(self._resolver_context):
-            print(f"Adding tab for {identifier=} and {anchor=}")
+            print(f"Adding tab for {identifier} and {anchor}")
             try:
-                layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier) or Sdf.Layer.FindOrOpen(identifier)
+                layer = _resolve()
             except Tf.ErrorException as exc:
                 title = "Error Opening File"
                 text = str(exc.args[0])
@@ -507,7 +521,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     self._addLayerTab(layer)
                     return
                 title = "Layer Not Found"
-                text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context}"
+                text = f"Could not find layer with {identifier} under resolver context {self._resolver_context}"
             QtWidgets.QMessageBox.warning(self, title, text)
 
 
@@ -532,7 +546,8 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
         # print(f"{word=}")
         # print(f"{text_before=}")
         # print(f"{pattern=}")
-        if (text_before.count('@') == 1) and (match := re.search(pattern, cursor.block().text())):
+        match = re.search(pattern, cursor.block().text())
+        if match and text_before.count('@') == 1:  # TODO: Flip order in PY-3.8+
             self._target = match.group("identifier")
             QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.PointingHandCursor)
         else:
@@ -640,6 +655,7 @@ class LayerStackComposition(QtWidgets.QDialog):
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
+        # WARNING: Maya returns None for stage.GetPathResolverContext() . WHY ): is it AR2.0?
         self._layers._resolver_context = stage.GetPathResolverContext()
         predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)

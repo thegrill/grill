@@ -12,7 +12,7 @@ from PySide2 import QtWidgets
 from . import sheets as _sheets, description as _description, create as _create, _core
 
 _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
-_description._PALETTE = 0  # TODO 2: same question
+_description._PALETTE.set(0)  # TODO 2: same question
 
 
 def _stage_on_widget(widget_creator):
