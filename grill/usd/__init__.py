@@ -199,6 +199,11 @@ def edit_context(obj, *args, **kwargs) -> Usd.EditContext:
 
 @edit_context.register
 def _(prim: Usd.Prim, query_filter, target_predicate):
+    # https://blogs.mathworks.com/developer/2015/03/31/dont-get-in-too-deep/
+    # with write.context(prim, dict(kingdom="assets")):
+    #     prim.GetAttribute("abc").Set(True)
+    # with write.context(stage, dict(kingdom="category")):
+    #     stage.DefinePrim("/hi")
     query = Usd.PrimCompositionQuery(prim)
     query.filter = query_filter
     for arc in query.GetCompositionArcs():

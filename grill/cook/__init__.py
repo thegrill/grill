@@ -192,6 +192,13 @@ def taxon_name(prim) -> str:
     return prim.GetAssetInfoByKey(_ASSETINFO_TAXON_KEY) or ""
 
 
+def _catalogue_path(taxon):
+    taxon_fields = _get_id_fields(taxon)
+    sub_catalogue = taxon_fields[_CATALOGUE_ID.name]  # TODO: ensure this can't be overwritten
+    taxon_name = taxon_fields[_TAXONOMY_UNIQUE_ID.name]
+    return _CATALOGUE_ROOT_PATH.AppendPath(f"{sub_catalogue}/{taxon_name}")
+
+
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
@@ -206,6 +213,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     stage = taxon.GetStage()
     taxon_path = taxon.GetPath()
     taxon_fields = _get_id_fields(taxon)
+    scope_path = _catalogue_path(taxon)
 
     current_asset_name, root_layer = _root_asset(stage)
     new_asset_name = _names.UsdAsset(current_asset_name.get(**taxon_fields))
@@ -233,7 +241,6 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     current_permission = catalogue_layer.permissionToEdit
     catalogue_layer.SetPermissionToEdit(True)
 
-    scope_path = _CATALOGUE_ROOT_PATH.AppendChild(taxon.GetName())
     scope = stage.GetPrimAtPath(scope_path)
 
     def _create(name, label):
@@ -243,9 +250,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             return prim
         assetid = new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name})
         asset_stage = fetch_stage(assetid)
-        # Deactivate "ourselves" as we are this item in the catalogue
         # TODO: this is experimental, see how reasonable / scalable this is
-        # asset_stage.OverridePrim(path).SetActive(False)  # needed?
         asset_stage.CreateClassPrim(_CATALOGUE_ROOT_PATH)
         asset_layer = asset_stage.GetRootLayer()
         asset_layer.subLayerPaths.append(catalogue_id)
@@ -298,6 +303,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
     .. attention::
         If a valid taxonomy `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ is not found on the `layer stack <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack>`_, one is added to the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
     """
+    # https://en.wikipedia.org/wiki/Taxonomy_(biology)
     try:
         taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
     except ValueError:
@@ -362,7 +368,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     relpath = path or child.GetName()
     path = origin.GetPath().AppendPath(relpath)
     # TODO: turn into function to ensure creation and query are the same?
-    child_catalogue_unit_path = _CATALOGUE_ROOT_PATH.AppendChild(taxon_name(child)).AppendChild(Usd.ModelAPI(child).GetAssetName())
+    child_catalogue_unit_path = _catalogue_path(child).AppendChild(Usd.ModelAPI(child).GetAssetName())
     spawned = parent_stage.DefinePrim(path)
     with Sdf.ChangeBlock():
         # Action of bringing a unit from our catalogue turns parent into an assembly

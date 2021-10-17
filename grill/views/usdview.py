@@ -78,7 +78,7 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
         return _description._BROWSE_CONTENTS_MENU_TITLE
 
     def RunCommand(self):
-        if self._item:  # USDView allows for single layer selection in composition tab :(
+        if self._item and getattr(self._item, 'layer', None):  # USDView allows for single layer selection in composition tab :(
             usdview_api = _usdview_api.get()
             _description._launch_content_browser([self._item.layer], usdview_api.qMainWindow, usdview_api.stage.GetPathResolverContext())
 
