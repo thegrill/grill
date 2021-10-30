@@ -4,7 +4,6 @@ from __future__ import annotations
 import re
 import shutil
 import typing
-import inspect
 import operator
 import tempfile
 import subprocess
@@ -19,9 +18,10 @@ from types import MappingProxyType
 
 import networkx as nx
 from networkx.drawing import nx_pydot
-from pxr import Ar, Sdf, Usd, UsdGeom, UsdUtils, Plug, Pcp, Tf
+from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
 from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
+import grill.usd as _usd
 from . import sheets as _sheets, _core
 
 _ARCS_LEGEND = MappingProxyType({
@@ -32,33 +32,43 @@ _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeSpecialize: dict(color='sienna', fontcolor='sienna'),  # brown
 })
 _BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
-_PALETTE = contextvars.ContextVar("_PALETTE", default=1)
+_PALETTE = contextvars.ContextVar("_PALETTE", default=1)  # (0 == dark, 1 == light)
+_HIGHLIGHT_COLORS = MappingProxyType(
+    {name: (QtGui.QColor(dark), QtGui.QColor(light)) for name, (dark, light) in (
+        ("comment", ("gray", "gray")),
+        # A mix between:
+        # https://en.wikipedia.org/wiki/Solarized#Colors
+        # https://www.w3schools.com/colors/colors_palettes.asp
+        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references")),
+        *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
+        *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
+        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "prop_name", "rel_name")),
+        ("inherits", (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])),
+        ("payload", ("#6c71c4", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])),
+        ("specializes", ("#bd5734", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])),
+        ("list_op", ("#e3eaa7", "#2aa198")),
+        *((key, ("#5b9aa0", "#5b9aa0")) for key in ("prim_type", "prop_type", "prop_array")),
+        *((key, ("#87bdd8", "#034f84")) for key in ("set_string", "string_value")),
+        ("collapsed", ("#92a8d1", "#36486b")),
+        ("boolean", ("#b7d7e8", "#50394c")),
+        ("number", ("#bccad6", "#667292")),
+    )}
+)
+_HIGHLIGHT_PATTERN = re.compile(
+    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._sdf_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+)
 
 
 @lru_cache(maxsize=None)
-def _edge_color(edge_arcs):
-    return dict(  # need to wrap color in quotes to allow multicolor
-        color=f'"{":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs)}"',
-    )
+def _which(what):
+    return shutil.which(what)
 
 
-@lru_cache(maxsize=None)
-def _dot_exe():
-    return shutil.which("dot")
-
-
-@lru_cache(maxsize=None)
-def _dot_2_svg(sourcepath):
-    print(f"Creating svg for: {sourcepath}")
-    targetpath = f"{sourcepath}.svg"
-    args = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
-    error, __ = _run_inprocess(args)
-    return error, targetpath
-
-
-def _run_inprocess(args: list):
+def _run(args: list):
+    if not args or not args[0]:
+        raise ValueError(f"Expected arguments to contain an executable value on the first index. Got: {args}")
     kwargs = dict(capture_output=True)
-    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on linux
+    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on CentOS
         kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         result = subprocess.run(args, **kwargs)
@@ -69,18 +79,54 @@ def _run_inprocess(args: list):
         return error, result.stdout.decode()
 
 
+@lru_cache(maxsize=None)
+def _edge_color(edge_arcs):
+    return dict(  # need to wrap color in quotes to allow multicolor
+        color=f'"{":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs)}"',
+    )
+
+
+@lru_cache(maxsize=None)
+def _dot_2_svg(sourcepath):
+    print(f"Creating svg for: {sourcepath}")
+    targetpath = f"{sourcepath}.svg"
+    args = [_which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
+    error, __ = _run(args)
+    return error, targetpath
+
+
 def _pseudo_layer(layer):
     # TODO: Houdini does not provide sdffilter ): so can't test it there atm
     with tempfile.TemporaryDirectory() as target_dir:
-        name = Path(layer.realPath).stem if layer.realPath else layer.identifier
+        name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
         path = Path(target_dir) / f"{name}.usd"
         layer.Export(str(path))
-        args = [shutil.which("sdffilter"), "--outputType", "pseudoLayer", "--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6", str(path)]
-        return _run_inprocess(args)
+        args = [_which("sdffilter"), "--outputType", "pseudoLayer", "--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6", str(path)]
+        return _run(args)
 
 
 def _layer_label(layer):
     return Path(layer.realPath).stem or layer.identifier
+
+
+@lru_cache(maxsize=None)
+def _highlight_syntax_format(key, value):
+    text_fmt = QtGui.QTextCharFormat()
+    if key == "arc":
+        key = "rel_op" if value.startswith("rel") else value
+    elif key == "arc_selection":
+        key = value
+    elif key == "comment":
+        text_fmt.setFontItalic(True)
+    elif key == "specifier":
+        if value == "over":
+            text_fmt.setFontItalic(True)
+        elif value == "class":
+            text_fmt.setFontLetterSpacing(135)
+    elif key == "identifier":
+        text_fmt.setFontUnderline(True)
+    text_fmt.setForeground(_HIGHLIGHT_COLORS[key][_PALETTE.get()])
+    return text_fmt
 
 
 def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
@@ -179,6 +225,19 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     )
 
 
+def _launch_content_browser(layers, parent, context):
+    dialog = QtWidgets.QDialog(parent=parent)
+    dialog.setWindowTitle("Layer Content Browser")
+    layout = QtWidgets.QVBoxLayout()
+    vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+    for layer in layers:
+        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context)
+        vertical.addWidget(browser)
+    layout.addWidget(vertical)
+    dialog.setLayout(layout)
+    dialog.show()
+
+
 class _GraphInfo(typing.NamedTuple):
     sticky_nodes: tuple
     ids_by_layers: typing.Mapping
@@ -200,7 +259,7 @@ class _Dot2Svg(QtCore.QRunnable):
 
     @QtCore.Slot()
     def run(self):
-        if not _dot_exe():
+        if not _which("dot"):
             self.signals.error.emit(
                 "In order to display composition arcs in a graph,\n"
                 "the 'dot' command must be available on the current environment.\n\n"
@@ -365,7 +424,6 @@ class PrimComposition(QtWidgets.QDialog):
 
 
 class LayerTableModel(_sheets._ObjectTableModel):
-    # TODO: allow for right click -> Get pseudo USD layer text
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if role == QtCore.Qt.ForegroundRole:
             layer = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
@@ -380,77 +438,9 @@ class LayerTableModel(_sheets._ObjectTableModel):
         self.endResetModel()
 
 
-_HIGHLIGHT_COLORS = MappingProxyType(
-    {name: (QtGui.QColor(dark), QtGui.QColor(light)) for name, (dark, light) in (
-        ("comment", ("gray", "gray")),
-        # A mix between:
-        # https://en.wikipedia.org/wiki/Solarized#Colors
-        # https://www.w3schools.com/colors/colors_palettes.asp
-        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references")),
-        *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
-        *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
-        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "prop_name", "rel_name")),
-        ("inherits", (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])),
-        ("payload", ("#6c71c4", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])),
-        ("specializes", ("#bd5734", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])),
-        ("list_op", ("#e3eaa7", "#2aa198")),
-        *((key, ("#5b9aa0", "#5b9aa0")) for key in ("prim_type", "prop_type", "prop_array")),
-        *((key, ("#87bdd8", "#034f84")) for key in ("set_string", "string_value")),
-        ("collapsed", ("#92a8d1", "#36486b")),
-        ("boolean", ("#b7d7e8", "#50394c")),
-        ("number", ("#bccad6", "#667292")),
-    )}
-)
-
-
-@lru_cache(maxsize=None)
-def _highlight_syntax_format(key, value):
-    text_fmt = QtGui.QTextCharFormat()
-    if key == "arc":
-        key = "rel_op" if value.startswith("rel") else value
-    elif key == "arc_selection":
-        key = value
-    elif key == "comment":
-        text_fmt.setFontItalic(True)
-    elif key == "specifier":
-        if value == "over":
-            text_fmt.setFontItalic(True)
-        elif value == "class":
-            text_fmt.setFontLetterSpacing(135)
-    elif key == "identifier":
-        text_fmt.setFontUnderline(True)
-    text_fmt.setForeground(_HIGHLIGHT_COLORS[key][_PALETTE.get()])
-    return text_fmt
-
-
-@lru_cache(maxsize=1)
-def _type_names():
-    values = inspect.getmembers(Sdf.ValueTypeNames, lambda v: isinstance(v, Sdf.ValueTypeName) and not v.isArray)
-    return frozenset(chain.from_iterable(obj.aliasesAsStrings for name, obj in values))
-
-
-@lru_cache(maxsize=1)
-def _metadata_keys():
-    # https://github.com/PixarAnimationStudios/USD/blob/7a5f8c4311fed3ef2271d5e4b51025fb0f513730/pxr/usd/sdf/textFileFormat.yy#L1400-L1409
-    keys = {"doc", "subLayers"}
-    keys.update(chain.from_iterable(p.metadata.get('SdfMetadata', {}) for p in Plug.Registry().GetAllPlugins()))
-
-    # TODO: investigate if there's another way of doing this, like via the registry above
-    stage = Usd.Stage.CreateInMemory()
-    UsdGeom.Scope.Define(stage, "/a").MakeInvisible()
-
-    layer = stage.GetRootLayer()
-    layer.Traverse(layer.pseudoRoot.path, lambda path: keys.update(layer.GetObjectAtPath(path).GetMetaDataInfoKeys()))
-    return frozenset(keys)
-
-
 class _Highlighter(QtGui.QSyntaxHighlighter):
-    _HIGHLIGHT_PATTERN = re.compile(
-        rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
-    )
-
     def highlightBlock(self, text):
-        for match in re.finditer(self._HIGHLIGHT_PATTERN, text):
+        for match in re.finditer(_HIGHLIGHT_PATTERN, text):
             for syntax_group, value in match.groupdict().items():
                 if not value:
                     continue
@@ -464,6 +454,13 @@ class _LayersSheet(_sheets._Spreadsheet):
         self._resolver_context = resolver_context
 
     def contextMenuEvent(self, event):
+        if not _which("sdffilter"):
+            print(
+                "In order to display layer contents, the 'sdffilter' command must be \n"
+                "available on the current environment.\n\n"
+                "Please ensure 'sdffilter' is on the system's PATH environment variable."
+            )
+            return  # ATM only appear if sdffilter is in the environment
         self.menu = QtWidgets.QMenu(self)
         self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, lambda: self._display_contents(event))
         self.menu.popup(QtGui.QCursor.pos())
@@ -484,20 +481,46 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
     @_core.wait()
     def _addLayerTab(self, layer):
         try:
-            browser = self._browsers_by_layer[layer]
+            focus_widget = self._browsers_by_layer[layer]
         except KeyError:
             error, text = _pseudo_layer(layer)
             if error:
                 QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
                 return
+            browser_frame = QtWidgets.QFrame(parent=self)
+            browser_layout = QtWidgets.QVBoxLayout()
+            browser_layout.setContentsMargins(0, 0, 0, 0)
+
+            self._line_filter = browser_line_filter = QtWidgets.QLineEdit()
+            browser_line_filter.setPlaceholderText("Find")
+
+            filter_layout = QtWidgets.QFormLayout()
+            filter_layout.addRow(_core._EMOJI.SEARCH.value, browser_line_filter)
+            browser_layout.addLayout(filter_layout)
+
+            browser_frame.setLayout(browser_layout)
             browser = _PseudoUSDTabBrowser(parent=self)
             browser.setLineWrapMode(browser.NoWrap)
             _Highlighter(browser)
             browser.identifier_requested.connect(partial(self._on_identifier_requested, layer))
             browser.setText(text)
-            self.addTab(browser, _layer_label(layer))
-            self._browsers_by_layer[layer] = browser
-        self.setCurrentWidget(browser)
+
+            def _find(text):
+                if not text:  # nothing to search.
+                    return
+                if not browser.find(text):
+                    browser.moveCursor(QtGui.QTextCursor.Start)  # try again from start
+                    browser.find(text)
+
+            browser_line_filter.textChanged.connect(_find)
+            browser_line_filter.returnPressed.connect(lambda: _find(browser_line_filter.text()))
+
+            browser_layout.addWidget(browser)
+
+            self.addTab(browser_frame, _layer_label(layer))
+            self._browsers_by_layer[layer] = browser_frame
+            focus_widget = browser_frame
+        self.setCurrentWidget(focus_widget)
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
         def _resolve():
@@ -543,9 +566,6 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
         text_before = f"{cursor.selectedText()}{word}"
         # Take advantage that identifiers in pseudo sdffilter come always in separate lines
         pattern = rf"@(?P<identifier>[^@]*({re.escape(word.strip('@'))})[^@]*)@"
-        # print(f"{word=}")
-        # print(f"{text_before=}")
-        # print(f"{pattern=}")
         match = re.search(pattern, cursor.block().text())
         if match and text_before.count('@') == 1:  # TODO: Flip order in PY-3.8+
             self._target = match.group("identifier")
@@ -561,19 +581,6 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
             self._target = None
         else:
             super().mouseReleaseEvent(event)
-
-
-def _launch_content_browser(layers, parent, context):
-    dialog = QtWidgets.QDialog(parent=parent)
-    dialog.setWindowTitle("Layer Content Browser")
-    layout = QtWidgets.QVBoxLayout()
-    vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-    for layer in layers:
-        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context)
-        vertical.addWidget(browser)
-    layout.addWidget(vertical)
-    dialog.setLayout(layout)
-    dialog.show()
 
 
 class LayerStackComposition(QtWidgets.QDialog):

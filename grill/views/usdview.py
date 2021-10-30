@@ -4,15 +4,15 @@ import operator
 import contextvars
 from functools import lru_cache, partial
 
-from pxr import Tf
-from pxr.Usdviewq import plugin, layerStackContextMenu
+from pxr import UsdGeom, Usd, Sdf, Ar, Tf
+from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu
 
 from PySide2 import QtWidgets
 
 from . import sheets as _sheets, description as _description, create as _create, _core
 
 _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
-_description._PALETTE.set(0)  # TODO 2: same question
+_description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
 
 
 def _stage_on_widget(widget_creator):
@@ -61,26 +61,95 @@ def repository_path(usdviewApi):
     return types.SimpleNamespace(show=show)
 
 
-_original = layerStackContextMenu._GetContextMenuItems
-
-
-def _extended(item):
-    return [  # if it looks like a duck
-        GrillContentBrowserLayerMenuItem(item),
-    ] + _original(item)
-
-
-layerStackContextMenu._GetContextMenuItems = _extended
-
-
 class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMenuItem):
+    def IsEnabled(self):
+        # Layer Stack Tab provides `layerPath`. Composition provides `layer`. Try both.
+        return bool(getattr(self._item, 'layer', None) or getattr(self._item, 'layerPath', None))
+
     def GetText(self):
         return _description._BROWSE_CONTENTS_MENU_TITLE
 
     def RunCommand(self):
-        if self._item and getattr(self._item, 'layer', None):  # USDView allows for single layer selection in composition tab :(
+        if self._item:
             usdview_api = _usdview_api.get()
-            _description._launch_content_browser([self._item.layer], usdview_api.qMainWindow, usdview_api.stage.GetPathResolverContext())
+            context = usdview_api.stage.GetPathResolverContext()
+            layer = getattr(self._item, 'layer', None)  # USDView allows for single layer selection in composition tab :(
+            if not layer:
+                layerPath = getattr(self._item, 'layerPath', "")
+                # We're protected by the IsEnabled method above, so don't bother checkin layerPath value
+                with Ar.ResolverContextBinder(context):
+                    layer = Sdf.Layer.FindOrOpen(layerPath)
+                    if not layer:  # edge case, is this possible?
+                        print(f"Could not find layer from {layerPath}")
+                        return
+            _description._launch_content_browser([layer], usdview_api.qMainWindow, context)
+
+
+class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
+    @property
+    def _attributes(self):
+        return [i for i in self._dataModel.selection.getProps() if isinstance(i, Usd.Attribute)]
+
+    def ShouldDisplay(self):
+        return self._role == attributeViewContextMenu.PropertyViewDataRoles.ATTRIBUTE
+
+    def IsEnabled(self):
+        return self._item and self._attributes
+
+    def GetText(self):
+        return "Edit Value (s)"
+
+    def RunCommand(self):
+        attributes = self._attributes
+        if attributes:
+            editor = _ValueEditor(_usdview_api.get().qMainWindow)
+            editor.setAttributes(attributes)
+            editor.show()
+
+
+class _ValueEditor(QtWidgets.QDialog):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        layout = QtWidgets.QFormLayout(self)
+        self.setLayout(layout)
+        self.setWindowTitle("Experimental Value Editor")
+
+    def setAttributes(self, attributes):
+        layout = self.layout()
+        supported_primvars = {"displayColor"}
+        for attr in attributes:
+            primvar = UsdGeom.Primvar(attr)
+            if primvar and primvar.GetPrimvarName() in supported_primvars:
+                editor = QtWidgets.QFrame()
+                editor_layout = QtWidgets.QVBoxLayout()
+                editor_layout.addWidget(QtWidgets.QLineEdit())
+                color_options = ["faceVarying", "vertex", "constant"]
+                # If constant:
+                #   Show single color option
+                # Else:
+                #   Show color range (start, finish) OR Random
+                color_options_box = QtWidgets.QComboBox()
+                color_options_box.addItems(color_options)
+                editor_layout.addWidget(QtWidgets.QColorDialog())
+                editor_layout.addWidget(color_options_box)
+                editor.setLayout(editor_layout)
+                layout.addRow(primvar.GetPrimvarName(), editor)
+            elif attr.GetTypeName() == Sdf.ValueTypeNames.Double:
+                def update(what, value):
+                    what.Set(value)
+                editor = QtWidgets.QDoubleSpinBox(self)
+                editor.setValue(attr.Get())
+                layout.addRow(attr.GetName(), editor)
+                editor.valueChanged.connect(partial(update, attr))
+            elif attr.GetTypeName() == Sdf.ValueTypeNames.Bool:
+                editor = QtWidgets.QCheckBox(self)
+                editor.setChecked(attr.Get())
+                layout.addRow(attr.GetName(), editor)
+                def update(what, *__):
+                    what.Set(editor.isChecked())
+                editor.stateChanged.connect(partial(update, attr))
+            else:
+                print(f"Don't know how to edit {attr}")
 
 
 class GrillPlugin(plugin.PluginContainer):
@@ -127,6 +196,16 @@ class GrillPlugin(plugin.PluginContainer):
                     menu.addItem(item)
         grill_menu = plugUIBuilder.findOrCreateMenu("👨‍🍳 Grill")
         _populate_menu(grill_menu, self._menu_items)
+
+
+for module, member_name, extender in (
+        (layerStackContextMenu, "_GetContextMenuItems", GrillContentBrowserLayerMenuItem),
+        # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
+        (attributeViewContextMenu, "_GetContextMenuItems", lambda *args: GrillAttributeEditorMenuItem(*reversed(args)))
+):
+    def _extended(_extender, original, *args):
+        return [_extender(*args)] + original(*args)  # if it looks like a duck
+    setattr(module, member_name, partial(_extended, extender, getattr(module, member_name)))
 
 
 Tf.Type.Define(GrillPlugin)

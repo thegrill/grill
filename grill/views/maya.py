@@ -10,7 +10,7 @@ import maya.OpenMayaUI as omui
 import maya.api.OpenMaya as om
 
 from . import description as _description, sheets as _sheets, create as _create, _core
-_description._PALETTE.set(0)
+_description._PALETTE.set(0)  # (0 == dark, 1 == light)
 
 
 @lru_cache(maxsize=None)
