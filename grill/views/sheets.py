@@ -11,7 +11,8 @@ from collections import Counter
 from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom, Sdf
-from PySide2 import QtCore, QtWidgets, QtGui
+# from PySide6 import QtCore, QtWidgets, QtGui
+from ._qt import QtCore, QtWidgets, QtGui
 
 from grill import usd
 
@@ -683,7 +684,6 @@ class _StageSpreadsheet(_Spreadsheet):
             layout = QtWidgets.QHBoxLayout()
             layout.setSpacing(0)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setMargin(0)
             for button in buttons:
                 layout.addWidget(button)
             frame.setLayout(layout)

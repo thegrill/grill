@@ -19,7 +19,8 @@ from types import MappingProxyType
 import networkx as nx
 from networkx.drawing import nx_pydot
 from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
-from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
+# from PySide6 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
+from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 import grill.usd as _usd
 from . import sheets as _sheets, _core
@@ -276,7 +277,7 @@ class _DotViewer(QtWidgets.QFrame):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
         self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
-        self._error_view = QtWidgets.QTextBrowser()
+        self._error_view = QtWidgets.QTextBrowser(parent=self)
         layout.addWidget(self._graph_view)
         layout.addWidget(self._error_view)
         layout.setContentsMargins(0, 0, 0, 0)
