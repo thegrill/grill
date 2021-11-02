@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @functools.lru_cache(maxsize=1)
-def _sdf_type_names():
+def _attr_value_type_names():
     values = inspect.getmembers(Sdf.ValueTypeNames, lambda v: isinstance(v, Sdf.ValueTypeName) and not v.isArray)
     return frozenset(chain.from_iterable(obj.aliasesAsStrings for name, obj in values))
 
