@@ -1,3 +1,4 @@
+import contextlib
 import io
 import csv
 import shutil
@@ -343,4 +344,12 @@ class TestViews(unittest.TestCase):
             spawned = UsdGeom.Xform(cook.spawn_unit(parent, child, path))
             spawned.AddTranslateOp().Set(value=value)
 
-        description._start_content_browser(stage.GetLayerStack(), None, stage.GetPathResolverContext())
+        # sdffilter still not coming via pypi, so patch for now
+        if not description._which("sdffilter"):
+            def _to_ascii(layer):
+                return "", layer.ExportToString()
+        else:
+            _to_ascii = description._pseudo_layer
+
+        with mock.patch("grill.views.description._pseudo_layer", new=_to_ascii):
+            description._start_content_browser(stage.GetLayerStack(), None, stage.GetPathResolverContext())
