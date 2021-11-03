@@ -227,6 +227,11 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
 
 
 def _launch_content_browser(layers, parent, context):
+    dialog = _start_content_browser(layers, parent, context)
+    dialog.show()
+
+
+def _start_content_browser(layers, parent, context):
     dialog = QtWidgets.QDialog(parent=parent)
     dialog.setWindowTitle("Layer Content Browser")
     layout = QtWidgets.QVBoxLayout()
@@ -236,7 +241,7 @@ def _launch_content_browser(layers, parent, context):
         vertical.addWidget(browser)
     layout.addWidget(vertical)
     dialog.setLayout(layout)
-    dialog.show()
+    return dialog
 
 
 class _GraphInfo(typing.NamedTuple):

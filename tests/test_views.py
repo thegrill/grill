@@ -328,3 +328,19 @@ class TestViews(unittest.TestCase):
             error, targetpath = description._dot_2_svg('nonexisting_path')
             # an error would be reported back
             self.assertIsNotNone(error)
+
+    def test_content_browser(self):
+        """Test execution of function by mocking dot with python call"""
+        stage = cook.fetch_stage(self.rootf)
+        taxon = cook.define_taxon(stage, "Another")
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        for path, value in (
+                ("", (2, 15, 6)),
+                ("Deeper/Nested/Golden1", (-4, 5, 1)),
+                ("Deeper/Nested/Golden2", (-4, -10, 1)),
+                ("Deeper/Nested/Golden3", (0, 10, -2)),
+        ):
+            spawned = UsdGeom.Xform(cook.spawn_unit(parent, child, path))
+            spawned.AddTranslateOp().Set(value=value)
+
+        description._start_content_browser(stage.GetLayerStack(), None, stage.GetPathResolverContext())
