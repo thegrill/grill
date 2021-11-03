@@ -187,11 +187,6 @@ def itaxa(prims, taxon, *taxa):
     return (prim for prim in prims if taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}))
 
 
-def taxon_name(prim) -> str:
-    """Taxon name for the given prim, if any."""
-    return prim.GetAssetInfoByKey(_ASSETINFO_TAXON_KEY) or ""
-
-
 def _catalogue_path(taxon):
     taxon_fields = _get_id_fields(taxon)
     relpath = taxon_fields[_TAXONOMY_UNIQUE_ID.name]

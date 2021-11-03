@@ -57,3 +57,10 @@ class TestUSD(unittest.TestCase):
             layer = stage.GetRootLayer()
             self.assertIsNotNone(layer.GetPrimAtPath(f"{layer.defaultPrim}/inner/child{{color={variant_name}}}"))
 
+    def test_missing_arc(self):
+        stage = Usd.Stage.CreateInMemory()
+        prim = stage.DefinePrim("/Referenced")
+        anon = Usd.Stage.CreateInMemory()
+        reference = Sdf.Reference(anon.GetRootLayer().identifier)
+        with self.assertRaises(ValueError):
+            gusd.edit_context(reference, prim)

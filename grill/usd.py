@@ -256,8 +256,7 @@ def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], prim):
         query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Payload
     elif isinstance(arc, Sdf.Reference):
         query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Reference
-    else:
-        raise TypeError
+
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     return edit_context(prim, query_filter, is_valid_target)
 

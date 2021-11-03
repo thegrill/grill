@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pxr import Usd, Sdf, Ar, UsdUtils
 
-from grill import cook, names, usd as gusd
+from grill import cook, names, usd as gusd, tokens
 
 logger = logging.getLogger(__name__)
 
@@ -153,3 +153,17 @@ class TestWrite(unittest.TestCase):
         stage = cook.fetch_stage(self.root_asset)
         taxon = cook.define_taxon(stage, "Another")
         cook.create_many(taxon, (f"new_{x}" for x in range(10)))
+
+    def test_spawn_unit(self):
+        stage = cook.fetch_stage(self.root_asset)
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        with cook.unit_context(parent):
+            for path, value in (
+                    ("", (2, 15, 6)),
+                    ("Deeper/Nested/Golden1", (-4, 5, 1)),
+                    ("Deeper/Nested/Golden2", (-4, -10, 1)),
+                    ("Deeper/Nested/Golden3", (0, 10, -2)),
+            ):
+                cook.spawn_unit(parent, child, path)
