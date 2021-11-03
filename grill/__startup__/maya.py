@@ -9,5 +9,5 @@ def install():
 
 
 def _install():
-    from grill.views import maya
+    from ..views import maya
     maya.create_menu()

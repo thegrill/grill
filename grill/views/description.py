@@ -22,8 +22,9 @@ from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
 # from PySide6 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
-import grill.usd as _usd
+from .. import usd as _usd
 from . import sheets as _sheets, _core
+
 
 _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: dict(color='mediumseagreen', fontcolor='mediumseagreen'),  # green

@@ -14,8 +14,7 @@ from pxr import Usd, UsdGeom, Sdf
 # from PySide6 import QtCore, QtWidgets, QtGui
 from ._qt import QtCore, QtWidgets, QtGui
 
-from grill import usd
-
+from .. import usd as _usd
 from . import _core
 
 logger = logging.getLogger(__name__)
@@ -308,7 +307,7 @@ class StageTableModel(_ObjectTableModel):
         self.beginResetModel()
         self._stage = value
         if value:
-            prims = usd.iprims(
+            prims = _usd.iprims(
                 value,
                 root_paths=self._root_paths,
                 prune_predicate=self._prune_predicate if self._prune_children else None,

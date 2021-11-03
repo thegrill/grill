@@ -323,7 +323,7 @@ class TestViews(unittest.TestCase):
 
     def test_dot_call(self):
         """Test execution of function by mocking dot with python call"""
-        with mock.patch("grill.views.description._dot_exe") as patch:
+        with mock.patch("grill.views.description._which") as patch:
             patch.return_value = 'python'
             error, targetpath = description._dot_2_svg('nonexisting_path')
             # an error would be reported back
