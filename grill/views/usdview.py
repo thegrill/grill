@@ -7,7 +7,6 @@ from functools import lru_cache, partial
 from pxr import UsdGeom, Usd, Sdf, Ar, Tf
 from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu
 
-# from PySide6 import QtWidgets
 from ._qt import QtWidgets
 
 from . import sheets as _sheets, description as _description, create as _create, _core

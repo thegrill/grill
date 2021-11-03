@@ -4,9 +4,8 @@ from functools import partial
 import networkx
 from pxr import Usd
 from grill import cook
-# from PySide6 import QtWidgets, QtCore, QtGui
-from ._qt import QtWidgets, QtCore, QtGui
 
+from ._qt import QtWidgets, QtCore, QtGui
 from . import sheets as _sheets, description as _description, _core
 
 

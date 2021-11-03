@@ -19,7 +19,6 @@ from types import MappingProxyType
 import networkx as nx
 from networkx.drawing import nx_pydot
 from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
-# from PySide6 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from .. import usd as _usd

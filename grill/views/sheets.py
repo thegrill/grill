@@ -11,7 +11,6 @@ from collections import Counter
 from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom, Sdf
-# from PySide6 import QtCore, QtWidgets, QtGui
 from ._qt import QtCore, QtWidgets, QtGui
 
 from .. import usd as _usd
