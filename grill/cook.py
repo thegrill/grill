@@ -194,9 +194,10 @@ def taxon_name(prim) -> str:
 
 def _catalogue_path(taxon):
     taxon_fields = _get_id_fields(taxon)
-    sub_catalogue = taxon_fields[_CATALOGUE_ID.name]  # TODO: ensure this can't be overwritten
-    taxon_name = taxon_fields[_TAXONOMY_UNIQUE_ID.name]
-    return _CATALOGUE_ROOT_PATH.AppendPath(f"{sub_catalogue}/{taxon_name}")
+    relpath = taxon_fields[_TAXONOMY_UNIQUE_ID.name]
+    if _CATALOGUE_ID.name in taxon_fields:  # TODO: ensure this can't be overwritten
+        relpath = f"{taxon_fields[_CATALOGUE_ID.name]}/{relpath}"
+    return _CATALOGUE_ROOT_PATH.AppendPath(relpath)
 
 
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
