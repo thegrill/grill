@@ -40,7 +40,7 @@ from pxr import UsdUtils, UsdGeom, Usd, Sdf, Kind, Ar
 from grill.tokens import ids
 from grill.names import UsdAsset
 
-from . import usd as _usd
+from .. import usd as _usd
 
 logger = logging.getLogger(__name__)
 
