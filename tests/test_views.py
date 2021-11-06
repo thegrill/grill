@@ -383,3 +383,10 @@ class TestViews(unittest.TestCase):
         color_var.SetInterpolation(UsdGeom.Tokens.vertex)
         editor = _attributes._DisplayColorEditor(color_var)
         editor._update_value()
+        editor._random.click()
+
+        xform = UsdGeom.Xform.Define(stage, "/x")
+        primvar = UsdGeom.Gprim(xform.GetPrim()).CreateDisplayColorPrimvar()
+        editor = _attributes._DisplayColorEditor(primvar)
+        with self.assertRaises(TypeError):  # atm some gprim types are not supported
+            editor._update_value()
