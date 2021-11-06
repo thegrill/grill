@@ -350,9 +350,20 @@ class TestViews(unittest.TestCase):
         else:
             _to_ascii = description._pseudo_layer
 
+        layers = stage.GetLayerStack()
         args = stage.GetLayerStack(), None, stage.GetPathResolverContext()
+        anchor = layers[0]
+
+        def _log(*args):
+            print(args)
+
         with mock.patch("grill.views.description._pseudo_layer", new=_to_ascii):
-            description._start_content_browser(*args)
+            dialog = description._start_content_browser(*args)
+            browser = dialog.findChild(description._PseudoUSDBrowser)
+            browser._on_identifier_requested(anchor, layers[1].identifier)
+            with mock.patch("PySide2.QtWidgets.QMessageBox.warning", new=_log):
+                browser._on_identifier_requested(anchor, "/missing/file.usd")
+
 
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = None
