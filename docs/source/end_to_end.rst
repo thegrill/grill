@@ -15,10 +15,10 @@ Creating assets requires a repository path to be set. This change lasts during t
 
     >>> import tempfile
     >>> from pathlib import Path
-    >>> from grill import write
-    >>> write.Repository.set(Path(tempfile.mkdtemp()))
+    >>> from grill import cook
+    >>> cook.Repository.set(Path(tempfile.mkdtemp()))
     <Token var=<ContextVar name='Repository' at 0x00000213A46FF900> at 0x00000213C6A9F0C0>
-    >>> write.Repository.get()
+    >>> cook.Repository.get()
     WindowsPath('C:/Users/CHRIST~1/AppData/Local/Temp/tmp767wqaya')
 
 **GUI:** Repository Path
@@ -43,11 +43,11 @@ For asset organization, ``The Grill`` uses the concept of asset `taxonomy`_. Thi
 .. code-block::  python
 
     >>> from grill import names
-    >>> stage = write.fetch_stage(names.UsdAsset.get_anonymous())
-    >>> character = write.define_taxon(stage, "Character")
+    >>> stage = cook.fetch_stage(names.UsdAsset.get_anonymous())
+    >>> character = cook.define_taxon(stage, "Character")
     >>> character
     Usd.Prim(</Taxonomy/Character>)
-    >>> write.define_taxon(stage, "SecondaryCharacter", references=(character,))
+    >>> cook.define_taxon(stage, "SecondaryCharacter", references=(character,))
     Usd.Prim(</Taxonomy/SecondaryCharacter>)
 
 **GUI:** Taxonomy Editor
@@ -70,7 +70,7 @@ An ``Asset Unit`` is considered to be a meaningful, unique member for each ``tax
 
 .. code-block::  python
 
-    >>> write.create_unit(character, "Hero01", label="Hero 01 🦸")
+    >>> cook.create_unit(character, "Hero01", label="Hero 01 🦸")
     Usd.Prim(</Character/Hero01>)
 
 **GUI:** Create Assets

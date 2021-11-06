@@ -6,7 +6,7 @@ import grill.usd as gusd
 
 
 class TestUSD(unittest.TestCase):
-    def test_something(self):
+    def test_edit_context(self):
         main = Usd.Stage.CreateInMemory()
         # Jump between 3 different layer stacks adding variants to the same set
         # main [variant blue] -> reference [variant green] -> payload [variant red]

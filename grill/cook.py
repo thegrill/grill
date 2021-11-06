@@ -36,8 +36,11 @@ from pathlib import Path
 from pprint import pformat
 
 from pxr import UsdUtils, UsdGeom, Usd, Sdf, Kind, Ar
-from grill import usd as _usd, names as _names
+
 from grill.tokens import ids
+from grill.names import UsdAsset
+
+from . import usd as _usd
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +97,7 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stag
         ``identifier`` must be a valid :class:`grill.names.UsdAsset` name.
 
     """
-    layer_id = _names.UsdAsset(identifier).name
+    layer_id = UsdAsset(identifier).name
     cache = UsdUtils.StageCache.Get()
     if not context:
         repo_path = Repository.get()
@@ -135,8 +138,8 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stag
     return stage
 
 
-@fetch_stage.register(_names.UsdAsset)
-def _(identifier: _names.UsdAsset, *args, **kwargs) -> Usd.Stage:
+@fetch_stage.register(UsdAsset)
+def _(identifier: UsdAsset, *args, **kwargs) -> Usd.Stage:
     return fetch_stage(str(identifier), *args, **kwargs)
 
 
@@ -212,7 +215,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     scope_path = _catalogue_path(taxon)
 
     current_asset_name, root_layer = _root_asset(stage)
-    new_asset_name = _names.UsdAsset(current_asset_name.get(**taxon_fields))
+    new_asset_name = UsdAsset(current_asset_name.get(**taxon_fields))
     # Edits will go to the first layer that matches a valid pipeline identifier
     # TODO: Evaluate if this agreement is robust enough for different workflows.
 
@@ -389,12 +392,12 @@ def _root_asset(stage):
     """
     with contextlib.suppress(ValueError):
         root_layer = stage.GetRootLayer()
-        return _names.UsdAsset(Path(root_layer.identifier).name), root_layer
+        return UsdAsset(Path(root_layer.identifier).name), root_layer
 
     seen = set()
     for layer in stage.GetLayerStack():
         try:
-            return _names.UsdAsset(Path(layer.identifier).name), layer
+            return UsdAsset(Path(layer.identifier).name), layer
         except ValueError:
             seen.add(layer)
             continue
@@ -422,7 +425,7 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
     seen = set()
     for layer in layers:
         # anonymous layers realPath defaults to an empty string
-        name = _names.UsdAsset(Path(layer.realPath).name)
+        name = UsdAsset(Path(layer.realPath).name)
         if tokens.difference(name.values.items()):
             seen.add(layer)
             continue
