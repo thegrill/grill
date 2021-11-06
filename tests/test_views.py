@@ -379,3 +379,7 @@ class TestViews(unittest.TestCase):
         color_var = sphere.GetDisplayColorPrimvar()
         editor = _attributes._DisplayColorEditor(color_var)
         editor._update_value()
+
+        color_var.SetInterpolation(UsdGeom.Tokens.vertex)
+        editor = _attributes._DisplayColorEditor(color_var)
+        editor._update_value()

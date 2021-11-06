@@ -304,14 +304,15 @@ class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
     # One element for each point of the mesh; interpolation of point data is:
     #   Varying: always linear.
     #   Vertex: applied according to the subdivisionScheme attribute.
-    VERTEX, VARYING = (UsdGeom.Tokens.vertex, sizes := {
+    sizes = {
         UsdGeom.Mesh: lambda mesh: len(mesh.GetPointsAttr().Get()),
         UsdGeom.Sphere: 92,
         UsdGeom.Cube: 8,
         UsdGeom.Capsule: 82,
         UsdGeom.Cone: 31,
         UsdGeom.Cylinder: 42,
-    }), (UsdGeom.Tokens.varying, sizes)
+    }
+    VERTEX, VARYING = (UsdGeom.Tokens.vertex, sizes), (UsdGeom.Tokens.varying, sizes)
     # One element for each of the face-vertices that define the mesh topology;
     # interpolation of face-vertex data may be smooth or linear, according to the
     # subdivisionScheme and faceVaryingLinearInterpolation attributes.
@@ -326,21 +327,10 @@ class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
 
     def size(self, prim):
         for geom_class, value in self.value[1].items():
-            if geom := geom_class(prim):
+            geom = geom_class(prim)
+            if geom:
                 return value(geom) if callable(value) else value
         raise TypeError(f"Don't know how to count {self} on {prim}")
 
     def interpolation(self):
         return self.value[0]
-
-
-if __name__ == "__main__":
-    from grill.views._qt import QtWidgets
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-
-    from grill.views import _attributes
-    primvar = UsdGeom.Primvar()
-    editor = _attributes._DisplayColorEditor(primvar)
-    editor.show()
-    sys.exit(app.exec_())
