@@ -117,22 +117,11 @@ class _ValueEditor(QtWidgets.QDialog):
     def setAttributes(self, attributes):
         layout = self.layout()
         supported_primvars = {"displayColor"}
+        from grill.views import _attributes
         for attr in attributes:
             primvar = UsdGeom.Primvar(attr)
             if primvar and primvar.GetPrimvarName() in supported_primvars:
-                editor = QtWidgets.QFrame()
-                editor_layout = QtWidgets.QVBoxLayout()
-                editor_layout.addWidget(QtWidgets.QLineEdit())
-                color_options = ["faceVarying", "vertex", "constant"]
-                # If constant:
-                #   Show single color option
-                # Else:
-                #   Show color range (start, finish) OR Random
-                color_options_box = QtWidgets.QComboBox()
-                color_options_box.addItems(color_options)
-                editor_layout.addWidget(QtWidgets.QColorDialog())
-                editor_layout.addWidget(color_options_box)
-                editor.setLayout(editor_layout)
+                editor = _attributes._DisplayColorEditor(primvar)
                 layout.addRow(primvar.GetPrimvarName(), editor)
             elif attr.GetTypeName() == Sdf.ValueTypeNames.Double:
                 def update(what, value):
@@ -145,9 +134,9 @@ class _ValueEditor(QtWidgets.QDialog):
                 editor = QtWidgets.QCheckBox(self)
                 editor.setChecked(attr.Get())
                 layout.addRow(attr.GetName(), editor)
-                def update(what, *__):
-                    what.Set(editor.isChecked())
-                editor.stateChanged.connect(partial(update, attr))
+                def update(ed, what, *__):
+                    what.Set(ed.isChecked())
+                editor.stateChanged.connect(partial(update, editor, attr))
             else:
                 print(f"Don't know how to edit {attr}")
 

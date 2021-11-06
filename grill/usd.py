@@ -1,4 +1,5 @@
 """Helpers for USD workflows which do not know anything about the pipeline."""
+import enum
 import typing
 import inspect
 import logging
@@ -284,3 +285,62 @@ def _(variant_set: Usd.VariantSet, layer):
     query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Variant
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     return edit_context(prim, query_filter, is_valid_target)
+
+
+class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
+    _ignore_ = 'sizes'
+    # One element for the entire Gprim; no interpolation.
+    CONSTANT = UsdGeom.Tokens.constant, {UsdGeom.Gprim: 1}
+    # One element for each face of the mesh; elements are typically not interpolated
+    # but are inherited by other faces derived from a given face (via subdivision, tessellation, etc.).
+    UNIFORM = UsdGeom.Tokens.uniform, {
+        UsdGeom.Mesh: lambda mesh: len(mesh.GetFaceVertexCountsAttr().Get()),
+        UsdGeom.Sphere: 100,  # TODO: there must be a better way of finding these numbers.
+        UsdGeom.Cube: 6,
+        UsdGeom.Capsule: 90,
+        UsdGeom.Cone: 20,
+        UsdGeom.Cylinder: 30,
+    }
+    # One element for each point of the mesh; interpolation of point data is:
+    #   Varying: always linear.
+    #   Vertex: applied according to the subdivisionScheme attribute.
+    VERTEX, VARYING = (UsdGeom.Tokens.vertex, sizes := {
+        UsdGeom.Mesh: lambda mesh: len(mesh.GetPointsAttr().Get()),
+        UsdGeom.Sphere: 92,
+        UsdGeom.Cube: 8,
+        UsdGeom.Capsule: 82,
+        UsdGeom.Cone: 31,
+        UsdGeom.Cylinder: 42,
+    }), (UsdGeom.Tokens.varying, sizes)
+    # One element for each of the face-vertices that define the mesh topology;
+    # interpolation of face-vertex data may be smooth or linear, according to the
+    # subdivisionScheme and faceVaryingLinearInterpolation attributes.
+    FACE_VARYING = UsdGeom.Tokens.faceVarying, {
+        UsdGeom.Mesh: lambda mesh: len(mesh.GetFaceVertexIndicesAttr().Get()),
+        UsdGeom.Sphere: 380,
+        UsdGeom.Cube: 24,
+        UsdGeom.Capsule: 340,
+        UsdGeom.Cone: 70,
+        UsdGeom.Cylinder: 100,
+    }
+
+    def size(self, prim):
+        for geom_class, value in self.value[1].items():
+            if geom := geom_class(prim):
+                return value(geom) if callable(value) else value
+        raise TypeError(f"Don't know how to count {self} on {prim}")
+
+    def interpolation(self):
+        return self.value[0]
+
+
+if __name__ == "__main__":
+    from grill.views._qt import QtWidgets
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+
+    from grill.views import _attributes
+    primvar = UsdGeom.Primvar()
+    editor = _attributes._DisplayColorEditor(primvar)
+    editor.show()
+    sys.exit(app.exec_())

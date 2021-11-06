@@ -9,7 +9,7 @@ from pxr import Usd, UsdGeom, Sdf
 from PySide2 import QtWidgets, QtCore
 
 from grill import cook, usd, names
-from grill.views import description, sheets, create
+from grill.views import description, sheets, create, _attributes
 
 
 class TestPrivate(unittest.TestCase):
@@ -330,7 +330,6 @@ class TestViews(unittest.TestCase):
             self.assertIsNotNone(error)
 
     def test_content_browser(self):
-        """Test execution of function by mocking dot with python call"""
         stage = cook.fetch_stage(self.rootf)
         taxon = cook.define_taxon(stage, "Another")
         parent, child = cook.create_many(taxon, ['A', 'B'])
@@ -373,3 +372,10 @@ class TestViews(unittest.TestCase):
         error, result = description._run(["python", 42])
         self.assertTrue(error.startswith('expected str'))
         self.assertEqual(result, "")
+
+    def test_display_color_editor(self):
+        stage = cook.fetch_stage(self.rootf)
+        sphere = UsdGeom.Sphere.Define(stage, "/volume")
+        color_var = sphere.GetDisplayColorPrimvar()
+        editor = _attributes._DisplayColorEditor(color_var)
+        editor._update_value()
