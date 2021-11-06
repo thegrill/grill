@@ -1,4 +1,3 @@
-import contextlib
 import io
 import csv
 import shutil
@@ -351,5 +350,15 @@ class TestViews(unittest.TestCase):
         else:
             _to_ascii = description._pseudo_layer
 
+        args = stage.GetLayerStack(), None, stage.GetPathResolverContext()
         with mock.patch("grill.views.description._pseudo_layer", new=_to_ascii):
-            description._start_content_browser(stage.GetLayerStack(), None, stage.GetPathResolverContext())
+            description._start_content_browser(*args)
+
+        with mock.patch("grill.views.description._which") as patch:
+            patch.return_value = None
+            with self.assertRaisesRegex(ValueError, "Expected arguments to contain an executable value on the first index"):
+                description._start_content_browser(*args)
+
+        error, result = description._run(["python", 42])
+        self.assertTrue(error.startswith('expected str'))
+        self.assertEqual(result, "")

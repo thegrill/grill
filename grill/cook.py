@@ -345,7 +345,7 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
         if layer:
             return layer
     fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: Usd.ModelAPI(prim).GetAssetName()}
-    return _find_layer_matching(fields, prim.GetPrimStack())
+    return _find_layer_matching(fields, (i.layer for i in prim.GetPrimStack()))
 
 
 def spawn_unit(parent, child, path=Sdf.Path.emptyPath):

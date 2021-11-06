@@ -3,7 +3,6 @@ import enum
 import contextlib
 from functools import lru_cache
 
-# from PySide6 import QtWidgets, QtGui, QtCore
 from ._qt import QtWidgets, QtGui, QtCore
 
 # Agreement: raw data accessible here

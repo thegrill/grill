@@ -5,4 +5,4 @@ omit =
     setup.py
 exclude_lines =
     pragma: not covered
-    @overload
+    @typing.overload

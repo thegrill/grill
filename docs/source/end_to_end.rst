@@ -42,8 +42,7 @@ For asset organization, ``The Grill`` uses the concept of asset `taxonomy`_. Thi
 
 .. code-block::  python
 
-    >>> from grill import names
-    >>> stage = cook.fetch_stage(names.UsdAsset.get_anonymous())
+    >>> stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
     >>> character = cook.define_taxon(stage, "Character")
     >>> character
     Usd.Prim(</Taxonomy/Character>)

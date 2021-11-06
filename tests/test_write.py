@@ -149,6 +149,15 @@ class TestWrite(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
             gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda node: node.layerStack.identifier.rootLayer == layer)
 
+        # break the unit model API
+        Usd.ModelAPI(emil).SetAssetIdentifier("")
+        without_modelapi = cook.unit_asset(emil)
+        self.assertEqual(unit_asset, without_modelapi)  # we should get the same result
+
+        Usd.ModelAPI(emil).SetAssetName("not_emil")
+        with self.assertRaisesRegex(ValueError, "Could not find layer matching"):
+            cook.unit_asset(emil)
+
     def test_create_many(self):
         stage = cook.fetch_stage(self.root_asset)
         taxon = cook.define_taxon(stage, "Another")
