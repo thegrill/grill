@@ -9,7 +9,7 @@ from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu
 
 from ._qt import QtWidgets
 
-from . import sheets as _sheets, description as _description, create as _create, _core
+from . import _core, _attributes, sheets as _sheets, description as _description, create as _create
 
 _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
 _description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
@@ -117,7 +117,6 @@ class _ValueEditor(QtWidgets.QDialog):
     def setAttributes(self, attributes):
         layout = self.layout()
         supported_primvars = {"displayColor"}
-        from grill.views import _attributes
         for attr in attributes:
             primvar = UsdGeom.Primvar(attr)
             if primvar and primvar.GetPrimvarName() in supported_primvars:
