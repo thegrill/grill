@@ -1,25 +1,29 @@
 """Views related to USD scene description"""
 from __future__ import annotations
 
+import re
 import shutil
 import typing
 import operator
 import tempfile
 import subprocess
+import contextvars
 import collections
 
 from pathlib import Path
 from itertools import chain
-from functools import lru_cache
 from collections import defaultdict
+from functools import lru_cache, partial
 from types import MappingProxyType
 
 import networkx as nx
 from networkx.drawing import nx_pydot
-from pxr import Sdf, Usd, Pcp, UsdUtils
-from PySide2 import QtWidgets, QtCore, QtWebEngineWidgets
+from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
+from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
+from .. import usd as _usd
 from . import sheets as _sheets, _core
+
 
 _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: dict(color='mediumseagreen', fontcolor='mediumseagreen'),  # green
@@ -28,6 +32,52 @@ _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypePayload: dict(color='darkslateblue', fontcolor='darkslateblue'),  # purple
     Pcp.ArcTypeSpecialize: dict(color='sienna', fontcolor='sienna'),  # brown
 })
+_BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
+_PALETTE = contextvars.ContextVar("_PALETTE", default=1)  # (0 == dark, 1 == light)
+_HIGHLIGHT_COLORS = MappingProxyType(
+    {name: (QtGui.QColor(dark), QtGui.QColor(light)) for name, (dark, light) in (
+        ("comment", ("gray", "gray")),
+        # A mix between:
+        # https://en.wikipedia.org/wiki/Solarized#Colors
+        # https://www.w3schools.com/colors/colors_palettes.asp
+        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references")),
+        *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
+        *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
+        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "prop_name", "rel_name")),
+        ("inherits", (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])),
+        ("payload", ("#6c71c4", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])),
+        ("specializes", ("#bd5734", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])),
+        ("list_op", ("#e3eaa7", "#2aa198")),
+        *((key, ("#5b9aa0", "#5b9aa0")) for key in ("prim_type", "prop_type", "prop_array")),
+        *((key, ("#87bdd8", "#034f84")) for key in ("set_string", "string_value")),
+        ("collapsed", ("#92a8d1", "#36486b")),
+        ("boolean", ("#b7d7e8", "#50394c")),
+        ("number", ("#bccad6", "#667292")),
+    )}
+)
+_HIGHLIGHT_PATTERN = re.compile(
+    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+)
+
+
+@lru_cache(maxsize=None)
+def _which(what):
+    return shutil.which(what)
+
+
+def _run(args: list):
+    if not args or not args[0]:
+        raise ValueError(f"Expected arguments to contain an executable value on the first index. Got: {args}")
+    kwargs = dict(capture_output=True)
+    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on CentOS
+        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        result = subprocess.run(args, **kwargs)
+    except TypeError as exc:
+        return str(exc), ""
+    else:
+        error = result.stderr.decode() if result.returncode else None
+        return error, result.stdout.decode()
 
 
 @lru_cache(maxsize=None)
@@ -38,29 +88,54 @@ def _edge_color(edge_arcs):
 
 
 @lru_cache(maxsize=None)
-def _dot_exe():
-    return shutil.which("dot")
-
-
-@lru_cache(maxsize=None)
 def _dot_2_svg(sourcepath):
     print(f"Creating svg for: {sourcepath}")
     targetpath = f"{sourcepath}.svg"
-    dotargs = [_dot_exe(), sourcepath, "-Tsvg", "-o", targetpath]
-    kwargs = {}
-    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on linux
-        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
-    result = subprocess.run(dotargs, capture_output=True, **kwargs)
-    error = result.stderr.decode() if result.returncode else None
+    args = [_which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
+    error, __ = _run(args)
     return error, targetpath
+
+
+def _pseudo_layer(layer):
+    # TODO: Houdini does not provide sdffilter ): so can't test it there atm
+    with tempfile.TemporaryDirectory() as target_dir:
+        name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
+        path = Path(target_dir) / f"{name}.usd"
+        layer.Export(str(path))
+        args = [_which("sdffilter"), "--outputType", "pseudoLayer", "--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6", str(path)]
+        return _run(args)
+
+
+def _layer_label(layer):
+    return Path(layer.realPath).stem or layer.identifier
+
+
+@lru_cache(maxsize=None)
+def _highlight_syntax_format(key, value):
+    text_fmt = QtGui.QTextCharFormat()
+    if key == "arc":
+        key = "rel_op" if value.startswith("rel") else value
+    elif key == "arc_selection":
+        key = value
+    elif key == "comment":
+        text_fmt.setFontItalic(True)
+    elif key == "specifier":
+        if value == "over":
+            text_fmt.setFontItalic(True)
+        elif value == "class":
+            text_fmt.setFontLetterSpacing(135)
+    elif key == "identifier":
+        text_fmt.setFontUnderline(True)
+    text_fmt.setForeground(_HIGHLIGHT_COLORS[key][_PALETTE.get()])
+    return text_fmt
 
 
 def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     """Compute layer stack graph info for the provided prims"""
 
     @lru_cache(maxsize=None)
-    def _layer_label(layer):
-        return Path(layer.realPath).stem or layer.identifier
+    def _cached_layer_label(layer):
+        return _layer_label(layer)
 
     def _walk_layer_tree(tree):
         tree_layer = tree.layer
@@ -84,7 +159,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        label = f"{{<0>{_layer_label(root_layer)}"
+        label = f"{{<0>{_cached_layer_label(root_layer)}"
         tooltip = "Layer Stack:"
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
@@ -93,7 +168,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
             if layer != root_layer:  # root layer has been added at the start.
-                label += f"|<{layer_index}>{_layer_label(layer)}"
+                label += f"|<{layer_index}>{_cached_layer_label(layer)}"
         label += "}"
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
@@ -151,6 +226,24 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     )
 
 
+def _launch_content_browser(layers, parent, context):
+    dialog = _start_content_browser(layers, parent, context)
+    dialog.show()
+
+
+def _start_content_browser(layers, parent, context):
+    dialog = QtWidgets.QDialog(parent=parent)
+    dialog.setWindowTitle("Layer Content Browser")
+    layout = QtWidgets.QVBoxLayout()
+    vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+    for layer in layers:
+        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context)
+        vertical.addWidget(browser)
+    layout.addWidget(vertical)
+    dialog.setLayout(layout)
+    return dialog
+
+
 class _GraphInfo(typing.NamedTuple):
     sticky_nodes: tuple
     ids_by_layers: typing.Mapping
@@ -172,7 +265,7 @@ class _Dot2Svg(QtCore.QRunnable):
 
     @QtCore.Slot()
     def run(self):
-        if not _dot_exe():
+        if not _which("dot"):
             self.signals.error.emit(
                 "In order to display composition arcs in a graph,\n"
                 "the 'dot' command must be available on the current environment.\n\n"
@@ -189,7 +282,7 @@ class _DotViewer(QtWidgets.QFrame):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
         self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
-        self._error_view = QtWidgets.QTextBrowser()
+        self._error_view = QtWidgets.QTextBrowser(parent=self)
         layout.addWidget(self._graph_view)
         layout.addWidget(self._error_view)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -351,6 +444,151 @@ class LayerTableModel(_sheets._ObjectTableModel):
         self.endResetModel()
 
 
+class _Highlighter(QtGui.QSyntaxHighlighter):
+    def highlightBlock(self, text):
+        for match in re.finditer(_HIGHLIGHT_PATTERN, text):
+            for syntax_group, value in match.groupdict().items():
+                if not value:
+                    continue
+                start, end = match.span(syntax_group)
+                self.setFormat(start, end-start, _highlight_syntax_format(syntax_group, value))
+
+
+class _LayersSheet(_sheets._Spreadsheet):
+    def __init__(self, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self._resolver_context = resolver_context
+
+    def contextMenuEvent(self, event):
+        if not _which("sdffilter"):
+            print(
+                "In order to display layer contents, the 'sdffilter' command must be \n"
+                "available on the current environment.\n\n"
+                "Please ensure 'sdffilter' is on the system's PATH environment variable."
+            )
+            return  # ATM only appear if sdffilter is in the environment
+        self.menu = QtWidgets.QMenu(self)
+        self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, lambda: self._display_contents(event))
+        self.menu.popup(QtGui.QCursor.pos())
+
+    def _display_contents(self, *args, **kwargs):
+        selected = self.table.selectedIndexes()
+        layers = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in selected}
+        _launch_content_browser(layers, self, self._resolver_context)
+
+
+class _PseudoUSDBrowser(QtWidgets.QTabWidget):
+    def __init__(self, layer, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
+        super(_PseudoUSDBrowser, self).__init__(*args, **kwargs)
+        self._resolver_context = resolver_context
+        self._browsers_by_layer = dict()
+        self._addLayerTab(layer)
+
+    @_core.wait()
+    def _addLayerTab(self, layer):
+        try:
+            focus_widget = self._browsers_by_layer[layer]
+        except KeyError:
+            error, text = _pseudo_layer(layer)
+            if error:
+                QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
+                return
+            browser_frame = QtWidgets.QFrame(parent=self)
+            browser_layout = QtWidgets.QVBoxLayout()
+            browser_layout.setContentsMargins(0, 0, 0, 0)
+
+            self._line_filter = browser_line_filter = QtWidgets.QLineEdit()
+            browser_line_filter.setPlaceholderText("Find")
+
+            filter_layout = QtWidgets.QFormLayout()
+            filter_layout.addRow(_core._EMOJI.SEARCH.value, browser_line_filter)
+            browser_layout.addLayout(filter_layout)
+
+            browser_frame.setLayout(browser_layout)
+            browser = _PseudoUSDTabBrowser(parent=self)
+            browser.setLineWrapMode(browser.NoWrap)
+            _Highlighter(browser)
+            browser.identifier_requested.connect(partial(self._on_identifier_requested, layer))
+            browser.setText(text)
+
+            def _find(text):
+                if not text:  # nothing to search.
+                    return
+                if not browser.find(text):
+                    browser.moveCursor(QtGui.QTextCursor.Start)  # try again from start
+                    browser.find(text)
+
+            browser_line_filter.textChanged.connect(_find)
+            browser_line_filter.returnPressed.connect(lambda: _find(browser_line_filter.text()))
+
+            browser_layout.addWidget(browser)
+
+            self.addTab(browser_frame, _layer_label(layer))
+            self._browsers_by_layer[layer] = browser_frame
+            focus_widget = browser_frame
+        self.setCurrentWidget(focus_widget)
+
+    def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
+        def _resolve():
+            # Fallback mechanism not available in Maya-2022 atm.
+            layer = Sdf.Layer.FindOrOpen(identifier)
+            if not layer:
+                relmethod = getattr(Sdf.Layer, "FindOrOpenRelativeToLayer", None)
+                if relmethod:
+                    layer = relmethod(anchor, identifier)
+            return layer
+
+        with Ar.ResolverContextBinder(self._resolver_context):
+            print(f"Adding tab for {identifier} and {anchor}")
+            try:
+                layer = _resolve()
+            except Tf.ErrorException as exc:
+                title = "Error Opening File"
+                text = str(exc.args[0])
+            else:
+                if layer:
+                    self._addLayerTab(layer)
+                    return
+                title = "Layer Not Found"
+                text = f"Could not find layer with {identifier} under resolver context {self._resolver_context}"
+            QtWidgets.QMessageBox.warning(self, title, text)
+
+
+class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
+    # See: https://doc.qt.io/qt-5/qtextbrowser.html#navigation
+    # The anchorClicked() signal is emitted when the user clicks an anchor.
+    # we should be able to use anchor functionality but that does not seem to work with syntax highlighting ):
+    # https://stackoverflow.com/questions/35858340/clickable-hyperlink-in-qtextedit/61722734#61722734
+    # https://www.qtcentre.org/threads/26332-QPlainTextEdit-and-anchors
+    # https://stackoverflow.com/questions/66931106/make-all-matches-links-by-pattern
+    # https://fossies.org/dox/CuteMarkEd-0.11.3/markdownhighlighter_8cpp_source.html
+    identifier_requested = QtCore.Signal(str)
+
+    def mousePressEvent(self, event):
+        cursor = self.cursorForPosition(event.pos())
+        cursor.select(cursor.WordUnderCursor)
+        word = cursor.selectedText()
+        cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
+        text_before = f"{cursor.selectedText()}{word}"
+        # Take advantage that identifiers in pseudo sdffilter come always in separate lines
+        pattern = rf"@(?P<identifier>[^@]*({re.escape(word.strip('@'))})[^@]*)@"
+        match = re.search(pattern, cursor.block().text())
+        if match and text_before.count('@') == 1:  # TODO: Flip order in PY-3.8+
+            self._target = match.group("identifier")
+            QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.PointingHandCursor)
+        else:
+            self._target = None
+            super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._target:
+            QtWidgets.QApplication.restoreOverrideCursor()
+            self.identifier_requested.emit(self._target)
+            self._target = None
+        else:
+            super().mouseReleaseEvent(event)
+
+
 class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
         _sheets._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
@@ -365,7 +603,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         super().__init__(parent=parent, **kwargs)
         options = _sheets._ColumnOptions.SEARCH
         layers_model = LayerTableModel(columns=self._LAYERS_COLUMNS)
-        self._layers = _sheets._Spreadsheet(layers_model, self._LAYERS_COLUMNS, options)
+        self._layers = _LayersSheet(layers_model, self._LAYERS_COLUMNS, options)
         self._prims = _sheets._StageSpreadsheet(columns=self._PRIM_COLUMNS, options=options)
         # TODO: better APIs for this default setup?
         self._prims.sorting_enabled.setVisible(False)
@@ -413,7 +651,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         self.setWindowTitle("Layer Stack Composition")
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
-        node_ids = [index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._layers.table.selectedIndexes()]
+        node_ids = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._layers.table.selectedIndexes()}
         node_indices = set(chain.from_iterable(self._computed_graph_info.ids_by_layers[layer] for layer in node_ids))
 
         prims_model = self._prims.model
@@ -430,6 +668,8 @@ class LayerStackComposition(QtWidgets.QDialog):
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
+        # WARNING: Maya returns None for stage.GetPathResolverContext() . WHY ): is it AR2.0?
+        self._layers._resolver_context = stage.GetPathResolverContext()
         predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)
         if self._prim_paths_to_compute:
@@ -446,6 +686,7 @@ class LayerStackComposition(QtWidgets.QDialog):
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
         self._computed_graph_info = graph_info
+        # https://stackoverflow.com/questions/33262913/networkx-move-edges-in-nx-multidigraph-plot
         graph = nx.MultiDiGraph()
         graph.graph['graph'] = dict(tooltip="LayerStack Composition")
         graph.add_nodes_from(self._computed_graph_info.nodes.items())

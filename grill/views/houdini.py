@@ -3,6 +3,7 @@ import toolutils
 from functools import lru_cache, partial
 
 from . import sheets as _sheets, description as _description, create as _create
+_description._PALETTE.set(0)  # (0 == dark, 1 == light)
 
 
 def _stage_on_widget(widget_creator):
@@ -46,6 +47,8 @@ def _spreadsheet():
         node = viewer.currentNode()
         node.cook(force=True)
 
+    # https://github.com/nexdatas/selector/blob/b4d6ae92f8887d1bee8bd45dd3cc5777be5ccceb/nxsselector/ElementModel.py#L501
+    # https://github.com/pyblish/pyblish-qml/blob/master/pyblish_qml/models.py
     # widget.table.itemChanged.connect(refresh_ui)  # TODO: disabled since new model does not have refresh capabilities yet!
     return widget
 

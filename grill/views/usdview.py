@@ -1,14 +1,18 @@
 # USDView not on pypi yet, so not possible to test this on CI
-import operator
 import types
+import operator
+import contextvars
 from functools import lru_cache, partial
 
-from pxr import Tf
-from pxr.Usdviewq.plugin import PluginContainer
+from pxr import UsdGeom, Usd, Sdf, Ar, Tf
+from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu
 
-from PySide2 import QtWidgets
+from ._qt import QtWidgets
 
-from . import sheets as _sheets, description as _description, create as _create, _core
+from . import _core, _attributes, sheets as _sheets, description as _description, create as _create
+
+_usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
+_description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
 
 
 def _stage_on_widget(widget_creator):
@@ -57,9 +61,90 @@ def repository_path(usdviewApi):
     return types.SimpleNamespace(show=show)
 
 
-class GrillPlugin(PluginContainer):
+class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMenuItem):
+    def IsEnabled(self):
+        # Layer Stack Tab provides `layerPath`. Composition provides `layer`. Try both.
+        return bool(getattr(self._item, 'layer', None) or getattr(self._item, 'layerPath', None))
+
+    def GetText(self):
+        return _description._BROWSE_CONTENTS_MENU_TITLE
+
+    def RunCommand(self):
+        if self._item:
+            usdview_api = _usdview_api.get()
+            context = usdview_api.stage.GetPathResolverContext()
+            layer = getattr(self._item, 'layer', None)  # USDView allows for single layer selection in composition tab :(
+            if not layer:
+                layerPath = getattr(self._item, 'layerPath', "")
+                # We're protected by the IsEnabled method above, so don't bother checkin layerPath value
+                with Ar.ResolverContextBinder(context):
+                    layer = Sdf.Layer.FindOrOpen(layerPath)
+                    if not layer:  # edge case, is this possible?
+                        print(f"Could not find layer from {layerPath}")
+                        return
+            _description._launch_content_browser([layer], usdview_api.qMainWindow, context)
+
+
+class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
+    @property
+    def _attributes(self):
+        return [i for i in self._dataModel.selection.getProps() if isinstance(i, Usd.Attribute)]
+
+    def ShouldDisplay(self):
+        return self._role == attributeViewContextMenu.PropertyViewDataRoles.ATTRIBUTE
+
+    def IsEnabled(self):
+        return self._item and self._attributes
+
+    def GetText(self):
+        return "Edit Value (s)"
+
+    def RunCommand(self):
+        attributes = self._attributes
+        if attributes:
+            editor = _ValueEditor(_usdview_api.get().qMainWindow)
+            editor.setAttributes(attributes)
+            editor.show()
+
+
+class _ValueEditor(QtWidgets.QDialog):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        layout = QtWidgets.QFormLayout(self)
+        self.setLayout(layout)
+        self.setWindowTitle("Experimental Value Editor")
+
+    def setAttributes(self, attributes):
+        layout = self.layout()
+        supported_primvars = {"displayColor"}
+        for attr in attributes:
+            primvar = UsdGeom.Primvar(attr)
+            if primvar and primvar.GetPrimvarName() in supported_primvars:
+                editor = _attributes._DisplayColorEditor(primvar)
+                layout.addRow(primvar.GetPrimvarName(), editor)
+            elif attr.GetTypeName() == Sdf.ValueTypeNames.Double:
+                def update(what, value):
+                    what.Set(value)
+                editor = QtWidgets.QDoubleSpinBox(self)
+                editor.setValue(attr.Get())
+                layout.addRow(attr.GetName(), editor)
+                editor.valueChanged.connect(partial(update, attr))
+            elif attr.GetTypeName() == Sdf.ValueTypeNames.Bool:
+                editor = QtWidgets.QCheckBox(self)
+                editor.setChecked(attr.Get())
+                layout.addRow(attr.GetName(), editor)
+                def update(ed, what, *__):
+                    what.Set(ed.isChecked())
+                editor.stateChanged.connect(partial(update, editor, attr))
+            else:
+                print(f"Don't know how to edit {attr}")
+
+
+class GrillPlugin(plugin.PluginContainer):
 
     def registerPlugins(self, plugRegistry, usdviewApi):
+        _usdview_api.set(usdviewApi)
+
         def show(_launcher, _usdviewAPI):
             return _launcher(_usdviewAPI).show()
 
@@ -99,6 +184,16 @@ class GrillPlugin(PluginContainer):
                     menu.addItem(item)
         grill_menu = plugUIBuilder.findOrCreateMenu("👨‍🍳 Grill")
         _populate_menu(grill_menu, self._menu_items)
+
+
+for module, member_name, extender in (
+        (layerStackContextMenu, "_GetContextMenuItems", GrillContentBrowserLayerMenuItem),
+        # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
+        (attributeViewContextMenu, "_GetContextMenuItems", lambda *args: GrillAttributeEditorMenuItem(*reversed(args)))
+):
+    def _extended(_extender, original, *args):
+        return [_extender(*args)] + original(*args)  # if it looks like a duck
+    setattr(module, member_name, partial(_extended, extender, getattr(module, member_name)))
 
 
 Tf.Type.Define(GrillPlugin)

@@ -9,5 +9,7 @@ def install():
 
 
 def _install():
-    from grill.views import maya
+    if cmds.about(batch=True):
+        return  # No GUI, nothing to install
+    from ..views import maya
     maya.create_menu()

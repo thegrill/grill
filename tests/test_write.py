@@ -7,161 +7,172 @@ from pathlib import Path
 
 from pxr import Usd, Sdf, Ar, UsdUtils
 
-from grill import write
+from grill import cook, names, usd as gusd, tokens
 
 logger = logging.getLogger(__name__)
-
-
-class TestUsdAsset(unittest.TestCase):
-    def test_usd_asset(self):
-        assetname = write.UsdAsset.get_anonymous(stream='test', suffix='usdz')
-        self.assertEqual(assetname.stream, 'test')
-        self.assertEqual(assetname.suffix, 'usdz')
-        with self.assertRaises(ValueError):
-            write.UsdAsset.get_anonymous(suffix='xyz')
 
 
 class TestWrite(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.mkdtemp()
         logger.debug(f"Repository root directory: {tempdir}")
-        self.root_asset = write.UsdAsset.get_anonymous()
-        self.token = write.Repository.set(Path(tempdir) / "repo")
+        self.root_asset = names.UsdAsset.get_anonymous()
+        self.token = cook.Repository.set(Path(tempdir) / "repo")
 
     def tearDown(self) -> None:
-        write.Repository.reset(self.token)
+        cook.Repository.reset(self.token)
 
     def test_fetch_stage(self):
         root_asset = self.root_asset
 
-        root_stage = write.fetch_stage(root_asset)
+        root_stage = cook.fetch_stage(root_asset)
         # fetching stage outside of AR _context should resolve to same stage
-        self.assertIs(root_stage, write.fetch_stage(root_asset))
+        self.assertIs(root_stage, cook.fetch_stage(root_asset))
 
-        repo_path = write.Repository.get()
+        repo_path = cook.Repository.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
         with Ar.ResolverContextBinder(resolver_ctx):
             # inside an AR resolver _context, a new layer and custom stage should end up
             # in that stage not resolving to the same as the one from write.fetch_stage
-            usd_opened = str(write.UsdAsset.get_anonymous(item='usd_opened'))
+            usd_opened = str(names.UsdAsset.get_anonymous(item='usd_opened'))
             Sdf.Layer.CreateNew(str(repo_path / usd_opened))
             non_cache_stage = Usd.Stage.Open(usd_opened)
-            cached_stage = write.fetch_stage(usd_opened)
+            cached_stage = cook.fetch_stage(usd_opened)
             self.assertIsNot(non_cache_stage, cached_stage)
             # but after fetching once, subsequent fetches should persist
-            self.assertIs(cached_stage, write.fetch_stage(usd_opened))
+            self.assertIs(cached_stage, cook.fetch_stage(usd_opened))
 
             # creating a new layer + stage + adding it to the cache manually
             # should allow fetch_stage to retrieve it as well.
-            sdf_opened = str(write.UsdAsset.get_default(item='sdf_opened'))
+            sdf_opened = str(names.UsdAsset.get_default(item='sdf_opened'))
             layer = Sdf.Layer.CreateNew(str(repo_path / sdf_opened))
             del layer
             cached_layer = Sdf.Layer.FindOrOpen(sdf_opened)
             opened_stage = Usd.Stage.Open(cached_layer)
             cache = UsdUtils.StageCache.Get()
             cache.Insert(opened_stage)
-            self.assertIs(opened_stage, write.fetch_stage(sdf_opened))
+            self.assertIs(opened_stage, cook.fetch_stage(sdf_opened))
 
     def test_match(self):
-        root_stage = write.fetch_stage(self.root_asset)
+        root_stage = cook.fetch_stage(self.root_asset)
         with self.assertRaises(ValueError):
-            write._find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
-
-    def test_invalid_stack(self):
-        with self.assertRaises(TypeError):
-            write._layer_stack(object())
+            cook._find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
 
     def test_edit_context(self):
         with self.assertRaises(TypeError):
-            write._edit_context(object(), write.fetch_stage(self.root_asset))
+            gusd.edit_context(object(), cook.fetch_stage(self.root_asset))
 
     def test_define_taxon(self):
         # An anonymous stage (non grill anonymous) should fail to define taxon.
         anon_stage = Usd.Stage.CreateInMemory()
         with self.assertRaises(ValueError):
-            write.define_taxon(anon_stage, "ShouldFail")
+            cook.define_taxon(anon_stage, "ShouldFail")
         # Same stage containing a grill anon layer on its stack should succeed.
-        anon_pipeline = write.fetch_stage(write.UsdAsset.get_anonymous())
+        anon_pipeline = cook.fetch_stage(names.UsdAsset.get_anonymous())
         anon_stage.GetRootLayer().subLayerPaths.append(anon_pipeline.GetRootLayer().realPath)
-        self.assertTrue(write.define_taxon(anon_stage, "ShouldSucceed").IsValid())
+        self.assertTrue(cook.define_taxon(anon_stage, "ShouldSucceed").IsValid())
 
         # Now, test stages fetched from the start via "common" pipeline calls.
-        root_stage = write.fetch_stage(self.root_asset)
+        root_stage = cook.fetch_stage(self.root_asset)
 
         with self.assertRaises(ValueError):
-            write.define_taxon(root_stage, write._TAXONOMY_NAME)
+            cook.define_taxon(root_stage, cook._TAXONOMY_NAME)
 
         with self.assertRaises(ValueError):
-            write.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={write._TAXONOMY_UNIQUE_ID: "by_id_value"})
+            cook.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={cook._TAXONOMY_UNIQUE_ID: "by_id_value"})
 
         with self.assertRaises(ValueError):
-            write.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={write._TAXONOMY_UNIQUE_ID.name: "by_id_name"})
+            cook.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={cook._TAXONOMY_UNIQUE_ID.name: "by_id_name"})
 
         with self.assertRaises(ValueError):
-            write.define_taxon(root_stage, "nonexistingfield", id_fields={str(uuid.uuid4()): "by_id_name"})
+            cook.define_taxon(root_stage, "nonexistingfield", id_fields={str(uuid.uuid4()): "by_id_name"})
 
-        displayable = write.define_taxon(root_stage, "DisplayableName")
+        displayable = cook.define_taxon(root_stage, "DisplayableName")
         # idempotent call should keep previously created prim
-        self.assertEqual(displayable, write.define_taxon(root_stage, "DisplayableName"))
+        self.assertEqual(displayable, cook.define_taxon(root_stage, "DisplayableName"))
 
-        person = write.define_taxon(root_stage, "Person", references=(displayable,))
+        person = cook.define_taxon(root_stage, "Person", references=(displayable,))
 
-        with write.taxonomy_context(root_stage):
+        with cook.taxonomy_context(root_stage):
             displayable.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
         not_taxon = root_stage.DefinePrim("/not/a/taxon")
         with self.assertRaises(ValueError):
-            write.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
-        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {})
+        not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {})
         with self.assertRaises(ValueError):
-            write.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
-        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {'invalid': 42})
+        not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {'invalid': 42})
         with self.assertRaises(ValueError):
-            write.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
-        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {write._FIELDS_KEY: 42})
+        not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: 42})
         with self.assertRaises(TypeError):
-            write.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
-        not_taxon.SetAssetInfoByKey(write._ASSETINFO_KEY, {write._FIELDS_KEY: {}})
+        not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: {}})
         with self.assertRaises(ValueError):
-            write.create(not_taxon, "WillFail")
+            cook.create_unit(not_taxon, "WillFail")
 
-        emil = write.create(person, "EmilSinclair", label="Emil Sinclair")
-        self.assertEqual(emil, write.create(person, "EmilSinclair"))
+        emil = cook.create_unit(person, "EmilSinclair", label="Emil Sinclair")
+        self.assertEqual(emil, cook.create_unit(person, "EmilSinclair"))
 
-        with write.unit_context(emil):
+        with cook.unit_context(emil):
             emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")
 
-        hero = write.define_taxon(root_stage, "Hero", references=(person,))
-        batman = write.create(hero, "Batman")
+        hero = cook.define_taxon(root_stage, "Hero", references=(person,))
+        batman = cook.create_unit(hero, "Batman")
         expected_people = [emil, batman]  # batman is also a person
         expected_heroes = [batman]
-        self.assertEqual(expected_people, list(write._iter_taxa(root_stage, person)))
-        self.assertEqual(expected_heroes, list(write._iter_taxa(root_stage, hero)))
+        stage_prims = root_stage.Traverse()
+        self.assertEqual(expected_people, list(cook.itaxa(stage_prims, person)))
+        self.assertEqual(expected_heroes, list(cook.itaxa(stage_prims, hero)))
 
     def test_asset_unit(self):
-        stage = write.fetch_stage(self.root_asset)
+        stage = cook.fetch_stage(self.root_asset)
         taxon_name = "Person"
-        person = write.define_taxon(stage, taxon_name)
+        person = cook.define_taxon(stage, taxon_name)
         unit_name = "EmilSinclair"
-        emil = write.create(person, unit_name, label="Emil Sinclair")
-        unit_asset = write.unit_asset(emil)
-        unit_id = write.UsdAsset(unit_asset.identifier)
-        self.assertEqual(unit_name, getattr(unit_id, write._UNIT_UNIQUE_ID.name))
-        self.assertEqual(taxon_name, getattr(unit_id, write._TAXONOMY_UNIQUE_ID.name))
+        emil = cook.create_unit(person, unit_name, label="Emil Sinclair")
+        unit_asset = cook.unit_asset(emil)
+        unit_id = names.UsdAsset(unit_asset.identifier)
+        self.assertEqual(unit_name, getattr(unit_id, cook._UNIT_UNIQUE_ID.name))
+        self.assertEqual(taxon_name, getattr(unit_id, cook._TAXONOMY_UNIQUE_ID.name))
 
         not_a_unit = stage.DefinePrim(emil.GetPath().AppendChild("not_a_unit"))
         with self.assertRaisesRegex(ValueError, "Missing or empty"):
-            write.unit_asset(not_a_unit)
-        with self.assertRaisesRegex(ValueError, "Expected a valid populated mapping"):
-            write._context(not_a_unit, {})
+            cook.unit_asset(not_a_unit)
+
+        layer = Sdf.Layer.CreateAnonymous()
         with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-            write._edit_context(not_a_unit, stage.GetRootLayer())
+            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda node: node.layerStack.identifier.rootLayer == layer)
+
+        # break the unit model API
+        Usd.ModelAPI(emil).SetAssetIdentifier("")
+        without_modelapi = cook.unit_asset(emil)
+        self.assertEqual(unit_asset, without_modelapi)  # we should get the same result
+
+        Usd.ModelAPI(emil).SetAssetName("not_emil")
+        with self.assertRaisesRegex(ValueError, "Could not find layer matching"):
+            cook.unit_asset(emil)
 
     def test_create_many(self):
-        stage = write.fetch_stage(self.root_asset)
-        taxon = write.define_taxon(stage, "Another")
-        write.create_many(taxon, (f"new_{x}" for x in range(10)))
+        stage = cook.fetch_stage(self.root_asset)
+        taxon = cook.define_taxon(stage, "Another")
+        cook.create_many(taxon, (f"new_{x}" for x in range(10)))
+
+    def test_spawn_unit(self):
+        stage = cook.fetch_stage(self.root_asset)
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        with cook.unit_context(parent):
+            for path, value in (
+                    ("", (2, 15, 6)),
+                    ("Deeper/Nested/Golden1", (-4, 5, 1)),
+                    ("Deeper/Nested/Golden2", (-4, -10, 1)),
+                    ("Deeper/Nested/Golden3", (0, 10, -2)),
+            ):
+                cook.spawn_unit(parent, child, path)

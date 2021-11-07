@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 
-from grill.resources import houdini
+from ..resources import houdini
 
 logger = logging.getLogger(__name__)
 

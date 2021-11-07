@@ -3,9 +3,9 @@ from functools import partial
 
 import networkx
 from pxr import Usd
-from grill import write
-from PySide2 import QtWidgets, QtCore, QtGui
+from grill import cook
 
+from ._qt import QtWidgets, QtCore, QtGui
 from . import sheets as _sheets, description as _description, _core
 
 
@@ -53,7 +53,7 @@ class _CreatePrims(QtWidgets.QDialog):
     def _setRepositoryPath(parent=None, caption="Select a repository path"):
         dirpath = QtWidgets.QFileDialog.getExistingDirectory(parent=parent, caption=caption)
         if dirpath:
-            token = write.Repository.set(Path(dirpath))
+            token = cook.Repository.set(Path(dirpath))
             print(f"Repository path set to: {dirpath}, token: {token}")
         return dirpath
 
@@ -74,8 +74,8 @@ class CreateAssets(_CreatePrims):
 
         existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
         existing_model = _sheets.StageTableModel(columns=existing_columns)
-        existing_model._root_paths = {write._TAXONOMY_ROOT_PATH}
-        existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
+        existing_model._root_paths = {cook._TAXONOMY_ROOT_PATH}
+        existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(cook._ASSETINFO_TAXA_KEY)
         # TODO: turn this into a method to lock all columns?
         existing_model._locked_columns = list(range(len(existing_columns)))
         self._existing_model = existing_model
@@ -91,13 +91,13 @@ class CreateAssets(_CreatePrims):
 
     @_core.wait()
     def _create(self):
-        if not write.Repository.get(None):
+        if not cook.Repository.get(None):
             if not self._setRepositoryPath(self, "Select a repository path to create assets on"):
                 msg = "A repository path must be selected in order to create assets."
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
                 return
         # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
-        root = self._stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
+        root = self._stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
             taxon_name = model.data(model.index(row, 0))
@@ -108,7 +108,7 @@ class CreateAssets(_CreatePrims):
                 print(f"An asset name is required! Missing on row: {row}")
                 continue
             label = model.data(model.index(row, 2))
-            write.create(taxon, asset_name, label)
+            cook.create_unit(taxon, asset_name, label)
 
     def setStage(self, stage):
         self._stage = stage
@@ -217,8 +217,8 @@ class TaxonomyEditor(_CreatePrims):
         existing_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
         existing_model = _sheets.StageTableModel(columns=existing_columns)
-        existing_model._root_paths = {write._TAXONOMY_ROOT_PATH}
-        existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
+        existing_model._root_paths = {cook._TAXONOMY_ROOT_PATH}
+        existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(cook._ASSETINFO_TAXA_KEY)
         # TODO: turn this into a method to lock all columns?
         existing_model._locked_columns = list(range(len(existing_columns)))
         self._existing = existing = _sheets._Spreadsheet(
@@ -284,7 +284,7 @@ class TaxonomyEditor(_CreatePrims):
 
         # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
         for taxon in existing_taxa:
-            taxa = taxon.GetAssetInfoByKey(write._ASSETINFO_TAXA_KEY)
+            taxa = taxon.GetAssetInfoByKey(cook._ASSETINFO_TAXA_KEY)
             taxon_name = taxon.GetName()
             taxa.pop(taxon_name)
             for ref_taxon in taxa:
@@ -292,7 +292,7 @@ class TaxonomyEditor(_CreatePrims):
 
     @_core.wait()
     def _create(self):
-        if not write.Repository.get(None):
+        if not cook.Repository.get(None):
             if not self._setRepositoryPath(self, "Select a repository path to create assets on"):
                 msg = "A repository path must be selected in order to create assets."
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
@@ -300,7 +300,7 @@ class TaxonomyEditor(_CreatePrims):
         # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
         # TODO: make data point to the actual existing prims from the start.
         #   So that we don't need to call GetPRimAtPath.
-        root = self._stage.GetPrimAtPath(write._TAXONOMY_ROOT_PATH)
+        root = self._stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
             taxon_name = model.data(model.index(row, 0))
@@ -310,4 +310,4 @@ class TaxonomyEditor(_CreatePrims):
                 continue
             reference_names = (model.data(model.index(row, 1)) or '').split("\n")
             references = (root.GetPrimAtPath(ref_name) for ref_name in reference_names if ref_name)
-            write.define_taxon(self._stage, taxon_name, references=references)
+            cook.define_taxon(self._stage, taxon_name, references=references)

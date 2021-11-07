@@ -11,8 +11,9 @@ from collections import Counter
 from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom, Sdf
-from PySide2 import QtCore, QtWidgets, QtGui
+from ._qt import QtCore, QtWidgets, QtGui
 
+from .. import usd as _usd
 from . import _core
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
 _PRIM_TYPE_OPTIONS = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
+# for older USD versions (houdini ships with 20.08 but has master API)
+_PRIM_PROTOTYPE_QUERY_METHOD = Usd.Prim.IsInPrototype if hasattr(Usd.Prim, "IsInPrototype") else Usd.Prim.IsInMaster
 
 
 def _prim_type_combobox(parent, option, index):
@@ -49,39 +52,6 @@ def _filter_predicate(*, orphaned, classes, defined, active, inactive, logical_o
         return (active and is_active) or (inactive and not is_active)
 
     return lambda prim: logical_op(specifier(prim), status(prim))
-
-
-def _common_paths(paths):
-    """For the given paths, get those which are the common parents."""
-    unique = list()
-    for path in sorted(filter(lambda p: p and not p.IsAbsoluteRootPath(), paths)):
-        if unique and path.HasPrefix(unique[-1]):  # we're a child, so safe to continue.
-            continue
-        unique.append(path)
-    return unique
-
-
-def _pruned_prims(prim_range, predicate):
-    """Convenience generator that prunes a prim range based on the given predicate"""
-    for prim in prim_range:
-        if predicate(prim):
-            prim_range.PruneChildren()
-        yield prim
-
-
-def _iprims(stage, root_paths=None, prune_predicate=None, traverse_predicate=Usd.PrimDefaultPredicate):
-    if root_paths:  # Traverse only specific parts of the stage.
-        root_paths = _common_paths(root_paths)
-        # Usd.PrimRange already discards invalid prims, so no need to check.
-        root_prims = map(stage.GetPrimAtPath, root_paths)
-        ranges = (Usd.PrimRange(prim, traverse_predicate) for prim in root_prims)
-    else:
-        ranges = [Usd.PrimRange.Stage(stage, traverse_predicate)]
-
-    if prune_predicate:
-        ranges = (_pruned_prims(iter(r), prune_predicate) for r in ranges)
-
-    return itertools.chain.from_iterable(ranges)
 
 
 @lru_cache(maxsize=None)
@@ -298,9 +268,6 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
     def sort(self, column: int, order: QtCore.Qt.SortOrder = QtCore.Qt.AscendingOrder) -> None:
         self.sourceModel().sort(column, order)
 
-# for older USD versions (houdini ships with 20.08 but has master API)
-_PRIM_PROTOTYPE_QUERY_METHOD = Usd.Prim.IsInPrototype if hasattr(Usd.Prim, "IsInPrototype") else Usd.Prim.IsInMaster
-
 
 class StageTableModel(_ObjectTableModel):
     """This model provides flexibility for:
@@ -339,7 +306,7 @@ class StageTableModel(_ObjectTableModel):
         self.beginResetModel()
         self._stage = value
         if value:
-            prims = _iprims(
+            prims = _usd.iprims(
                 value,
                 root_paths=self._root_paths,
                 prune_predicate=self._prune_predicate if self._prune_children else None,
@@ -715,7 +682,6 @@ class _StageSpreadsheet(_Spreadsheet):
             layout = QtWidgets.QHBoxLayout()
             layout.setSpacing(0)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setMargin(0)
             for button in buttons:
                 layout.addWidget(button)
             frame.setLayout(layout)
@@ -846,9 +812,11 @@ class SpreadsheetEditor(_StageSpreadsheet):
             # that are not imageable (e.g. untyped prims)
             imageable = UsdGeom.Imageable(prim)
             return imageable.GetVisibilityAttr().Get() if imageable else ""
+
         columns = (
             _Column("Path", lambda prim: str(prim.GetPath())),
             _Column("Name", Usd.Prim.GetName),
+            _Column("Asset", lambda prim: Usd.ModelAPI(prim).GetAssetName()),
             _Column("Type", Usd.Prim.GetTypeName, Usd.Prim.SetTypeName, editor=_prim_type_combobox),
             _Column("Documentation", Usd.Prim.GetDocumentation,
                     Usd.Prim.SetDocumentation),

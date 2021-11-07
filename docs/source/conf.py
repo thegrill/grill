@@ -51,30 +51,20 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx_autodoc_typehints']
 
 # Offset to play well with copybutton
-toggleprompt_offset_right = 25
+toggleprompt_offset_right = 35
 togglebutton_hint = " "
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
-    'naming': ('http://naming.readthedocs.io/en/latest/', None),
+    'naming': ('https://naming.readthedocs.io/en/latest/', None),
     'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
-
 }
 hoverxref_auto_ref = True
-# hoverxref_default_type = 'tooltip'
-# hoverxref_role_types = {
-#     'hoverxref': 'modal',
-#     'ref': 'modal',  # for hoverxref_auto_ref config
-#     'confval': 'tooltip',  # for custom object
-#     'mod': 'tooltip',  # for Python Sphinx Domain
-#     'class': 'tooltip',  # for Python Sphinx Domain
-# }
-hoverxref_intersphinx = [
-  'grill.names',
-  'naming',
-]
-hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, 'tooltip')
+hoverxref_default_type = 'tooltip'
 
+hoverxref_intersphinx = list(set(intersphinx_mapping) - {'python'})
+hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, hoverxref_default_type)
 hoverxref_domains = ['py']
+
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
 
@@ -150,7 +140,6 @@ html_theme = 'sphinx_typlog_theme'
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -172,7 +161,7 @@ html_sidebars = {
 }
 
 html_theme_options = {
-    'color': '#E8371A',
+    'color': 'Coral',
     'description': 'Cook digital',
     'logo_name': '👨‍🍳 The Grill',
 }
