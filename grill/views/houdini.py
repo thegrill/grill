@@ -1,13 +1,13 @@
 import hou
 import toolutils
-from functools import lru_cache, partial
+from functools import cache, lru_cache, partial
 
 from . import sheets as _sheets, description as _description, create as _create
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
 
 
 def _stage_on_widget(widget_creator):
-    @lru_cache(maxsize=None)
+    @cache
     def _launcher():
         widget = widget_creator(parent=hou.qt.mainWindow())
         # TODO: Get stage from current node or from current viewport?
@@ -35,7 +35,7 @@ def _creator(widget_creator):
     return widget
 
 
-@lru_cache(maxsize=None)
+@cache
 def _spreadsheet():
     """This is meant to be run under a solaris desktop in houdini.
 

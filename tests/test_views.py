@@ -6,10 +6,10 @@ import unittest
 from unittest import mock
 
 from pxr import Usd, UsdGeom, Sdf
-from PySide2 import QtWidgets, QtCore
 
 from grill import cook, usd, names
 from grill.views import description, sheets, create, _attributes
+from grill.views._qt import QtWidgets, QtCore
 
 
 class TestPrivate(unittest.TestCase):

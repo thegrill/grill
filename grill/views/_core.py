@@ -1,21 +1,11 @@
 """Shared members for views modules, not considered public API."""
 import enum
 import contextlib
-from functools import lru_cache
 
 from ._qt import QtWidgets, QtGui, QtCore
 
 # Agreement: raw data accessible here
 _QT_OBJECT_DATA_ROLE = QtCore.Qt.UserRole + 1
-
-
-@lru_cache(maxsize=None)
-def _emoji_suffix():
-    # Maya widgets strip the last character of widgets with emoji on them.
-    # Remove this workaround when QtWidgets.QLabel("🔎 Hello") does not show as "🔎 Hell".
-    text_test = "🔎 Hello"
-    # check for a running application instance (like maya), otherwise assume all good (e.g. standalone)
-    return "" if QtWidgets.QApplication.instance() and QtWidgets.QLabel(text_test).text() == text_test else " "
 
 
 @contextlib.contextmanager
@@ -27,29 +17,29 @@ def wait():
         QtWidgets.QApplication.restoreOverrideCursor()
 
 
-class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.10
+class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.11
     # GENERAL
-    ID = f"🕵{_emoji_suffix()}"
-    VISIBILITY = f"👀{_emoji_suffix()}"
-    SEARCH = f"🔎{_emoji_suffix()}"
-    LOCK = f"🔐{_emoji_suffix()}"
-    UNLOCK = f"🔓{_emoji_suffix()}"
+    ID = f"🕵"
+    VISIBILITY = f"👀"
+    SEARCH = f"🔎"
+    LOCK = f"🔐"
+    UNLOCK = f"🔓"
 
     # STAGE TRAVERSAL
-    MODEL_HIERARCHY = f"🏡{_emoji_suffix()}"
-    INSTANCE_PROXIES = f"💠{_emoji_suffix()}"
+    MODEL_HIERARCHY = f"🏡"
+    INSTANCE_PROXIES = f"💠"
 
     # PRIM SPECIFIER
-    ORPHANED = f"👻{_emoji_suffix()}"
-    CLASSES = f"🧪{_emoji_suffix()}"
-    DEFINED = f"🧱{_emoji_suffix()}"
+    ORPHANED = f"👻"
+    CLASSES = f"🧪"
+    DEFINED = f"🧱"
 
     # PRIM STATUS
-    ACTIVE = f"💡{_emoji_suffix()}"
-    INACTIVE = f"🌒{_emoji_suffix()}"
+    ACTIVE = f"💡"
+    INACTIVE = f"🌒"
 
     # IDENTIFICATION
-    NAME = f"🔖{_emoji_suffix()}"
+    NAME = f"🔖"
 
 # Very slightly modified USDView stylesheet for the push buttons.
 _USDVIEW_PUSH_BUTTON_STYLE = """

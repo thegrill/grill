@@ -137,16 +137,9 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     def _cached_layer_label(layer):
         return _layer_label(layer)
 
-    def _walk_layer_tree(tree):
-        tree_layer = tree.layer
-        if tree_layer:
-            yield tree_layer
-        for childtree in tree.childTrees:
-            yield from _walk_layer_tree(childtree)
-
     @lru_cache(maxsize=None)
     def _sublayers(layer_stack):  # {Sdf.Layer: int}
-        return MappingProxyType({v: i for i, v in enumerate(_walk_layer_tree(layer_stack.layerTree))})
+        return MappingProxyType({v: i for i, v in enumerate(layer_stack.layers)})
 
     def _add_node(pcp_node):
         layer_stack = pcp_node.layerStack
@@ -159,7 +152,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        label = f"{{<0>{_cached_layer_label(root_layer)}"
+        label = "{"
         tooltip = "Layer Stack:"
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
@@ -167,8 +160,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
                 attrs['color'] = 'darkorange'  # can probably be dashed as well?
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
-            if layer != root_layer:  # root layer has been added at the start.
-                label += f"|<{layer_index}>{_cached_layer_label(layer)}"
+            label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_cached_layer_label(layer)}"
         label += "}"
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
@@ -569,11 +561,13 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
         cursor.select(cursor.WordUnderCursor)
         word = cursor.selectedText()
         cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
-        text_before = f"{cursor.selectedText()}{word}"
         # Take advantage that identifiers in pseudo sdffilter come always in separate lines
-        pattern = rf"@(?P<identifier>[^@]*({re.escape(word.strip('@'))})[^@]*)@"
-        match = re.search(pattern, cursor.block().text())
-        if match and text_before.count('@') == 1:  # TODO: Flip order in PY-3.8+
+        if f"{cursor.selectedText()}{word}".count('@') == 1 and (
+                match := re.search(
+                    rf"@(?P<identifier>[^@]*({re.escape(word.strip('@'))})[^@]*)@",
+                    cursor.block().text()
+                )
+        ):
             self._target = match.group("identifier")
             QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.PointingHandCursor)
         else:

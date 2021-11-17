@@ -13,13 +13,13 @@ from pxr import Usd, UsdGeom, Sdf, Plug, Ar, Tf
 logger = logging.getLogger(__name__)
 
 
-@functools.lru_cache(maxsize=1)
+@functools.cache
 def _attr_value_type_names():
     values = inspect.getmembers(Sdf.ValueTypeNames, lambda v: isinstance(v, Sdf.ValueTypeName) and not v.isArray)
     return frozenset(chain.from_iterable(obj.aliasesAsStrings for name, obj in values))
 
 
-@functools.lru_cache(maxsize=1)
+@functools.cache
 def _metadata_keys():
     # https://github.com/PixarAnimationStudios/USD/blob/7a5f8c4311fed3ef2271d5e4b51025fb0f513730/pxr/usd/sdf/textFileFormat.yy#L1400-L1409
     keys = {"doc", "subLayers"}
@@ -231,8 +231,7 @@ def _(prim: Usd.Prim, query_filter, target_predicate):
     query = Usd.PrimCompositionQuery(prim)
     query.filter = query_filter
     for arc in query.GetCompositionArcs():
-        node = arc.GetTargetNode()
-        if target_predicate(node):
+        if target_predicate(node := arc.GetTargetNode()):
             target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
             return Usd.EditContext(prim.GetStage(), target)
     raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {target_predicate}")
@@ -304,15 +303,14 @@ class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
     # One element for each point of the mesh; interpolation of point data is:
     #   Varying: always linear.
     #   Vertex: applied according to the subdivisionScheme attribute.
-    sizes = {
+    VERTEX, VARYING = (UsdGeom.Tokens.vertex, sizes := {
         UsdGeom.Mesh: lambda mesh: len(mesh.GetPointsAttr().Get()),
         UsdGeom.Sphere: 92,
         UsdGeom.Cube: 8,
         UsdGeom.Capsule: 82,
         UsdGeom.Cone: 31,
         UsdGeom.Cylinder: 42,
-    }
-    VERTEX, VARYING = (UsdGeom.Tokens.vertex, sizes), (UsdGeom.Tokens.varying, sizes)
+    }), (UsdGeom.Tokens.varying, sizes)
     # One element for each of the face-vertices that define the mesh topology;
     # interpolation of face-vertex data may be smooth or linear, according to the
     # subdivisionScheme and faceVaryingLinearInterpolation attributes.
@@ -327,8 +325,7 @@ class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
 
     def size(self, prim):
         for geom_class, value in self.value[1].items():
-            geom = geom_class(prim)
-            if geom:
+            if geom := geom_class(prim):
                 return value(geom) if callable(value) else value
         raise TypeError(f"Don't know how to count {self} on {prim}")
 

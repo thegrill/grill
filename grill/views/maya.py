@@ -1,4 +1,4 @@
-from functools import lru_cache, partial
+from functools import cache, partial
 
 from maya import cmds
 from PySide2 import QtWidgets
@@ -13,13 +13,13 @@ from . import description as _description, sheets as _sheets, create as _create,
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _main_window():
     return wrapInstance(int(omui.MQtUtil.mainWindow()), QtWidgets.QWidget)
 
 
 def _stage_on_widget(widget_creator):
-    @lru_cache(maxsize=None)
+    @cache
     def _launcher():
         widget = widget_creator(parent=_main_window())
         widget.setStyleSheet(
@@ -38,7 +38,7 @@ def _stage_on_widget(widget_creator):
     return _launcher
 
 
-@lru_cache(maxsize=None)
+@cache
 def _prim_composition():
     widget = _description.PrimComposition(parent=_main_window())
 
@@ -56,7 +56,7 @@ def _prim_composition():
     return widget
 
 
-@lru_cache(maxsize=None)
+@cache
 def create_menu():
     print(f"Creating The Grill menu.")
     menu = cmds.menu("grill", label="👨‍🍳 Grill", tearOff=True, parent="MayaWindow")
