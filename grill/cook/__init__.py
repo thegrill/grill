@@ -107,8 +107,7 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stag
 
     with Ar.ResolverContextBinder(context):
         logger.debug(f"Searching for {layer_id}")
-        layer = Sdf.Layer.Find(layer_id)
-        if not layer:
+        if not (layer:=Sdf.Layer.Find(layer_id)):
             logger.debug(f"Layer {layer_id} was not found open. Attempting to open it.")
             if not Sdf.Layer.FindOrOpen(layer_id):
                 logger.debug(f"Layer {layer_id} does not exist on repository path: {repo_path}. Creating a new one.")
@@ -126,8 +125,7 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stag
             logger.debug(f"Added stage for {layer_id} with cache ID: {cache_id.ToString()}.")
         else:
             logger.debug(f"Layer was open. Found: {layer}")
-            stage = cache.FindOneMatching(layer)
-            if not stage:
+            if not (stage:=cache.FindOneMatching(layer)):
                 logger.debug("Could not find stage on the cache.")
                 stage = Usd.Stage.Open(layer)
                 cache_id = cache.Insert(stage)
@@ -161,16 +159,14 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
 
     reserved_fields = {_TAXONOMY_UNIQUE_ID, _UNIT_UNIQUE_ID}
     reserved_fields.update([i.name for i in reserved_fields])
-    intersection = reserved_fields.intersection(id_fields)
-    if intersection:
+    if intersection:=reserved_fields.intersection(id_fields):
         raise ValueError(f"Can not provide reserved id fields: {', '.join(map(str, intersection))}. Got fields: {', '.join(map(str, id_fields))}")
 
     fields = {
         (token.name if isinstance(token, ids.CGAsset) else token): value
         for token, value in id_fields.items()
     }
-    invalid_fields = set(fields).difference(ids.CGAsset.__members__)
-    if invalid_fields:
+    if invalid_fields:=set(fields).difference(ids.CGAsset.__members__):
         raise ValueError(f"Got invalid id_field keys: {', '.join(invalid_fields)}. Allowed: {', '.join(ids.CGAsset.__members__)}")
 
     with taxonomy_context(stage):
@@ -341,8 +337,7 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     """Get the asset layer that acts as the 'entry point' for the given prim."""
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
-        layer = Sdf.Layer.Find(Usd.ModelAPI(prim).GetAssetIdentifier().path)
-        if layer:
+        if layer:=Sdf.Layer.Find(Usd.ModelAPI(prim).GetAssetIdentifier().path):
             return layer
     fields = {**_get_id_fields(prim), _UNIT_UNIQUE_ID: Usd.ModelAPI(prim).GetAssetName()}
     return _find_layer_matching(fields, (i.layer for i in prim.GetPrimStack()))
@@ -405,8 +400,7 @@ def _root_asset(stage):
 
 
 def _get_id_fields(prim):
-    fields = prim.GetAssetInfoByKey(_ASSETINFO_FIELDS_KEY)
-    if not fields:
+    if not (fields:=prim.GetAssetInfoByKey(_ASSETINFO_FIELDS_KEY)):
         raise ValueError(f"Missing or empty '{_FIELDS_KEY}' on '{_ASSETINFO_KEY}' asset info for {prim}. Got: {pformat(prim.GetAssetInfoByKey(_ASSETINFO_KEY))}")
     if not isinstance(fields, typing.Mapping):
         raise TypeError(f"Expected mapping on key '{_FIELDS_KEY}' from {prim} on custom data key '{_ASSETINFO_KEY}'. Got instead {fields} with type: {type(fields)}")
