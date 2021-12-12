@@ -73,11 +73,11 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
         if self._item:
             usdview_api = _usdview_api.get()
             context = usdview_api.stage.GetPathResolverContext()
-            if layer:= getattr(self._item, 'layer', None):  # USDView allows for single layer selection in composition tab :(
+            if not (layer:= getattr(self._item, 'layer', None)):  # USDView allows for single layer selection in composition tab :(
                 layerPath = getattr(self._item, 'layerPath', "")
                 # We're protected by the IsEnabled method above, so don't bother checkin layerPath value
                 with Ar.ResolverContextBinder(context):
-                    if layer:=Sdf.Layer.FindOrOpen(layerPath):  # edge case, is this possible?
+                    if not (layer:=Sdf.Layer.FindOrOpen(layerPath)):  # edge case, is this possible?
                         print(f"Could not find layer from {layerPath}")
                         return
             _description._launch_content_browser([layer], usdview_api.qMainWindow, context)
@@ -95,7 +95,7 @@ class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContext
         return self._item and self._attributes
 
     def GetText(self):
-        return f"Edit Value{'s' if self._attributes else ''}"
+        return f"Edit Value{'s' if len(self._attributes)>1 else ''}"
 
     def RunCommand(self):
         if attributes:=self._attributes:

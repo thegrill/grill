@@ -239,7 +239,7 @@ def _(prim: Usd.Prim, /, query_filter, target_predicate):
 
 @edit_context.register(Sdf.Reference)
 @edit_context.register(Sdf.Payload)
-def _(arc: Sdf.Payload | Sdf.Reference, /, prim):
+def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
         layer = Sdf.Layer.Find(arc.assetPath)

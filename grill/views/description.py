@@ -25,12 +25,13 @@ from .. import usd as _usd
 from . import sheets as _sheets, _core
 
 
+_color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
-    Pcp.ArcTypeInherit: dict(color='mediumseagreen', fontcolor='mediumseagreen'),  # green
-    Pcp.ArcTypeVariant: dict(color='orange', fontcolor='orange'),  # yellow
-    Pcp.ArcTypeReference: dict(color='crimson', fontcolor='crimson'),  # red
-    Pcp.ArcTypePayload: dict(color='darkslateblue', fontcolor='darkslateblue'),  # purple
-    Pcp.ArcTypeSpecialize: dict(color='sienna', fontcolor='sienna'),  # brown
+    Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
+    Pcp.ArcTypeVariant: _color_attrs('orange'),
+    Pcp.ArcTypeReference: _color_attrs('crimson'),  # ~red
+    Pcp.ArcTypePayload: _color_attrs('darkslateblue'),  # ~purple
+    Pcp.ArcTypeSpecialize: _color_attrs('sienna'),  # ~brown
 })
 _BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
 _PALETTE = contextvars.ContextVar("_PALETTE", default=1)  # (0 == dark, 1 == light)
@@ -504,9 +505,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser.setText(text)
 
             def _find(text):
-                if not text:  # nothing to search.
-                    return
-                if not browser.find(text):
+                if text and not browser.find(text):
                     browser.moveCursor(QtGui.QTextCursor.Start)  # try again from start
                     browser.find(text)
 
@@ -531,7 +530,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             return layer
 
         with Ar.ResolverContextBinder(self._resolver_context):
-            print(f"Adding tab for {identifier} and {anchor}")
+            print(f"Adding tab for {identifier=} and {anchor=}")
             try:
                 layer = _resolve()
             except Tf.ErrorException as exc:
@@ -542,7 +541,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     self._addLayerTab(layer)
                     return
                 title = "Layer Not Found"
-                text = f"Could not find layer with {identifier} under resolver context {self._resolver_context}"
+                text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context} with {anchor=}"
             QtWidgets.QMessageBox.warning(self, title, text)
 
 
