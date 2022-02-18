@@ -380,6 +380,11 @@ class PrimComposition(QtWidgets.QDialog):
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
         self.composition_tree = tree = QtWidgets.QTreeWidget()
+        def _exec_context_menu(__):
+            menu = self._create_context_menu()
+            menu.exec_(QtGui.QCursor.pos())
+        tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        tree.customContextMenuRequested.connect(_exec_context_menu)
         tree.setColumnCount(len(self._COLUMNS))
         tree.setHeaderLabels([k for k in self._COLUMNS])
         tree.setAlternatingRowColors(True)
@@ -399,6 +404,21 @@ class PrimComposition(QtWidgets.QDialog):
         self.composition_tree.clear()
         self.index_box.clear()
 
+    def _create_context_menu(self):
+        # https://doc.qt.io/qtforpython-5/overviews/statemachine-api.html#the-state-machine-framework
+        tree = self.composition_tree
+        menu = QtWidgets.QMenu(tree)
+        selection = tree.selectedItems()
+
+        if len(selection) == 1:
+            for each in tree.selectedItems():
+                action = menu.addAction("Set As Edit Target")
+                stage = each.data(0, QtCore.Qt.UserRole + 1)
+                edit_target = each.data(0, QtCore.Qt.UserRole + 2)
+                action.triggered.connect(partial(stage.SetEditTarget, edit_target))
+
+        return menu
+
     def setPrim(self, prim):
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
@@ -406,6 +426,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree.clear()
         query = Usd.PrimCompositionQuery(prim)
         tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
+        stage = prim.GetStage()
         for arc in query.GetCompositionArcs():
             strings = [str(getter(arc)) for getter in self._COLUMNS.values()]
             intro_layer = arc.GetIntroducingLayer()
@@ -413,8 +434,12 @@ class PrimComposition(QtWidgets.QDialog):
                 parent = tree_items[intro_layer]
             else:
                 parent = tree
-            target_layer = arc.GetTargetNode().layerStack.identifier.rootLayer
-            tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
+            target_node = arc.GetTargetNode()
+            target_layer = target_node.layerStack.identifier.rootLayer
+            widget = tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
+            edit_target = Usd.EditTarget(target_layer, target_node)
+            widget.setData(0, QtCore.Qt.UserRole + 1, stage)
+            widget.setData(0, QtCore.Qt.UserRole + 2, edit_target)
 
         tree.expandAll()
         fd, fp = tempfile.mkstemp()
