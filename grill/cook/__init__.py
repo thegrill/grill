@@ -35,7 +35,7 @@ import contextvars
 from pathlib import Path
 from pprint import pformat
 
-from pxr import UsdUtils, UsdGeom, Usd, Sdf, Kind, Ar
+from pxr import UsdUtils, UsdGeom, UsdUI, Usd, Sdf, Kind, Ar
 
 from grill.tokens import ids
 from grill.names import UsdAsset
@@ -173,7 +173,6 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
         prim = stage.DefinePrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
-        prim.CreateAttribute("label", Sdf.ValueTypeNames.String, custom=False)
         taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
         prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
@@ -259,10 +258,8 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         modelAPI.SetAssetIdentifier(str(assetid))
         asset_origin.GetInherits().AddInherit(taxon_path)
         asset_stage.SetDefaultPrim(asset_origin)
-        if label:
-            label_attr = asset_origin.GetAttribute("label")
-            label_attr.Set(label)
-
+        ui = UsdUI.SceneGraphPrimAPI.Apply(asset_origin)
+        ui.GetDisplayNameAttr().Set(label or name)
         over_prim = stage.OverridePrim(path)
         over_prim.GetReferences().AddReference(asset_layer.identifier)
         return over_prim
