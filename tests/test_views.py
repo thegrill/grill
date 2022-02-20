@@ -102,8 +102,8 @@ class TestViews(unittest.TestCase):
         # cheap. All these layers affect a single prim
         affectedPaths = dict.fromkeys((i.GetRootLayer() for i in (self.capsule, self.sphere, self.merge)), 1)
 
-        # the world affects both root and the nested prims
-        affectedPaths[self.world.GetRootLayer()] = 3
+        # the world affects both root and the nested prims, stage layer stack is included
+        affectedPaths.update(dict.fromkeys(self.world.GetLayerStack(), 3))
 
         for row in range(widget._layers.model.rowCount()):
             layer = widget._layers.model._objects[row]
@@ -113,14 +113,14 @@ class TestViews(unittest.TestCase):
             self.assertEqual(expectedAffectedPrims, actualListedPrims)
 
         widget._layers.table.selectAll()
-        self.assertEqual(4, widget._layers.model.rowCount())
+        self.assertEqual(len(affectedPaths), widget._layers.model.rowCount())
         self.assertEqual(3, widget._prims.model.rowCount())
 
         widget.setPrimPaths({"/nested/sibling"})
         widget.setStage(self.world)
 
         widget._layers.table.selectAll()
-        self.assertEqual(1, widget._layers.model.rowCount())
+        self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
 
         widget.deleteLater()
