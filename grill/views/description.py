@@ -406,15 +406,11 @@ class PrimComposition(QtWidgets.QDialog):
 
     def _create_context_menu(self):
         # https://doc.qt.io/qtforpython-5/overviews/statemachine-api.html#the-state-machine-framework
-        tree = self.composition_tree
-        menu = QtWidgets.QMenu(tree)
-        selection = tree.selectedItems()
-
-        if len(selection) == 1:
-            for each in tree.selectedItems():
+        menu = QtWidgets.QMenu(tree:=self.composition_tree)
+        if len(selection:=tree.selectedItems()) == 1:
+            for each in selection:
                 action = menu.addAction("Set As Edit Target")
-                stage = each.data(0, QtCore.Qt.UserRole + 1)
-                edit_target = each.data(0, QtCore.Qt.UserRole + 2)
+                stage, edit_target = each.data(0, QtCore.Qt.UserRole)
                 action.triggered.connect(partial(stage.SetEditTarget, edit_target))
 
         return menu
@@ -438,8 +434,7 @@ class PrimComposition(QtWidgets.QDialog):
             target_layer = target_node.layerStack.identifier.rootLayer
             widget = tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
             edit_target = Usd.EditTarget(target_layer, target_node)
-            widget.setData(0, QtCore.Qt.UserRole + 1, stage)
-            widget.setData(0, QtCore.Qt.UserRole + 2, edit_target)
+            widget.setData(0, QtCore.Qt.UserRole, (stage, edit_target))
 
         tree.expandAll()
         fd, fp = tempfile.mkstemp()
@@ -511,7 +506,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             if error:
                 QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
                 return
-            browser_frame = QtWidgets.QFrame(parent=self)
+            focus_widget = QtWidgets.QFrame(parent=self)
             browser_layout = QtWidgets.QVBoxLayout()
             browser_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -522,7 +517,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             filter_layout.addRow(_core._EMOJI.SEARCH.value, browser_line_filter)
             browser_layout.addLayout(filter_layout)
 
-            browser_frame.setLayout(browser_layout)
+            focus_widget.setLayout(browser_layout)
             browser = _PseudoUSDTabBrowser(parent=self)
             browser.setLineWrapMode(browser.NoWrap)
             _Highlighter(browser)
@@ -539,20 +534,16 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
             browser_layout.addWidget(browser)
 
-            self.addTab(browser_frame, _layer_label(layer))
-            self._browsers_by_layer[layer] = browser_frame
-            focus_widget = browser_frame
+            self.addTab(focus_widget, _layer_label(layer))
+            self._browsers_by_layer[layer] = focus_widget
         self.setCurrentWidget(focus_widget)
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
         def _resolve():
             # Fallback mechanism not available in Maya-2022 atm.
-            layer = Sdf.Layer.FindOrOpen(identifier)
-            if not layer:
-                relmethod = getattr(Sdf.Layer, "FindOrOpenRelativeToLayer", None)
-                if relmethod:
-                    layer = relmethod(anchor, identifier)
-            return layer
+            if not (_layer:= Sdf.Layer.FindOrOpen(identifier)):
+                _layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier)
+            return _layer
 
         with Ar.ResolverContextBinder(self._resolver_context):
             print(f"Adding tab for {identifier=} and {anchor=}")
