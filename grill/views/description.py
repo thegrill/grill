@@ -380,11 +380,8 @@ class PrimComposition(QtWidgets.QDialog):
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
         self.composition_tree = tree = QtWidgets.QTreeWidget()
-        def _exec_context_menu(__):
-            menu = self._create_context_menu()
-            menu.exec_(QtGui.QCursor.pos())
         tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-        tree.customContextMenuRequested.connect(_exec_context_menu)
+        tree.customContextMenuRequested.connect(self._exec_context_menu)
         tree.setColumnCount(len(self._COLUMNS))
         tree.setHeaderLabels([k for k in self._COLUMNS])
         tree.setAlternatingRowColors(True)
@@ -404,16 +401,13 @@ class PrimComposition(QtWidgets.QDialog):
         self.composition_tree.clear()
         self.index_box.clear()
 
-    def _create_context_menu(self):
+    def _exec_context_menu(self):
         # https://doc.qt.io/qtforpython-5/overviews/statemachine-api.html#the-state-machine-framework
         menu = QtWidgets.QMenu(tree:=self.composition_tree)
         if len(selection:=tree.selectedItems()) == 1:
-            for each in selection:
-                action = menu.addAction("Set As Edit Target")
-                stage, edit_target = each.data(0, QtCore.Qt.UserRole)
-                action.triggered.connect(partial(stage.SetEditTarget, edit_target))
-
-        return menu
+            stage, edit_target = selection[0].data(0, QtCore.Qt.UserRole)
+            menu.addAction("Set As Edit Target", partial(stage.SetEditTarget, edit_target))
+        menu.exec_(QtGui.QCursor.pos())
 
     def setPrim(self, prim):
         prim_index = prim.GetPrimIndex()
@@ -481,7 +475,7 @@ class _LayersSheet(_sheets._Spreadsheet):
             )
             return  # ATM only appear if sdffilter is in the environment
         self.menu = QtWidgets.QMenu(self)
-        self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, lambda: self._display_contents(event))
+        self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, self._display_contents)
         self.menu.popup(QtGui.QCursor.pos())
 
     def _display_contents(self, *args, **kwargs):
