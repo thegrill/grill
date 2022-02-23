@@ -115,6 +115,7 @@ class _ValueEditor(QtWidgets.QDialog):
         layout = self.layout()
         supported_primvars = {"displayColor"}
         for attr in attributes:
+            print(attr)
             if (primvar:= UsdGeom.Primvar(attr)) and primvar.GetPrimvarName() in supported_primvars:
                 editor = _attributes._DisplayColorEditor(primvar)
                 layout.addRow(primvar.GetPrimvarName(), editor)

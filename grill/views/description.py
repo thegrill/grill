@@ -533,16 +533,11 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         self.setCurrentWidget(focus_widget)
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
-        def _resolve():
-            # Fallback mechanism not available in Maya-2022 atm.
-            if not (_layer:= Sdf.Layer.FindOrOpen(identifier)):
-                _layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier)
-            return _layer
-
         with Ar.ResolverContextBinder(self._resolver_context):
             print(f"Adding tab for {identifier=} and {anchor=}")
             try:
-                layer = _resolve()
+                if not (layer := Sdf.Layer.FindOrOpen(identifier)):
+                    layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier)
             except Tf.ErrorException as exc:
                 title = "Error Opening File"
                 text = str(exc.args[0])
