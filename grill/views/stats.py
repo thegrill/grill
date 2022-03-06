@@ -57,8 +57,7 @@ class _StatsPie(QtWidgets.QWidget):
                 chart = QtCharts.QChart()
                 chart.addSeries(series)
                 chart.legend().hide()
-                # chart.setTheme(QtCharts.QChart.ChartThemeDark)
-                # chart.setTheme(QtCharts.QChart.ChartThemeBlueCerulean)
+
                 if chart_title:
                     chart.setTitle(chart_title)
                 view = QtCharts.QChartView(chart)
