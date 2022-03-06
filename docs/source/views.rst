@@ -14,3 +14,4 @@ Views (Inspecting / Authoring)
 
 .. include:: layerstack_composition.rst
 
+.. include:: layer_content_browser.rst

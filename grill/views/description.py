@@ -666,7 +666,6 @@ class LayerStackComposition(QtWidgets.QDialog):
     def setStage(self, stage):
         """Sets the USD stage the spreadsheet is looking at."""
         self._stage = stage
-        # WARNING: Maya returns None for stage.GetPathResolverContext() . WHY ): is it AR2.0?
         self._layers._resolver_context = stage.GetPathResolverContext()
         predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)
