@@ -48,6 +48,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.inheritance_diagram',
               'sphinx_inline_tabs',
               'hoverxref.extension',
+              'sphinx.ext.autosectionlabel',
               'sphinx_autodoc_typehints']
 
 # Offset to play well with copybutton

@@ -23,16 +23,20 @@ Setting an Edit Target
 The ``Prim Composition`` tree exposes a context menu with a ``Set as Edit Target`` item.
 This redirect edits under the selected arc by setting the current stage's `Edit Target`_.
 
-In the example below, Mesh prims under ChairB_2 have their displayColor property modified:
+In the example below, `Mesh`_ prims under ``ChairB_2`` have their `displayColor`_ property modified:
 
 #. The reference arc targeting the ``Chair.geom.usd`` layer is set as `Edit Target`_.
 
-   When ``displayColor`` is modified, the changes are visible on **both** ``ChairB_1`` **and** ``ChairB_2``, since they share the composition arc and the layer being modified.
+   When `displayColor`_ is modified, the changes are visible on **both** ``ChairB_1`` **and** ``ChairB_2``, since they share the composition arc and the layer being modified.
 
 #. The root arc targeting the ``Kitchen_set.usd`` layer is set as `Edit Target`_.
 
-   Once the ``displayColor`` is modified, the changes are visible on ``ChairB_2`` **only**, since nothing else shares that arc.
+   Once the `displayColor`_ is modified, the changes are visible on ``ChairB_2`` **only**, since nothing else shares that arc.
+
+.. image:: https://user-images.githubusercontent.com/8294116/156912114-a24b81f4-63b1-4b62-9d84-9e2c07aaef5c.gif
 
 .. _USD Prim: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim
 .. _composition arc details: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-CompositionArcs
 .. _Edit Target: https://graphics.pixar.com/usd/release/api/class_usd_edit_target.html
+.. _displayColor: https://graphics.pixar.com/usd/release/api/class_usd_geom_gprim.html#a0f8310a9dbe0bfc4be2bf4aa32e4a3e4
+.. _Mesh: https://graphics.pixar.com/usd/release/api/class_usd_geom_mesh.html
