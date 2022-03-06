@@ -43,7 +43,7 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
 .. warning::
 
-    Some DCC applications like **Houdini-19** and **Maya-2022** are still on ``python-3.7``, so installing ``grill`` for those applications will require ``grill<0.12.0``.
+    Some DCC applications like **Houdini-19** and **Maya-2022** are still on ``python-3.7``, so installing ``grill`` for those applications will require ``grill<0.13.0``.
 
 
 Extra Dependencies
