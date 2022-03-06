@@ -6,10 +6,10 @@ import unittest
 from unittest import mock
 
 from pxr import Usd, UsdGeom, Sdf
-from PySide2 import QtWidgets, QtCore
 
 from grill import cook, usd, names
-from grill.views import description, sheets, create, _attributes
+from grill.views import description, sheets, create, _attributes, stats
+from grill.views._qt import QtWidgets, QtCore
 
 
 class TestPrivate(unittest.TestCase):
@@ -102,8 +102,8 @@ class TestViews(unittest.TestCase):
         # cheap. All these layers affect a single prim
         affectedPaths = dict.fromkeys((i.GetRootLayer() for i in (self.capsule, self.sphere, self.merge)), 1)
 
-        # the world affects both root and the nested prims
-        affectedPaths[self.world.GetRootLayer()] = 3
+        # the world affects both root and the nested prims, stage layer stack is included
+        affectedPaths.update(dict.fromkeys(self.world.GetLayerStack(), 3))
 
         for row in range(widget._layers.model.rowCount()):
             layer = widget._layers.model._objects[row]
@@ -113,14 +113,14 @@ class TestViews(unittest.TestCase):
             self.assertEqual(expectedAffectedPrims, actualListedPrims)
 
         widget._layers.table.selectAll()
-        self.assertEqual(4, widget._layers.model.rowCount())
+        self.assertEqual(len(affectedPaths), widget._layers.model.rowCount())
         self.assertEqual(3, widget._prims.model.rowCount())
 
         widget.setPrimPaths({"/nested/sibling"})
         widget.setStage(self.world)
 
         widget._layers.table.selectAll()
-        self.assertEqual(1, widget._layers.model.rowCount())
+        self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
 
         widget.deleteLater()
@@ -390,3 +390,10 @@ class TestViews(unittest.TestCase):
         editor = _attributes._DisplayColorEditor(primvar)
         with self.assertRaises(TypeError):  # atm some gprim types are not supported
             editor._update_value()
+
+    def test_stats(self):
+        empty = stats.StageStats()
+        self.assertEqual(empty._usd_tree.topLevelItemCount(), 0)
+
+        widget = stats.StageStats(stage=self.world)
+        self.assertGreater(widget._usd_tree.topLevelItemCount(), 1)

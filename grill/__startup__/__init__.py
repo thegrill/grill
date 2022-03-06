@@ -19,4 +19,3 @@ def install(sitedir):
 
 def _usd_pluginfo(sitedir):
     os.environ["PXR_PLUGINPATH_NAME"] = f"{Path(sitedir) / 'grill' / 'resources' / 'usd' / 'plugInfo.json'}{os.pathsep}{os.environ.get('PXR_PLUGINPATH_NAME', '')}"
-

@@ -111,9 +111,9 @@ class _DisplayColorEditor(QtWidgets.QFrame):
 
         wavelength_options.buttonClicked.connect(_color_option_changed)
 
-        if primvar and primvar.Get():
-            start_color = QtGui.QColor.fromRgbF(*primvar.Get()[0])
-            end_color = QtGui.QColor.fromRgbF(*primvar.Get()[-1])
+        if primvar and (value := primvar.Get()):
+            start_color = QtGui.QColor.fromRgbF(*value[0])
+            end_color = QtGui.QColor.fromRgbF(*value[-1])
         else:
             start_color = QtGui.QColor.fromHsv(359, 255, 255)
             end_color = QtGui.QColor.fromHsv(0, 255, 255)
@@ -190,8 +190,7 @@ class _DisplayColorEditor(QtWidgets.QFrame):
         return value
 
     def _update_value(self, *__):
-        primvar = self._primvar
-        if primvar:
+        if primvar := self._primvar:
             with Sdf.ChangeBlock():
                 # Warning, when changing interpolation type in USDView, Hydra does not
                 # seem to respect re-computation of the changed primvar for GlSl shader.

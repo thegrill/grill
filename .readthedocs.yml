@@ -1,5 +1,14 @@
+version: 2  # required for PY39+
+build:
+  os: ubuntu-20.04
+  tools:
+    python: "3.9"
+  apt_packages:
+    - "graphviz"
+
 python:
-  version: 3.7
-  pip_install: true
-  extra_requirements:
-    - docs
+  install:
+    - method: pip
+      path: .
+      extra_requirements:
+        - docs

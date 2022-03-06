@@ -134,13 +134,8 @@ class TaxonomyEditor(_CreatePrims):
                 layout = QtWidgets.QVBoxLayout()
                 self._options = options = QtWidgets.QListWidget()
                 options.setSelectionMode(options.SelectionMode.ExtendedSelection)
-
-                def list_context_menu(__):
-                    menu = self._create_context_menu()
-                    menu.exec_(QtGui.QCursor.pos())
-
                 options.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-                options.customContextMenuRequested.connect(list_context_menu)
+                options.customContextMenuRequested.connect(lambda: self._create_context_menu().exec_(QtGui.QCursor.pos()))
                 layout.addWidget(options)
                 button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
                 button_box.accepted.connect(self.accept)
@@ -159,8 +154,7 @@ class TaxonomyEditor(_CreatePrims):
                     ("Check Selected", QtCore.Qt.Checked),
                     ("Uncheck Selected", QtCore.Qt.Unchecked),
                 ):
-                    action = menu.addAction(title)
-                    action.triggered.connect(partial(set_check_status, status))
+                    menu.addAction(title, partial(set_check_status, status))
                 return menu
 
             def showEvent(self, *args, **kwargs):

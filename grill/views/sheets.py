@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 # {Mesh: UsdGeom.Mesh, Xform: UsdGeom.Xform}
 # TODO: add more types here
 _PRIM_TYPE_OPTIONS = dict(x for x in inspect.getmembers(UsdGeom, inspect.isclass) if Usd.Typed in x[-1].mro())
-# for older USD versions (houdini ships with 20.08 but has master API)
-_PRIM_PROTOTYPE_QUERY_METHOD = Usd.Prim.IsInPrototype if hasattr(Usd.Prim, "IsInPrototype") else Usd.Prim.IsInMaster
 
 
 def _prim_type_combobox(parent, option, index):
@@ -324,7 +322,7 @@ class StageTableModel(_ObjectTableModel):
             active = prim.IsActive()
             if prim.IsInstance():
                 color = _PrimTextColor.INSTANCE
-            elif _PRIM_PROTOTYPE_QUERY_METHOD(prim) or prim.IsInstanceProxy():
+            elif Usd.Prim.IsInPrototype(prim) or prim.IsInstanceProxy():
                 color = _PrimTextColor.PROTOTYPE
             elif (
                 prim.HasAuthoredReferences() or
