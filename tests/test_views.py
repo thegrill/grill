@@ -392,5 +392,8 @@ class TestViews(unittest.TestCase):
             editor._update_value()
 
     def test_stats(self):
+        empty = stats.StageStats()
+        self.assertEqual(empty._usd_tree.topLevelItemCount(), 0)
+
         widget = stats.StageStats(stage=self.world)
         self.assertGreater(widget._usd_tree.topLevelItemCount(), 1)
