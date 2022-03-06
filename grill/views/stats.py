@@ -4,7 +4,7 @@ from pxr import UsdUtils
 from ._qt import QtWidgets, QtCore, QtCharts, QtGui
 
 
-class ContainerTree(QtWidgets.QTreeWidget):
+class _ContainerTree(QtWidgets.QTreeWidget):
     def __init__(self, *args, value=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.setColumnCount(2)  # 0: key, 1: value
@@ -14,24 +14,22 @@ class ContainerTree(QtWidgets.QTreeWidget):
 
     def setData(self, value):
         self.clear()
-        container_types = (dict, list, tuple)
-        def new(obj, label, parent):
-            value_column = None if isinstance(obj, container_types) else str(obj)
-            populate(QtWidgets.QTreeWidgetItem(parent, [str(label), value_column]), obj)
+        containers = (dict, list, tuple)
+        def populate(parent, data):
+            if isinstance(data, containers):
+                for _key, _value in data.items() if isinstance(data, dict) else enumerate(data):
+                    display = None if isinstance(_value, containers) else str(_value)
+                    populate(QtWidgets.QTreeWidgetItem(parent, [str(_key), display]), _value)
 
-        def populate(item, data):
-            if isinstance(data, container_types):
-                for key, value in data.items() if isinstance(data, dict) else enumerate(data):
-                    new(value, label=key, parent=item)
         populate(self.invisibleRootItem(), value)
         self.expandAll()
         self.resizeColumnToContents(0)
         self.resizeColumnToContents(1)
 
 
-class StatsPie(QtWidgets.QWidget):
+class _StatsPie(QtWidgets.QWidget):
     def __init__(self, *args, stats=None, **kwargs):
-        super(StatsPie, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         if stats:
             self.setStats(stats)
 
@@ -87,8 +85,8 @@ class StageStats(QtWidgets.QDialog):
     def __init__(self, *args, stage=None, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QHBoxLayout()
-        self._usd_tree = ContainerTree(parent=self)
-        self._pie = StatsPie(parent=self)
+        self._usd_tree = _ContainerTree(parent=self)
+        self._pie = _StatsPie(parent=self)
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.addWidget(self._pie)
         splitter.addWidget(self._usd_tree)
