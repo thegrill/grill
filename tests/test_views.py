@@ -8,7 +8,7 @@ from unittest import mock
 from pxr import Usd, UsdGeom, Sdf
 
 from grill import cook, usd, names
-from grill.views import description, sheets, create, _attributes
+from grill.views import description, sheets, create, _attributes, stats
 from grill.views._qt import QtWidgets, QtCore
 
 
@@ -390,3 +390,7 @@ class TestViews(unittest.TestCase):
         editor = _attributes._DisplayColorEditor(primvar)
         with self.assertRaises(TypeError):  # atm some gprim types are not supported
             editor._update_value()
+
+    def test_stats(self):
+        widget = stats.StageStats(stage=self.world)
+        self.assertGreater(widget._usd_tree.topLevelItemCount(), 1)
