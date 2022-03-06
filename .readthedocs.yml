@@ -1,5 +1,11 @@
+version: 2  # required for PY39+
+build:
+  tools:
+    python: "3.9"
+
 python:
-  version: 3.9
-  pip_install: true
-  extra_requirements:
-    - docs
+  install:
+    - requirements: docs/requirements.txt
+    - method: pip
+      extra_requirements:
+        - docs
