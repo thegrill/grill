@@ -40,6 +40,12 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
             mayapy -m pip install grill
 
+
+.. warning::
+
+    Some DCC applications like **Houdini-19** and **Maya-2022** are still on ``python-3.7``, so installing ``grill`` for those applications will require ``grill<0.12.0``.
+
+
 Extra Dependencies
 ------------------
 
@@ -49,9 +55,6 @@ The following optional dependencies should be installed separately.
 - `usdview <https://graphics.pixar.com/usd/docs/USD-Toolset.html#USDToolset-usdview>`_
   (hopefully will be available soon via `pypi <https://pypi.org/>`_). In the meantime, it can be built from USD source
   (`conda recipe <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888>`_).
-
-  .. important::
-     For ``python-3.8+`` versions on ``Windows``, an extra check needs to be disabled before building (see `USD/issues/1260 <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-826273007>`_ for more details).
 
 Conda Environment Example
 -------------------------
@@ -71,11 +74,11 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 2. Launch `Anaconda Prompt <https://docs.anaconda.com/anaconda/user-guide/getting-started/#open-anaconda-prompt>`_
    (it came as part of the `miniconda`_ installation).
 
-3. Create a new ``conda`` environment with ``python=3.7``, for example:
+3. Create a new ``conda`` environment with ``python=3.9``, for example:
 
    .. code:: bash
 
-      (base) C:\>conda create -n grilldemo01 python=3.7
+      (base) C:\>conda create -n grilldemo01 python=3.9
 
 4. Activate that environment:
 
