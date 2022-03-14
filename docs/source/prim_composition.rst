@@ -23,7 +23,7 @@ Setting an Edit Target
 The ``Prim Composition`` tree exposes a context menu with a ``Set as Edit Target`` item.
 This redirect edits under the selected arc by setting the current stage's `Edit Target`_.
 
-In the examples below, prims under ``ChairB_2`` have their `displayColor`_, ``doc`` and ``active`` properties modified in ``USDView``, ``Houdini`` and ``Maya`` respectively, and changes are inspected via the ``Layer Content Browser`` view.
+In the examples below, prims under ``ChairB_2`` and ``CheerioA_164`` have their `displayColor`_, ``doc`` and ``active`` properties modified in ``USDView``, ``Houdini`` and ``Maya`` respectively, and changes are inspected via the ``Layer Content Browser`` view.
 
 .. tab:: USDView
 
