@@ -196,9 +196,7 @@ def _catalogue_path(taxon):
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
-    a unit member of the given ``taxon``, with an optional display label.
-
-    When creating hundreds of thousands of members, this provides a slight performance improvement (around 15% on average) over :func:`create`.
+    When creating hundreds or thousands of members, this provides a considerable performance improvement over :func:`create_unit`.
 
     The new members will be created as `prims <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ on the given ``taxon``'s `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_.
 
@@ -236,36 +234,28 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     catalogue_layer.SetPermissionToEdit(True)
 
     scope = stage.GetPrimAtPath(scope_path)
+    context = stage.GetPathResolverContext()
+    repo_path = Path(context.Get()[0].GetSearchPath()[0])
 
-    def _create(name, label):
-        path = scope_path.AppendChild(name)
-        prim = stage.GetPrimAtPath(path)
-        if prim:
-            return prim
-        assetid = new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name})
-        asset_stage = fetch_stage(assetid)
-        # TODO: this is experimental, see how reasonable / scalable this is
-        asset_stage.CreateClassPrim(_CATALOGUE_ROOT_PATH)
-        asset_layer = asset_stage.GetRootLayer()
-        asset_layer.subLayerPaths.append(catalogue_id)
-        asset_layer.subLayerPaths.append(taxonomy_id)
-        asset_origin = asset_stage.DefinePrim(_UNIT_ORIGIN_PATH)
-        # all catalogue units start as components
-        Usd.ModelAPI(asset_origin).SetKind(Kind.Tokens.component)
-        UsdGeom.ModelAPI.Apply(asset_origin)
-        modelAPI = Usd.ModelAPI(asset_origin)
-        modelAPI.SetAssetName(name)
-        modelAPI.SetAssetIdentifier(str(assetid))
-        asset_origin.GetInherits().AddInherit(taxon_path)
-        asset_stage.SetDefaultPrim(asset_origin)
-        ui = UsdUI.SceneGraphPrimAPI.Apply(asset_origin)
-        ui.GetDisplayNameAttr().Set(label or name)
-        over_prim = stage.OverridePrim(path)
-        over_prim.GetReferences().AddReference(asset_layer.identifier)
-        return over_prim
+    def _fetch_layer_for_unit(name):
+        layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
+        if not (layer := Sdf.Layer.Find(layer_id) or Sdf.Layer.FindOrOpen(layer_id)):
+            logger.debug(f"Layer {layer_id} does not exist on repository path: {repo_path}. Creating a new one.")
+            # we first create a layer under our repo
+            Sdf.Layer.CreateNew(str(repo_path / layer_id))
+            layer = Sdf.Layer.FindOrOpen(layer_id)
+            # -------- TODO: Sublayering Catalogue is experimental, see how reasonable / scalable this is --------#
+            layer.subLayerPaths.append(catalogue_id)
+            Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
+            layer.subLayerPaths.append(taxonomy_id)
+            origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
+            origin.specifier = Sdf.SpecifierDef
+            origin.inheritPathList.Prepend(taxon_path)
+            layer.defaultPrim = origin.name
+        return layer
 
     labels = itertools.chain(labels, itertools.repeat(""))
-    with Usd.EditContext(stage, catalogue_layer):
+    with Usd.EditContext(stage, catalogue_layer), Ar.ResolverContextBinder(context):
         # Scope collecting all units based on taxon
         if not scope:
             scope = stage.DefinePrim(scope_path)
@@ -273,10 +263,33 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             # We use groups to ensure our scope is part of a valid model hierarchy
             for path in scope.GetPath().GetPrefixes():
                 Usd.ModelAPI(stage.GetPrimAtPath(path)).SetKind(Kind.Tokens.group)
-        prims = [_create(name, label) for name, label in zip(names, labels)]
+
+        with Sdf.ChangeBlock():
+            prims_info = []
+            for name, label in zip(names, labels):
+                if not stage.GetPrimAtPath(path:=scope_path.AppendChild(name)):
+                    stage.OverridePrim(path)
+                prims_info.append((name, label or name, path, layer:=_fetch_layer_for_unit(name), Sdf.Reference(layer.identifier)))
+
+        prims_info = {stage.GetPrimAtPath(info[2]): info for info in prims_info}
+        with Sdf.ChangeBlock():
+            for prim, (name, *__, reference) in prims_info.items():
+                prim.GetReferences().AddReference(reference)
+                with _usd.edit_context(reference, prim):
+                    UsdUI.SceneGraphPrimAPI.Apply(prim)
+                    UsdGeom.ModelAPI.Apply(prim)
+                    modelAPI = Usd.ModelAPI(prim)
+                    modelAPI.SetKind(Kind.Tokens.component)
+                    modelAPI.SetAssetName(name)
+                    modelAPI.SetAssetIdentifier(reference.assetPath)
+
+        with Sdf.ChangeBlock():
+            for prim, (name, label, *__, reference) in prims_info.items():
+                with _usd.edit_context(reference, prim):
+                    UsdUI.SceneGraphPrimAPI(prim).GetDisplayNameAttr().Set(label or name)
 
     catalogue_layer.SetPermissionToEdit(current_permission)
-    return prims
+    return list(prims_info)
 
 
 def create_unit(taxon: Usd.Prim, name: str, label: str = "") -> Usd.Prim:
@@ -362,12 +375,13 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     child_catalogue_unit_path = _catalogue_path(child).AppendChild(Usd.ModelAPI(child).GetAssetName())
     spawned = parent_stage.DefinePrim(path)
     with Sdf.ChangeBlock():
-        # Action of bringing a unit from our catalogue turns parent into an assembly
-        Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
-        # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-        for inner_parent in _usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
-            if not inner_parent.IsModel():
-                Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
+        # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
+        if child.IsModel():
+            Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
+            # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
+            for inner_parent in _usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
+                if not inner_parent.IsModel():
+                    Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
         # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
         spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
         spawned.SetInstanceable(True)

@@ -69,7 +69,7 @@ class CreateAssets(_CreatePrims):
             _sheets._Column("🧬 Taxon", editor=_taxon_combobox),
             _sheets._Column("🔖 Name"),
             _sheets._Column("🏷 Label"),
-            _sheets._Column("📜 Description"),
+            _sheets._Column("📜 Description"),  # TODO: STILL UNUSED
         )
 
         existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
