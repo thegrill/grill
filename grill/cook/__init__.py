@@ -35,7 +35,7 @@ import contextvars
 from pathlib import Path
 from pprint import pformat
 
-from pxr import UsdUtils, UsdGeom, UsdUI, Usd, Sdf, Kind, Ar
+from pxr import UsdGeom, UsdUI, Usd, Sdf, Kind, Ar
 
 from grill.tokens import ids
 from grill.names import UsdAsset
@@ -74,18 +74,17 @@ _ASSET_UNIT_QUERY_FILTER.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilte
 
 
 @typing.overload
-def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stage:
+def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     ...
 
 
 @typing.overload
-def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext = None) -> Usd.Stage:
+def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
 
 
 @functools.singledispatch
-@functools.lru_cache(maxsize=None)
-def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stage:
+def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
@@ -98,42 +97,12 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None) -> Usd.Stag
 
     """
     layer_id = UsdAsset(identifier).name
-    cache = UsdUtils.StageCache.Get()
     if not context:
-        repo_path = Repository.get()
-        context = Ar.DefaultResolverContext([str(repo_path)])
-    else:  # TODO: see how to make this work, seems very experimental atm.
-        repo_path = Path(context.Get()[0].GetSearchPath()[0])
+        context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
 
     with Ar.ResolverContextBinder(context):
-        logger.debug(f"Searching for {layer_id}")
-        if not (layer:=Sdf.Layer.Find(layer_id)):
-            logger.debug(f"Layer {layer_id} was not found open. Attempting to open it.")
-            if not Sdf.Layer.FindOrOpen(layer_id):
-                logger.debug(f"Layer {layer_id} does not exist on repository path: {repo_path}. Creating a new one.")
-                # we first create a layer under our repo
-                tmp_new_layer = Sdf.Layer.CreateNew(str(repo_path / layer_id))
-                # delete it since it will have an identifier with the full path,
-                # and we want to have the identifier relative to the repository path
-                # TODO: with AR 2.0 it should be possible to create in memory layers
-                #   with relative identifers to that of the search path of the context.
-                #   In the meantime, we need to create the layer first on disk.
-                del tmp_new_layer
-            stage = Usd.Stage.Open(layer_id)
-            logger.debug(f"Opened stage: {stage}")
-            cache_id = cache.Insert(stage)
-            logger.debug(f"Added stage for {layer_id} with cache ID: {cache_id.ToString()}.")
-        else:
-            logger.debug(f"Layer was open. Found: {layer}")
-            if not (stage:=cache.FindOneMatching(layer)):
-                logger.debug("Could not find stage on the cache.")
-                stage = Usd.Stage.Open(layer)
-                cache_id = cache.Insert(stage)
-                logger.debug(f"Added stage for {layer} with cache ID: {cache_id.ToString()}.")
-            else:
-                logger.debug(f"Found stage: {stage}")
-
-    return stage
+        layer = _fetch_layer(layer_id, context)
+        return Usd.Stage.Open(layer, load=load)
 
 
 @fetch_stage.register(UsdAsset)
@@ -193,6 +162,16 @@ def _catalogue_path(taxon):
     return _CATALOGUE_ROOT_PATH.AppendPath(relpath)
 
 
+def _fetch_layer(identifier, context):
+    # TODO: see how to make this repo_path better, seems very experimental atm.
+    repo_path = Path(context.Get()[0].GetSearchPath()[0])
+    if not (layer := Sdf.Layer.Find(identifier) or Sdf.Layer.FindOrOpen(identifier)):
+        Sdf.Layer.CreateNew(str(repo_path / identifier))
+        if not (layer:=Sdf.Layer.FindOrOpen(identifier)):
+            raise RuntimeError("Make sure a resolver context with statement is being used.")
+    return layer
+
+
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
@@ -215,14 +194,15 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
     taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+    context = stage.GetPathResolverContext()
 
     try:
         catalogue_layer = _find_layer_matching(_CATALOGUE_FIELDS, stage.GetLayerStack())
         catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
     except ValueError:  # first time adding the catalogue layer
         catalogue_asset = current_asset_name.get(**_CATALOGUE_FIELDS)
-        catalogue_stage = fetch_stage(catalogue_asset)
-        catalogue_layer = catalogue_stage.GetRootLayer()
+        with Ar.ResolverContextBinder(context):
+            catalogue_layer = _fetch_layer(str(catalogue_asset), context)
         catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
         # Use paths relative to our repository to guarantee portability
         root_layer.subLayerPaths.insert(0, catalogue_id)
@@ -234,24 +214,18 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     catalogue_layer.SetPermissionToEdit(True)
 
     scope = stage.GetPrimAtPath(scope_path)
-    context = stage.GetPathResolverContext()
-    repo_path = Path(context.Get()[0].GetSearchPath()[0])
 
     def _fetch_layer_for_unit(name):
         layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
-        if not (layer := Sdf.Layer.Find(layer_id) or Sdf.Layer.FindOrOpen(layer_id)):
-            logger.debug(f"Layer {layer_id} does not exist on repository path: {repo_path}. Creating a new one.")
-            # we first create a layer under our repo
-            Sdf.Layer.CreateNew(str(repo_path / layer_id))
-            layer = Sdf.Layer.FindOrOpen(layer_id)
-            # -------- TODO: Sublayering Catalogue is experimental, see how reasonable / scalable this is --------#
-            layer.subLayerPaths.append(catalogue_id)
-            Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
-            layer.subLayerPaths.append(taxonomy_id)
-            origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
-            origin.specifier = Sdf.SpecifierDef
-            origin.inheritPathList.Prepend(taxon_path)
-            layer.defaultPrim = origin.name
+        layer = _fetch_layer(layer_id, context)
+        # -------- TODO: Sublayering Catalogue is experimental, see how reasonable / scalable this is --------#
+        layer.subLayerPaths.append(catalogue_id)
+        Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
+        layer.subLayerPaths.append(taxonomy_id)
+        origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
+        origin.specifier = Sdf.SpecifierDef
+        origin.inheritPathList.Prepend(taxon_path)
+        layer.defaultPrim = origin.name
         return layer
 
     labels = itertools.chain(labels, itertools.repeat(""))
@@ -316,15 +290,14 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
         # TODO: first valid pipeline layer is ok? or should it be current edit target?
         root_asset, root_layer = _root_asset(stage)
         taxonomy_asset = root_asset.get(**_TAXONOMY_FIELDS)
-        taxonomy_stage = fetch_stage(taxonomy_asset)
-        taxonomy_layer = taxonomy_stage.GetRootLayer()
+        with Ar.ResolverContextBinder(context:=stage.GetPathResolverContext()):
+            taxonomy_layer = _fetch_layer(str(taxonomy_asset), context)
         # Use paths relative to our repository to guarantee portability
         taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+        taxonomy_root = Sdf.CreatePrimInLayer(taxonomy_layer, _TAXONOMY_ROOT_PATH)
+        taxonomy_root.specifier = Sdf.SpecifierClass
+        taxonomy_layer.defaultPrim = taxonomy_root.name
         root_layer.subLayerPaths.append(taxonomy_id)
-
-        if not taxonomy_stage.GetDefaultPrim():
-            default_prim = taxonomy_stage.CreateClassPrim(_TAXONOMY_ROOT_PATH)
-            taxonomy_stage.SetDefaultPrim(default_prim)
 
     return Usd.EditContext(stage, taxonomy_layer)
 
@@ -367,7 +340,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     """
     # TODO: spawn_many
     # this is because at the moment it is not straight forward to bring catalogue units under others.
-    parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext())
+    parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext(), Usd.Stage.LoadNone)
     origin = parent_stage.GetDefaultPrim()
     relpath = path or child.GetName()
     path = origin.GetPath().AppendPath(relpath)
