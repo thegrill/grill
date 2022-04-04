@@ -73,6 +73,20 @@ _ASSET_UNIT_QUERY_FILTER.dependencyTypeFilter = Usd.PrimCompositionQuery.Depende
 _ASSET_UNIT_QUERY_FILTER.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
 
 
+def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
+    """Retrieve `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ for the given ``identifier``.
+
+     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
+     """
+    if not (layer := Sdf.Layer.Find(identifier) or Sdf.Layer.FindOrOpen(identifier)):
+        # TODO: see how to make this repo_path better, seems very experimental atm.
+        repo_path = Path(context.Get()[0].GetSearchPath()[0])
+        Sdf.Layer.CreateNew(str(repo_path / identifier))
+        if not (layer:=Sdf.Layer.FindOrOpen(identifier)):
+            raise RuntimeError("Make sure a resolver context with statement is being used.")
+    return layer
+
+
 @typing.overload
 def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     ...
@@ -84,7 +98,7 @@ def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext 
 
 
 @functools.singledispatch
-def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
+def fetch_stage(identifier, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
@@ -96,18 +110,22 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.St
         ``identifier`` must be a valid :class:`grill.names.UsdAsset` name.
 
     """
-    layer_id = UsdAsset(identifier).name
     if not context:
         context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
 
     with Ar.ResolverContextBinder(context):
-        layer = _fetch_layer(layer_id, context)
+        layer = _fetch_layer(identifier, context)
         return Usd.Stage.Open(layer, load=load)
 
 
 @fetch_stage.register(UsdAsset)
 def _(identifier: UsdAsset, *args, **kwargs) -> Usd.Stage:
-    return fetch_stage(str(identifier), *args, **kwargs)
+    return fetch_stage.registry[object](identifier.name, *args, **kwargs)
+
+
+@fetch_stage.register(str)
+def _(identifier: str, *args, **kwargs) -> Usd.Stage:
+    return fetch_stage(UsdAsset(identifier), *args, **kwargs)
 
 
 def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
@@ -160,16 +178,6 @@ def _catalogue_path(taxon):
     if _CATALOGUE_ID.name in taxon_fields:  # TODO: ensure this can't be overwritten
         relpath = f"{taxon_fields[_CATALOGUE_ID.name]}/{relpath}"
     return _CATALOGUE_ROOT_PATH.AppendPath(relpath)
-
-
-def _fetch_layer(identifier, context):
-    # TODO: see how to make this repo_path better, seems very experimental atm.
-    repo_path = Path(context.Get()[0].GetSearchPath()[0])
-    if not (layer := Sdf.Layer.Find(identifier) or Sdf.Layer.FindOrOpen(identifier)):
-        Sdf.Layer.CreateNew(str(repo_path / identifier))
-        if not (layer:=Sdf.Layer.FindOrOpen(identifier)):
-            raise RuntimeError("Make sure a resolver context with statement is being used.")
-    return layer
 
 
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
@@ -247,7 +255,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
         prims_info = {stage.GetPrimAtPath(info[2]): info for info in prims_info}
         with Sdf.ChangeBlock():
-            for prim, (name, *__, reference) in prims_info.items():
+            for prim, (name, *__, layer, reference) in prims_info.items():
                 prim.GetReferences().AddReference(reference)
                 with _usd.edit_context(reference, prim):
                     UsdUI.SceneGraphPrimAPI.Apply(prim)
@@ -255,7 +263,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
                     modelAPI = Usd.ModelAPI(prim)
                     modelAPI.SetKind(Kind.Tokens.component)
                     modelAPI.SetAssetName(name)
-                    modelAPI.SetAssetIdentifier(reference.assetPath)
+                    modelAPI.SetAssetIdentifier(layer.identifier)
 
         with Sdf.ChangeBlock():
             for prim, (name, label, *__, reference) in prims_info.items():
