@@ -97,9 +97,6 @@ def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext 
     ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
 
 
-# TODO: This used to be cached, evaluate if it's useful and bring it back if yes.
-#       Cache was disabled since stages would remain open and listen to edits to other layers,
-#       even if other places in the code did not have a reference to those stages.
 @functools.singledispatch
 def fetch_stage(identifier, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
@@ -225,42 +222,19 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     catalogue_layer.SetPermissionToEdit(True)
 
     scope = stage.GetPrimAtPath(scope_path)
-    # THOUGHT:
-    # Do not sublayer catalogue / taxonomy by default, as those are needed for "working context" only?
-    # PRO: allows for nice specializes workflow, but then, what's the advantage over internal reference?
-    # CON: units are not self contained by open in usdview.
 
-    # THOUGHT PART 2:
-    # anchor is created for pulling
     def _fetch_layer_for_unit(name):
-        unit_tokens = {_UNIT_UNIQUE_ID.name: name}
-        whole_id = new_asset_name.get(**unit_tokens)
-        # whole: the self contained entry point for the new unit
-        target_id = new_asset_name.get(**unit_tokens, **{ids.CGAsset.part.name: "target"})
-        # target: the target entry point for referencing this unit in the pipeline
-
-        target_layer = _fetch_layer(target_id, context)
-
+        layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
+        layer = _fetch_layer(layer_id, context)
         # -------- TODO: Sublayering Catalogue is experimental, see how reasonable / scalable this is --------#
-        whole_layer = _fetch_layer(whole_id, context)
-        whole_layer.subLayerPaths.append(catalogue_id)
-        whole_layer.subLayerPaths.append(taxonomy_id)
-        whole_layer.subLayerPaths.append(target_id)
-        Sdf.CreatePrimInLayer(whole_layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
-        whole_layer.Save()
-
-        # -------------
-        target_layer.subLayerPaths.append(catalogue_id)
-        target_layer.subLayerPaths.append(taxonomy_id)
-        # whole_layer.subLayerPaths.append(target_id)
-        Sdf.CreatePrimInLayer(target_layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
-        # -------------
-
-        origin = Sdf.CreatePrimInLayer(target_layer, _UNIT_ORIGIN_PATH)
+        layer.subLayerPaths.append(catalogue_id)
+        Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
+        layer.subLayerPaths.append(taxonomy_id)
+        origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
         origin.specifier = Sdf.SpecifierDef
         origin.inheritPathList.Prepend(taxon_path)
-        target_layer.defaultPrim = origin.name
-        return target_layer, whole_layer
+        layer.defaultPrim = origin.name
+        return layer
 
     labels = itertools.chain(labels, itertools.repeat(""))
     with Usd.EditContext(stage, catalogue_layer), Ar.ResolverContextBinder(context):
@@ -277,12 +251,11 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             for name, label in zip(names, labels):
                 if not stage.GetPrimAtPath(path:=scope_path.AppendChild(name)):
                     stage.OverridePrim(path)
-                target_layer, whole_layer = _fetch_layer_for_unit(name)
-                prims_info.append((name, label or name, path, target_layer, whole_layer, Sdf.Reference(target_layer.identifier)))
+                prims_info.append((name, label or name, path, layer:=_fetch_layer_for_unit(name), Sdf.Reference(layer.identifier)))
 
         prims_info = {stage.GetPrimAtPath(info[2]): info for info in prims_info}
         with Sdf.ChangeBlock():
-            for prim, (name, *__, whole_layer, reference) in prims_info.items():
+            for prim, (name, *__, layer, reference) in prims_info.items():
                 prim.GetReferences().AddReference(reference)
                 with _usd.edit_context(reference, prim):
                     UsdUI.SceneGraphPrimAPI.Apply(prim)
@@ -290,7 +263,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
                     modelAPI = Usd.ModelAPI(prim)
                     modelAPI.SetKind(Kind.Tokens.component)
                     modelAPI.SetAssetName(name)
-                    modelAPI.SetAssetIdentifier(whole_layer.identifier)
+                    modelAPI.SetAssetIdentifier(layer.identifier)
 
         with Sdf.ChangeBlock():
             for prim, (name, label, *__, reference) in prims_info.items():
@@ -375,9 +348,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     """
     # TODO: spawn_many
     # this is because at the moment it is not straight forward to bring catalogue units under others.
-    whole_path = Usd.ModelAPI(parent).GetAssetIdentifier().path
-    target_path = UsdAsset(Path(whole_path).name).get(**{ids.CGAsset.part.name: "target"})
-    parent_stage = fetch_stage(target_path, parent.GetStage().GetPathResolverContext(), Usd.Stage.LoadNone)
+    parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext(), Usd.Stage.LoadNone)
     origin = parent_stage.GetDefaultPrim()
     relpath = path or child.GetName()
     path = origin.GetPath().AppendPath(relpath)
@@ -393,9 +364,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
                 if not inner_parent.IsModel():
                     Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
         # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
-        # spawned.GetInherits().AddInherit(child_catalogue_unit_path)  # trumps variant selections
-        # spawned.GetReferences().AddInternalReference(child_catalogue_unit_path)  # does not work
-        spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)  # does not get taxonomy values
+        spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
         spawned.SetInstanceable(True)
     return parent.GetPrimAtPath(relpath)
 
