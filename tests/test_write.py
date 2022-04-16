@@ -25,9 +25,10 @@ class TestWrite(unittest.TestCase):
     def test_fetch_stage(self):
         root_asset = self.root_asset
 
-        root_stage = cook.fetch_stage(root_asset)
+        # TODO: cleanup this test. fetch_stage used to keep stages in a cache but not anymore.
+        # root_stage = cook.fetch_stage(root_asset)
         # fetching stage outside of AR _context should resolve to same stage
-        self.assertIs(root_stage, cook.fetch_stage(root_asset))
+        # self.assertIs(root_stage, cook.fetch_stage(root_asset))
 
         repo_path = cook.Repository.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
@@ -40,18 +41,17 @@ class TestWrite(unittest.TestCase):
             cached_stage = cook.fetch_stage(usd_opened)
             self.assertIsNot(non_cache_stage, cached_stage)
             # but after fetching once, subsequent fetches should persist
-            self.assertIs(cached_stage, cook.fetch_stage(usd_opened))
+            # self.assertIs(cached_stage, cook.fetch_stage(usd_opened))
 
             # creating a new layer + stage + adding it to the cache manually
             # should allow fetch_stage to retrieve it as well.
             sdf_opened = str(names.UsdAsset.get_default(item='sdf_opened'))
-            layer = Sdf.Layer.CreateNew(str(repo_path / sdf_opened))
-            del layer
+            Sdf.Layer.CreateNew(str(repo_path / sdf_opened))
             cached_layer = Sdf.Layer.FindOrOpen(sdf_opened)
             opened_stage = Usd.Stage.Open(cached_layer)
             cache = UsdUtils.StageCache.Get()
             cache.Insert(opened_stage)
-            self.assertIs(opened_stage, cook.fetch_stage(sdf_opened))
+            # self.assertIs(opened_stage, cook.fetch_stage(sdf_opened))
 
     def test_match(self):
         root_stage = cook.fetch_stage(self.root_asset)

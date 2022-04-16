@@ -80,7 +80,11 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
      """
     if not (layer := Sdf.Layer.Find(identifier) or Sdf.Layer.FindOrOpen(identifier)):
         # TODO: see how to make this repo_path better, seems very experimental atm.
+        if context.IsEmpty():
+            raise ValueError(f"Empty context for: {context}")
+        #     context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
         repo_path = Path(context.Get()[0].GetSearchPath()[0])
+        # repo_path = Repository.get()
         Sdf.Layer.CreateNew(str(repo_path / identifier))
         if not (layer:=Sdf.Layer.FindOrOpen(identifier)):
             raise RuntimeError("Make sure a resolver context with statement is being used.")
@@ -203,6 +207,8 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
     taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
     context = stage.GetPathResolverContext()
+    if context.IsEmpty():  # Use a resolver context that is populated with the repository only when the context is empty.
+        context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
 
     try:
         catalogue_layer = _find_layer_matching(_CATALOGUE_FIELDS, stage.GetLayerStack())
@@ -227,9 +233,12 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
         layer = _fetch_layer(layer_id, context)
         # -------- TODO: Sublayering Catalogue is experimental, see how reasonable / scalable this is --------#
-        layer.subLayerPaths.append(catalogue_id)
+        sublayers = layer.subLayerPaths
+        if catalogue_id not in sublayers:
+            layer.subLayerPaths.append(catalogue_id)
+        if taxonomy_id not in sublayers:
+            layer.subLayerPaths.append(taxonomy_id)
         Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
-        layer.subLayerPaths.append(taxonomy_id)
         origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
         origin.specifier = Sdf.SpecifierDef
         origin.inheritPathList.Prepend(taxon_path)
@@ -298,7 +307,10 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
         # TODO: first valid pipeline layer is ok? or should it be current edit target?
         root_asset, root_layer = _root_asset(stage)
         taxonomy_asset = root_asset.get(**_TAXONOMY_FIELDS)
-        with Ar.ResolverContextBinder(context:=stage.GetPathResolverContext()):
+        context = stage.GetPathResolverContext()
+        if context.IsEmpty():  # Use a resolver context that is populated with the repository only when the context is empty.
+            context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
+        with Ar.ResolverContextBinder(context):
             taxonomy_layer = _fetch_layer(str(taxonomy_asset), context)
         # Use paths relative to our repository to guarantee portability
         taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
