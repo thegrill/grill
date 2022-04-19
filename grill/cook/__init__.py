@@ -91,6 +91,15 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
     return layer
 
 
+def _asset_identifier(path):
+    # Expect identifiers to not have folders in between.
+    path = Path(path)
+    if not path.is_absolute():
+        return str(path)
+    else:
+        return str(path.relative_to(Repository.get()))
+
+
 @typing.overload
 def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     ...
@@ -176,7 +185,7 @@ def itaxa(prims, taxon, *taxa):
     return (prim for prim in prims if taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}))
 
 
-def _catalogue_path(taxon):
+def _catalogue_path(taxon: Usd.Prim) -> Sdf.Path:
     taxon_fields = _get_id_fields(taxon)
     relpath = taxon_fields[_TAXONOMY_UNIQUE_ID.name]
     if _CATALOGUE_ID.name in taxon_fields:  # TODO: ensure this can't be overwritten
@@ -205,19 +214,23 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
-    taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+    # taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+    taxonomy_id = _asset_identifier(taxonomy_layer.identifier)
     context = stage.GetPathResolverContext()
     if context.IsEmpty():  # Use a resolver context that is populated with the repository only when the context is empty.
         context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
 
     try:
         catalogue_layer = _find_layer_matching(_CATALOGUE_FIELDS, stage.GetLayerStack())
-        catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
+        # catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
+        catalogue_id = _asset_identifier(catalogue_layer.identifier)
+
     except ValueError:  # first time adding the catalogue layer
         catalogue_asset = current_asset_name.get(**_CATALOGUE_FIELDS)
         with Ar.ResolverContextBinder(context):
             catalogue_layer = _fetch_layer(str(catalogue_asset), context)
-        catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
+        # catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
+        catalogue_id = _asset_identifier(catalogue_layer.identifier)
         # Use paths relative to our repository to guarantee portability
         root_layer.subLayerPaths.insert(0, catalogue_id)
 
@@ -255,12 +268,15 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             for path in scope.GetPath().GetPrefixes():
                 Usd.ModelAPI(stage.GetPrimAtPath(path)).SetKind(Kind.Tokens.group)
 
+        # Place "homogeneus" operations under SdfChangeBlock to let composition notifications be sent only when needed.
         with Sdf.ChangeBlock():
             prims_info = []
             for name, label in zip(names, labels):
                 if not stage.GetPrimAtPath(path:=scope_path.AppendChild(name)):
                     stage.OverridePrim(path)
-                prims_info.append((name, label or name, path, layer:=_fetch_layer_for_unit(name), Sdf.Reference(layer.identifier)))
+                layer = _fetch_layer_for_unit(name)
+                layer_id = _asset_identifier(layer.identifier)
+                prims_info.append((name, label or name, path, layer, Sdf.Reference(layer_id)))
 
         prims_info = {stage.GetPrimAtPath(info[2]): info for info in prims_info}
         with Sdf.ChangeBlock():
@@ -272,7 +288,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
                     modelAPI = Usd.ModelAPI(prim)
                     modelAPI.SetKind(Kind.Tokens.component)
                     modelAPI.SetAssetName(name)
-                    modelAPI.SetAssetIdentifier(layer.identifier)
+                    modelAPI.SetAssetIdentifier(_asset_identifier(layer.identifier))
 
         with Sdf.ChangeBlock():
             for prim, (name, label, *__, reference) in prims_info.items():
@@ -313,7 +329,8 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
         with Ar.ResolverContextBinder(context):
             taxonomy_layer = _fetch_layer(str(taxonomy_asset), context)
         # Use paths relative to our repository to guarantee portability
-        taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+        # taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
+        taxonomy_id = _asset_identifier(taxonomy_layer.identifier)
         taxonomy_root = Sdf.CreatePrimInLayer(taxonomy_layer, _TAXONOMY_ROOT_PATH)
         taxonomy_root.specifier = Sdf.SpecifierClass
         taxonomy_layer.defaultPrim = taxonomy_root.name
