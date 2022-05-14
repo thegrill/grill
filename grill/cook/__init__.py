@@ -173,6 +173,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
         prim = stage.DefinePrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
         for reference in references:
             prim.GetReferences().AddInternalReference(reference.GetPath())
+        prim.GetInherits().AddInherit(prim.GetPath().ReplacePrefix("/", "/Inherited"))  # TODO: needed?
         taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
         prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
@@ -233,6 +234,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         catalogue_id = _asset_identifier(catalogue_layer.identifier)
         # Use paths relative to our repository to guarantee portability
         root_layer.subLayerPaths.insert(0, catalogue_id)
+        # TODO: try setting this on session layer?
 
     # Some workflows like houdini might load layers without permissions to edit
     # Since we know we are in a valid pipeline layer, temporarily allow edits
@@ -245,16 +247,17 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     def _fetch_layer_for_unit(name):
         layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
         layer = _fetch_layer(layer_id, context)
-        # -------- TODO: Sublayering Catalogue is experimental, see how reasonable / scalable this is --------#
-        sublayers = layer.subLayerPaths
-        if catalogue_id not in sublayers:
-            layer.subLayerPaths.append(catalogue_id)
-        if taxonomy_id not in sublayers:
-            layer.subLayerPaths.append(taxonomy_id)
+        # sublayers = layer.subLayerPaths
+        # if taxonomy_id not in sublayers:
+        #     layer.subLayerPaths.append(taxonomy_id)
         Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
         origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
         origin.specifier = Sdf.SpecifierDef
-        origin.inheritPathList.Prepend(taxon_path)
+        origin.specializesList.Prepend( scope_path.ReplacePrefix("/Catalogue", "/Specialized").AppendChild(name) )
+        origin.inheritPathList.Prepend( scope_path.ReplacePrefix("/Catalogue", "/Inherited").AppendChild(name) )
+        # origin.inheritPathList.Prepend(taxon_path)
+        origin.inheritPathList.Prepend(scope_path.ReplacePrefix("/Catalogue", "/Inherited").AppendChild(name))
+        origin.referenceList.Prepend( Sdf.Reference(taxonomy_id, taxon_path)  )
         layer.defaultPrim = origin.name
         return layer
 
@@ -321,6 +324,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
     except ValueError:
         # Our layer is not yet on the current layer stack. Let's bring it.
         # TODO: first valid pipeline layer is ok? or should it be current edit target?
+        # TODO: try setting this on session layer?
         root_asset, root_layer = _root_asset(stage)
         taxonomy_asset = root_asset.get(**_TAXONOMY_FIELDS)
         context = stage.GetPathResolverContext()
@@ -393,7 +397,8 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
                 if not inner_parent.IsModel():
                     Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
         # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
-        spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
+        # spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
+        spawned.GetReferences().AddReference(_asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path))
         spawned.SetInstanceable(True)
     return parent.GetPrimAtPath(relpath)
 
