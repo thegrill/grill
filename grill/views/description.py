@@ -41,13 +41,13 @@ _HIGHLIGHT_COLORS = MappingProxyType(
         # A mix between:
         # https://en.wikipedia.org/wiki/Solarized#Colors
         # https://www.w3schools.com/colors/colors_palettes.asp
-        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references")),
+        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references", "reference")),
         *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
         *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
-        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "prop_name", "rel_name")),
-        ("inherits", (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])),
-        ("payload", ("#6c71c4", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])),
-        ("specializes", ("#bd5734", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])),
+        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name")),
+        *((key, (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])) for key in ("inherit", "inherits")),
+        *((key, ("#9a94bf", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])) for key in ("payload", "payloads")),
+        *((key,  ("#c18f76", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])) for key in ("specialize", "specializes")),
         ("list_op", ("#e3eaa7", "#2aa198")),
         *((key, ("#5b9aa0", "#5b9aa0")) for key in ("prim_type", "prop_type", "prop_array")),
         *((key, ("#87bdd8", "#034f84")) for key in ("set_string", "string_value")),
@@ -98,7 +98,6 @@ def _dot_2_svg(sourcepath):
 
 
 def _pseudo_layer(layer):
-    # TODO: Houdini does not provide sdffilter ): so can't test it there atm
     with tempfile.TemporaryDirectory() as target_dir:
         name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
         path = Path(target_dir) / f"{name}.usd"
@@ -356,12 +355,16 @@ class _GraphViewer(_DotViewer):
         self.sticky_nodes.clear()
         self._graph = graph
 
+def _display_text_for_layer(layer):
+    return layer.GetDisplayName() or layer.identifier
+
 
 class PrimComposition(QtWidgets.QDialog):
     _COLUMNS = {
-        "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
-        "Target Path": lambda arc: arc.GetTargetNode().path,
+        "Target Layer": lambda arc: _display_text_for_layer(arc.GetTargetNode().layerStack.layerTree.layer),
         "Arc": lambda arc: arc.GetArcType().displayName,
+        "#": lambda arc: arc.GetTargetNode().siblingNumAtOrigin,
+        "Target Path": lambda arc: arc.GetTargetNode().path,
         "Has Specs": Usd.CompositionArc.HasSpecs,
         "Is Ancestral": Usd.CompositionArc.IsAncestral,
         "Is Implicit": Usd.CompositionArc.IsImplicit,
@@ -417,18 +420,40 @@ class PrimComposition(QtWidgets.QDialog):
         query = Usd.PrimCompositionQuery(prim)
         tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
         stage = prim.GetStage()
-        for arc in query.GetCompositionArcs():
+        arcs = query.GetCompositionArcs()
+        for arc in arcs:
             strings = [str(getter(arc)) for getter in self._COLUMNS.values()]
-            intro_layer = arc.GetIntroducingLayer()
-            if intro_layer and intro_layer in tree_items:
-                parent = tree_items[intro_layer]
+
+            intro_node = arc.GetIntroducingNode()
+            target_node = arc.GetTargetNode()
+            target_path = target_node.path
+            target_layer = target_node.layerStack.identifier.rootLayer
+
+            # TODO: is there a better way than relying on str(node.site)???
+            if str(intro_node.site) in tree_items:
+                parent = tree_items[str(intro_node.site)]
             else:
                 parent = tree
-            target_node = arc.GetTargetNode()
-            target_layer = target_node.layerStack.identifier.rootLayer
-            widget = tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
-            edit_target = Usd.EditTarget(target_layer, target_node)
-            widget.setData(0, QtCore.Qt.UserRole, (stage, edit_target))
+
+            try:
+                highlight_color = _HIGHLIGHT_COLORS[arc.GetArcType().displayName][_PALETTE.get()]
+            except KeyError:
+                highlight_color = None
+
+            sublayers = target_node.layerStack.layers
+            for each in sublayers:
+                if each == target_layer:  # we're the root layer of the target node's stack
+                    tree_items[str(target_node.site)] = widget = QtWidgets.QTreeWidgetItem(parent, strings)
+                else:
+                    has_specs = bool(each.GetObjectAtPath(target_path))
+                    widget = QtWidgets.QTreeWidgetItem(
+                        parent, [_display_text_for_layer(each), strings[1], strings[2], strings[3], str(has_specs)]
+                    )
+                edit_target = Usd.EditTarget(each, target_node)
+                widget.setData(0, QtCore.Qt.UserRole, (stage, edit_target))
+                if highlight_color:
+                    for i, __ in enumerate(self._COLUMNS):
+                        widget.setForeground(i, highlight_color)
 
         tree.expandAll()
         fd, fp = tempfile.mkstemp()
