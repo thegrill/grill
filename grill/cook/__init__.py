@@ -188,10 +188,9 @@ def itaxa(prims, taxon, *taxa):
 
 def _catalogue_path(taxon: Usd.Prim) -> Sdf.Path:
     taxon_fields = _get_id_fields(taxon)
-    relpath = taxon_fields[_TAXONOMY_UNIQUE_ID.name]
-    if _CATALOGUE_ID.name in taxon_fields:  # TODO: ensure this can't be overwritten
-        relpath = f"{taxon_fields[_CATALOGUE_ID.name]}/{relpath}"
-    return _CATALOGUE_ROOT_PATH.AppendPath(relpath)
+    return _CATALOGUE_ROOT_PATH.AppendPath(
+        f"{taxon_fields[_CATALOGUE_ID.name]}{Sdf.Path.childDelimiter}{taxon_fields[_TAXONOMY_UNIQUE_ID.name]}"
+    )
 
 
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
@@ -215,7 +214,6 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
-    # taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
     taxonomy_id = _asset_identifier(taxonomy_layer.identifier)
     context = stage.GetPathResolverContext()
     if context.IsEmpty():  # Use a resolver context that is populated with the repository only when the context is empty.
@@ -223,16 +221,11 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     try:
         catalogue_layer = _find_layer_matching(_CATALOGUE_FIELDS, stage.GetLayerStack())
-        # catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
-        catalogue_id = _asset_identifier(catalogue_layer.identifier)
-
     except ValueError:  # first time adding the catalogue layer
         catalogue_asset = current_asset_name.get(**_CATALOGUE_FIELDS)
         with Ar.ResolverContextBinder(context):
             catalogue_layer = _fetch_layer(str(catalogue_asset), context)
-        # catalogue_id = str(Path(catalogue_layer.realPath).relative_to(Repository.get()))
         catalogue_id = _asset_identifier(catalogue_layer.identifier)
-        # Use paths relative to our repository to guarantee portability
         root_layer.subLayerPaths.insert(0, catalogue_id)
         # TODO: try setting this on session layer?
 
@@ -247,16 +240,11 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     def _fetch_layer_for_unit(name):
         layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
         layer = _fetch_layer(layer_id, context)
-        # sublayers = layer.subLayerPaths
-        # if taxonomy_id not in sublayers:
-        #     layer.subLayerPaths.append(taxonomy_id)
         Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
         origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
         origin.specifier = Sdf.SpecifierDef
-        origin.specializesList.Prepend( scope_path.ReplacePrefix("/Catalogue", "/Specialized").AppendChild(name) )
-        origin.inheritPathList.Prepend( scope_path.ReplacePrefix("/Catalogue", "/Inherited").AppendChild(name) )
-        # origin.inheritPathList.Prepend(taxon_path)
-        origin.inheritPathList.Prepend(scope_path.ReplacePrefix("/Catalogue", "/Inherited").AppendChild(name))
+        origin.specializesList.Prepend(scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, "/Specialized").AppendChild(name))
+        origin.inheritPathList.Prepend(scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, "/Inherited").AppendChild(name))
         origin.referenceList.Prepend( Sdf.Reference(taxonomy_id, taxon_path)  )
         layer.defaultPrim = origin.name
         return layer
