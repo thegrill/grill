@@ -19,27 +19,27 @@ def wait():
 
 class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.11
     # GENERAL
-    ID = f"🕵"
-    VISIBILITY = f"👀"
-    SEARCH = f"🔎"
-    LOCK = f"🔐"
-    UNLOCK = f"🔓"
+    ID = "🕵"
+    VISIBILITY = "👀"
+    SEARCH = "🔎"
+    LOCK = "🔐"
+    UNLOCK = "🔓"
 
     # STAGE TRAVERSAL
-    MODEL_HIERARCHY = f"🏡"
-    INSTANCE_PROXIES = f"💠"
+    MODEL_HIERARCHY = "🏡"
+    INSTANCE_PROXIES = "💠"
 
     # PRIM SPECIFIER
-    ORPHANED = f"👻"
-    CLASSES = f"🧪"
-    DEFINED = f"🧱"
+    ORPHANED = "👻"
+    CLASSES = "🧪"
+    DEFINED = "🧱"
 
     # PRIM STATUS
-    ACTIVE = f"💡"
-    INACTIVE = f"🌒"
+    ACTIVE = "💡"
+    INACTIVE = "🌒"
 
     # IDENTIFICATION
-    NAME = f"🔖"
+    NAME = "🔖"
 
 # Very slightly modified USDView stylesheet for the push buttons.
 _USDVIEW_PUSH_BUTTON_STYLE = """
