@@ -179,15 +179,13 @@ class _DisplayColorEditor(QtWidgets.QFrame):
     def _value(self):
         amount = self._size
         if self._random.isChecked():
-            value = _random_colors(amount)
+            return _random_colors(amount)
+
+        if self._interpolation == _usd._GeomPrimvarInfo.CONSTANT.interpolation():
+            start = end = self._color_launchers["Color"][0]._color
         else:
-            if self._interpolation == _usd._GeomPrimvarInfo.CONSTANT.interpolation():
-                start = self._color_launchers["Color"][0]._color
-                end = start
-            else:
-                start, end = [pb._color for pb in self._color_launchers["Range"]]
-            value = _color_spectrum(start, end, amount)
-        return value
+            start, end = [pb._color for pb in self._color_launchers["Range"]]
+        return _color_spectrum(start, end, amount)
 
     def _update_value(self, *__):
         if primvar := self._primvar:
