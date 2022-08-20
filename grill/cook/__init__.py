@@ -364,8 +364,8 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
 
       1. Turning parent into an `assembly <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Assembly>`_.
       2. Ensuring intermediate prims between parent and child are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
+      3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
 
-    * By default, spawned units are `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_.
     """
     # TODO: spawn_many
     # this is because at the moment it is not straight forward to bring catalogue units under others.
@@ -373,10 +373,12 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     origin = parent_stage.GetDefaultPrim()
     relpath = path or child.GetName()
     path = origin.GetPath().AppendPath(relpath)
-    # TODO: turn into function to ensure creation and query are the same?
-    child_catalogue_unit_path = _catalogue_path(child).AppendChild(Usd.ModelAPI(child).GetAssetName())
     spawned = parent_stage.DefinePrim(path)
     with Sdf.ChangeBlock():
+        # Use reference for the asset to:
+        # 1. Make use of instancing as much as possible with less prototypes.
+        # 2. Let specializes / inherits changes later.
+        spawned.GetReferences().AddReference(_asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path))
         # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
         if child.IsModel():
             Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
@@ -384,10 +386,10 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
             for inner_parent in _usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
                 if not inner_parent.IsModel():
                     Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
-        # NOTE: Still experimenting to see if specializing from catalogue is a nice approach.
-        # spawned.GetSpecializes().AddSpecialize(child_catalogue_unit_path)
-        spawned.GetReferences().AddReference(_asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path))
-        spawned.SetInstanceable(True)
+            if not child.IsGroup():
+                # sensible defaults: component prims are instanced
+                spawned.SetInstanceable(True)
+
     return parent.GetPrimAtPath(relpath)
 
 
