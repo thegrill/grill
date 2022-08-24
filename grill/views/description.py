@@ -394,15 +394,35 @@ class PrimComposition(QtWidgets.QDialog):
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
         self.composition_tree = tree = _Tree()
-        # self.composition_tree = tree = QtWidgets.QTreeView()
-        self._composition_model = composition_model = QtGui.QStandardItemModel()
+        self._composition_model = model = QtGui.QStandardItemModel()
 
-        tree.setModel(composition_model)
         tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._exec_context_menu)
-        composition_model.setColumnCount(len(self._COLUMNS))
         tree.setAlternatingRowColors(True)  # USDView style is ignored here:
         tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        columns = tuple(_sheets._Column(k, v) for k, v in self._COLUMNS.items())
+        options = _sheets._ColumnOptions.SEARCH
+        self._header = header = _sheets._Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
+
+        for column_index, column_data in enumerate(columns):
+            proxy_model = QtCore.QSortFilterProxyModel()
+            proxy_model.setSourceModel(model)
+            proxy_model.setFilterKeyColumn(column_index)
+
+            column_options = header.section_options[column_index]
+            if _sheets._ColumnOptions.SEARCH in options:
+                column_options.filterChanged.connect(
+                    proxy_model.setFilterRegularExpression)
+                column_options.filterChanged.connect(tree.expandAll)
+
+            model = proxy_model
+            model.setRecursiveFilteringEnabled(True)
+
+        header.setModel(model)
+        header.setSectionsClickable(True)
+        tree.setHeader(header)
+        tree.setModel(model)
 
         self._dot_view = _DotViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
@@ -437,34 +457,15 @@ class PrimComposition(QtWidgets.QDialog):
         prim_index.DumpToDotGraph(fp)
         self._dot_view.setDotPath(fp)
 
+        # model.clear() resizes the columns. So we keep track of current sizes.
+        header = self._header
+        sizes = {index: size for index in header.section_options if (size:=header.sectionSize(index))}
+
         tree = self.composition_tree
-
-        columns = tuple(_sheets._Column(k, v) for k, v in self._COLUMNS.items())
-        options = _sheets._ColumnOptions.SEARCH
-        header = _sheets._Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
-        tree.setHeader(header)
-
         model = self._composition_model
         model.clear()
-        root_item = model.invisibleRootItem()
         model.setHorizontalHeaderLabels([""] * len(self._COLUMNS))
-
-        for column_index, column_data in enumerate(columns):
-            proxy_model = QtCore.QSortFilterProxyModel()
-            proxy_model.setSourceModel(model)
-            proxy_model.setFilterKeyColumn(column_index)
-
-            column_options = header.section_options[column_index]
-            if _sheets._ColumnOptions.SEARCH in options:
-                column_options.filterChanged.connect(proxy_model.setFilterRegularExpression)
-                column_options.filterChanged.connect(tree.expandAll)
-
-            model = proxy_model
-            model.setRecursiveFilteringEnabled(True)
-
-        header.setModel(model)
-        header.setSectionsClickable(True)
-        tree.setModel(model)
+        root_item = model.invisibleRootItem()
 
         query = Usd.PrimCompositionQuery(prim)
         items = dict()
@@ -505,6 +506,8 @@ class PrimComposition(QtWidgets.QDialog):
                 parent.appendRow(arc_items)
 
         tree.expandAll()
+        for index, size in sizes.items():
+            header.resizeSection(index, size)
 
 
 class LayerTableModel(_sheets._ObjectTableModel):
