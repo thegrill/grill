@@ -36,7 +36,7 @@ def _layer_stack_from_prims(usdviewApi):
 @lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
     widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
-
+    widget.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
     def primChanged(new_paths, __):
         new_path = next(iter(new_paths), None)
         widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()

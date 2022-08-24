@@ -359,6 +359,17 @@ def _display_text_for_layer(layer):
     return layer.GetDisplayName() or layer.identifier
 
 
+class _Tree(QtWidgets.QTreeView):  # inheriting does not bring QTreeView stylesheet.
+    def scrollContentsBy(self, dx:int, dy:int):
+        super().scrollContentsBy(dx, dy)
+        if dx:
+            self._fixPositions()
+
+    def _fixPositions(self):
+        header = self.header()
+        header._updateVisualSections(min(header.section_options))
+
+
 class PrimComposition(QtWidgets.QDialog):
     _COLUMNS = {
         "Target Layer": lambda arc: _display_text_for_layer(arc.GetTargetNode().layerStack.layerTree.layer),
@@ -382,12 +393,17 @@ class PrimComposition(QtWidgets.QDialog):
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
-        self.composition_tree = tree = QtWidgets.QTreeWidget()
+        self.composition_tree = tree = _Tree()
+        # self.composition_tree = tree = QtWidgets.QTreeView()
+        self._composition_model = composition_model = QtGui.QStandardItemModel()
+
+        tree.setModel(composition_model)
         tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._exec_context_menu)
-        tree.setColumnCount(len(self._COLUMNS))
-        tree.setHeaderLabels([k for k in self._COLUMNS])
-        tree.setAlternatingRowColors(True)
+        composition_model.setColumnCount(len(self._COLUMNS))
+        tree.setAlternatingRowColors(True)  # USDView style is ignored here:
+        tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
         self._dot_view = _DotViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(tree)
@@ -401,24 +417,57 @@ class PrimComposition(QtWidgets.QDialog):
         self.setWindowTitle("Prim Composition")
 
     def clear(self):
-        self.composition_tree.clear()
+        self._composition_model.clear()
         self.index_box.clear()
 
     def _exec_context_menu(self):
         # https://doc.qt.io/qtforpython-5/overviews/statemachine-api.html#the-state-machine-framework
+        # menu = QtWidgets.QMenu(tree:=self.composition_tree)
         menu = QtWidgets.QMenu(tree:=self.composition_tree)
-        if len(selection:=tree.selectedItems()) == 1:
-            stage, edit_target = selection[0].data(0, QtCore.Qt.UserRole)
+        selection = tree.selectedIndexes()
+        if len(set(i.row() for i in selection) ) == 1:
+            stage, edit_target = selection[0].data(QtCore.Qt.UserRole)
             menu.addAction("Set As Edit Target", partial(stage.SetEditTarget, edit_target))
         menu.exec_(QtGui.QCursor.pos())
 
     def setPrim(self, prim):
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
+        fd, fp = tempfile.mkstemp()
+        prim_index.DumpToDotGraph(fp)
+        self._dot_view.setDotPath(fp)
+
         tree = self.composition_tree
-        tree.clear()
+
+        columns = tuple(_sheets._Column(k, v) for k, v in self._COLUMNS.items())
+        options = _sheets._ColumnOptions.SEARCH
+        header = _sheets._Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
+        tree.setHeader(header)
+
+        model = self._composition_model
+        model.clear()
+        root_item = model.invisibleRootItem()
+        model.setHorizontalHeaderLabels([""] * len(self._COLUMNS))
+
+        for column_index, column_data in enumerate(columns):
+            proxy_model = QtCore.QSortFilterProxyModel()
+            proxy_model.setSourceModel(model)
+            proxy_model.setFilterKeyColumn(column_index)
+
+            column_options = header.section_options[column_index]
+            if _sheets._ColumnOptions.SEARCH in options:
+                column_options.filterChanged.connect(proxy_model.setFilterRegularExpression)
+                column_options.filterChanged.connect(tree.expandAll)
+
+            model = proxy_model
+            model.setRecursiveFilteringEnabled(True)
+
+        header.setModel(model)
+        header.setSectionsClickable(True)
+        tree.setModel(model)
+
         query = Usd.PrimCompositionQuery(prim)
-        tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
+        items = dict()
         stage = prim.GetStage()
         arcs = query.GetCompositionArcs()
         for arc in arcs:
@@ -430,10 +479,8 @@ class PrimComposition(QtWidgets.QDialog):
             target_layer = target_node.layerStack.identifier.rootLayer
 
             # TODO: is there a better way than relying on str(node.site)???
-            if str(intro_node.site) in tree_items:
-                parent = tree_items[str(intro_node.site)]
-            else:
-                parent = tree
+            key = str(intro_node.site)
+            parent = items[key] if key in items else root_item
 
             try:
                 highlight_color = _HIGHLIGHT_COLORS[arc.GetArcType().displayName][_PALETTE.get()]
@@ -443,22 +490,21 @@ class PrimComposition(QtWidgets.QDialog):
             sublayers = target_node.layerStack.layers
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
-                    tree_items[str(target_node.site)] = widget = QtWidgets.QTreeWidgetItem(parent, strings)
+                    arc_items = [QtGui.QStandardItem(s) for s in strings]
+                    items[str(target_node.site)] = arc_items[0]
                 else:
                     has_specs = bool(each.GetObjectAtPath(target_path))
-                    widget = QtWidgets.QTreeWidgetItem(
-                        parent, [_display_text_for_layer(each), strings[1], strings[2], strings[3], str(has_specs)]
-                    )
+                    arc_items = [QtGui.QStandardItem(s) for s in [_display_text_for_layer(each), strings[1], strings[2], strings[3], str(has_specs)]]
+
                 edit_target = Usd.EditTarget(each, target_node)
-                widget.setData(0, QtCore.Qt.UserRole, (stage, edit_target))
-                if highlight_color:
-                    for i, __ in enumerate(self._COLUMNS):
-                        widget.setForeground(i, highlight_color)
+                for item in arc_items:
+                    item.setData((stage, edit_target), QtCore.Qt.UserRole)
+                    if highlight_color:
+                        item.setData(highlight_color, QtCore.Qt.ForegroundRole)
+
+                parent.appendRow(arc_items)
 
         tree.expandAll()
-        fd, fp = tempfile.mkstemp()
-        prim_index.DumpToDotGraph(fp)
-        self._dot_view.setDotPath(fp)
 
 
 class LayerTableModel(_sheets._ObjectTableModel):

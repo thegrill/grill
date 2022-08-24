@@ -74,3 +74,65 @@ QPushButton:disabled {
 }
 
 """
+
+# Taken from QTreeWidget style and adapted for _Tree:
+# https://github.com/PixarAnimationStudios/USD/blob/3abc46452b1271df7650e9948fef9f0ce602e3b2/pxr/usdImaging/usdviewq/usdviewstyle.qss#L258
+_USDVIEW_QTREEVIEW_STYLE = """
+_Tree {
+    alternate-background-color: rgb(59, 59, 59);
+}
+
+._Tree::item, QTableView::item {
+    /* this border serves to separate the columns
+     * since the grid is often invised */
+    border-right: 1px solid rgb(41, 41, 41);
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+
+/* Selected items highlighted in orange */
+._Tree::item:selected,
+_Tree::branch:selected,
+QTableView::item:selected {
+    background: rgb(189, 155, 84);
+}
+
+/* hover items a bit lighter */
+._Tree::item:hover:!pressed:!selected,
+_Tree::branch:hover:!pressed:!selected,
+QTableView::item:hover:!pressed:!selected {
+    background: rgb(70, 70, 70);
+}
+
+._Tree::item:hover:!pressed:selected,
+_Tree::branch:hover:!pressed:selected,
+QTableView::item:hover:!pressed:selected {
+/*    background: rgb(132, 109, 59); */
+    background: rgb(227, 186, 101);
+}
+
+/* Set the branch triangle icons */
+_Tree::branch:has-children:!has-siblings:closed,
+_Tree::branch:closed:has-children:has-siblings {
+    border-image: none;
+    image: url(%(RESOURCE_DIR)s/icons/branch-closed.png);
+}
+
+_Tree::branch:open:has-children:!has-siblings,
+_Tree::branch:open:has-children:has-siblings  {
+    border-image: none;
+    image: url(%(RESOURCE_DIR)s/icons/branch-open.png);
+}
+
+_Tree::branch:selected:has-children:!has-siblings:closed,
+_Tree::branch:selected:closed:has-children:has-siblings {
+    border-image: none;
+    image: url(%(RESOURCE_DIR)s/icons/branch-closed-selected.png);
+}
+
+_Tree::branch:selected:open:has-children:!has-siblings,
+_Tree::branch:selected:open:has-children:has-siblings  {
+    border-image: none;
+    image: url(%(RESOURCE_DIR)s/icons/branch-open-selected.png);
+}
+"""
