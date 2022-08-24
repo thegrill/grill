@@ -430,15 +430,8 @@ class _Header(QtWidgets.QHeaderView):
         return self.sectionViewportPosition(index) + 10, 10, self.sectionSize(index) - 20, self.height() - 20
 
 
-class _Table(QtWidgets.QTableView):
-    def scrollContentsBy(self, dx:int, dy:int):
-        super().scrollContentsBy(dx, dy)
-        if dx:
-            self._fixPositions()
-
-    def _fixPositions(self):
-        header = self.horizontalHeader()
-        header._updateVisualSections(min(header.section_options))
+class _Table(_core._ColumnHeaderMixin, QtWidgets.QTableView):
+    header = QtWidgets.QTableView.horizontalHeader
 
 
 class _Spreadsheet(QtWidgets.QDialog):

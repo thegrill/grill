@@ -136,3 +136,13 @@ _Tree::branch:selected:open:has-children:has-siblings  {
     image: url(%(RESOURCE_DIR)s/icons/branch-open-selected.png);
 }
 """
+
+class _ColumnHeaderMixin:
+    def scrollContentsBy(self, dx:int, dy:int):
+        super().scrollContentsBy(dx, dy)
+        if dx:
+            self._fixPositions()
+
+    def _fixPositions(self):
+        header = self.header()
+        header._updateVisualSections(min(header.section_options))

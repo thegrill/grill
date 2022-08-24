@@ -359,15 +359,9 @@ def _display_text_for_layer(layer):
     return layer.GetDisplayName() or layer.identifier
 
 
-class _Tree(QtWidgets.QTreeView):  # inheriting does not bring QTreeView stylesheet.
-    def scrollContentsBy(self, dx:int, dy:int):
-        super().scrollContentsBy(dx, dy)
-        if dx:
-            self._fixPositions()
-
-    def _fixPositions(self):
-        header = self.header()
-        header._updateVisualSections(min(header.section_options))
+# inheriting does not bring QTreeView stylesheet.
+class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
+    pass
 
 
 class PrimComposition(QtWidgets.QDialog):
@@ -472,7 +466,7 @@ class PrimComposition(QtWidgets.QDialog):
         stage = prim.GetStage()
         arcs = query.GetCompositionArcs()
         for arc in arcs:
-            strings = [str(getter(arc)) for getter in self._COLUMNS.values()]
+            values = [getter(arc) for getter in self._COLUMNS.values()]
 
             intro_node = arc.GetIntroducingNode()
             target_node = arc.GetTargetNode()
@@ -491,11 +485,11 @@ class PrimComposition(QtWidgets.QDialog):
             sublayers = target_node.layerStack.layers
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
-                    arc_items = [QtGui.QStandardItem(s) for s in strings]
+                    arc_items = [QtGui.QStandardItem(str(s)) for s in values]
                     items[str(target_node.site)] = arc_items[0]
                 else:
                     has_specs = bool(each.GetObjectAtPath(target_path))
-                    arc_items = [QtGui.QStandardItem(s) for s in [_display_text_for_layer(each), strings[1], strings[2], strings[3], str(has_specs)]]
+                    arc_items = [QtGui.QStandardItem(str(s)) for s in [_display_text_for_layer(each), values[1], values[2], values[3], str(has_specs)]]
 
                 edit_target = Usd.EditTarget(each, target_node)
                 for item in arc_items:
