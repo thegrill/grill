@@ -64,6 +64,12 @@ _CATALOGUE_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_CATALOGUE_NAME)
 _CATALOGUE_ID = ids.CGAsset.kingdom  # where all existing units will be "discoverable"
 _CATALOGUE_FIELDS = types.MappingProxyType({_CATALOGUE_ID.name: _CATALOGUE_NAME})
 
+_SPECIALIZED_NAME = 'Specialized'
+_SPECIALIZED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_SPECIALIZED_NAME)
+
+_INHERITED_NAME = 'Inherited'
+_INHERITED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_INHERITED_NAME)
+
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 _UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
 
@@ -206,6 +212,8 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     taxon_path = taxon.GetPath()
     taxon_fields = _get_id_fields(taxon)
     scope_path = _catalogue_path(taxon)
+    specialized_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _SPECIALIZED_ROOT_PATH)
+    inherited_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _INHERITED_ROOT_PATH)
 
     current_asset_name, root_layer = _root_asset(stage)
     new_asset_name = UsdAsset(current_asset_name.get(**taxon_fields))
@@ -240,12 +248,12 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     def _fetch_layer_for_unit(name):
         layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
         layer = _fetch_layer(layer_id, context)
-        Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass
+        # Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass  # not needed anymore?
         origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
         origin.specifier = Sdf.SpecifierDef
-        origin.specializesList.Prepend(scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, "/Specialized").AppendChild(name))
-        origin.inheritPathList.Prepend(scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, "/Inherited").AppendChild(name))
-        origin.referenceList.Prepend( Sdf.Reference(taxonomy_id, taxon_path)  )
+        origin.specializesList.Prepend(specialized_path.AppendChild(name))
+        origin.inheritPathList.Prepend(inherited_path.AppendChild(name))
+        origin.referenceList.Prepend(Sdf.Reference(taxonomy_id, taxon_path))
         layer.defaultPrim = origin.name
         return layer
 
