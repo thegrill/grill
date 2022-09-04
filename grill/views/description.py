@@ -152,8 +152,10 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        label = "{"
-        tooltip = "Layer Stack:"
+        # Wrap tooltip and label with double quotes since networkx==2.8.4
+        # https://github.com/networkx/networkx/issues/5962
+        label = '"{'
+        tooltip = '"Layer Stack:'
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
             if layer.dirty:
@@ -161,7 +163,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
             label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_cached_layer_label(layer)}"
-        label += "}"
+        tooltip += '"'
+        label += '}"'
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
