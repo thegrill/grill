@@ -30,8 +30,8 @@ class _CreatePrims(QtWidgets.QDialog):
         apply_btn = button_box.button(QtWidgets.QDialogButtonBox.Apply)
         self._applied = apply_btn.clicked
 
-        model = _sheets.EmptyTableModel(columns=columns)
-        self.sheet = sheet = _sheets._Spreadsheet(model, columns, _sheets._ColumnOptions.NONE)
+        model = _core.EmptyTableModel(columns=columns)
+        self.sheet = sheet = _sheets._Spreadsheet(model, columns, _core._ColumnOptions.NONE)
         self._amount.valueChanged.connect(sheet.model.setRowCount)
         sheet.layout().setContentsMargins(0, 0, 0, 0)
 
@@ -66,13 +66,13 @@ class CreateAssets(_CreatePrims):
             combobox.addItems([p.GetName() for p in options])
             return combobox
         _columns = (
-            _sheets._Column("🧬 Taxon", editor=_taxon_combobox),
-            _sheets._Column("🔖 Name"),
-            _sheets._Column("🏷 Label"),
-            _sheets._Column("📜 Description"),  # TODO: STILL UNUSED
+            _core._Column("🧬 Taxon", editor=_taxon_combobox),
+            _core._Column("🔖 Name"),
+            _core._Column("🏷 Label"),
+            _core._Column("📜 Description"),  # TODO: STILL UNUSED
         )
 
-        existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
+        existing_columns = (_core._Column("🧬 Existing", Usd.Prim.GetName),)
         existing_model = _sheets.StageTableModel(columns=existing_columns)
         existing_model._root_paths = {cook._TAXONOMY_ROOT_PATH}
         existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(cook._ASSETINFO_TAXA_KEY)
@@ -191,25 +191,25 @@ class TaxonomyEditor(_CreatePrims):
 
             return inter
 
-        def _reference_setter(editor: ReferenceSelection, model: _sheets._ProxyModel, index:QtCore.QModelIndex):
+        def _reference_setter(editor: ReferenceSelection, model: _core._ProxyModel, index:QtCore.QModelIndex):
             return model.setData(index, "\n".join(editor._value()))
 
         identity = lambda x: x
         _columns = (
-            _sheets._Column("🧬 New Name", identity),
-            _sheets._Column(
+            _core._Column("🧬 New Name", identity),
+            _core._Column(
                 "🔗 References",
                 identity,
                 editor=_reference_selector,
                 setter=_reference_setter
             ),
-            _sheets._Column(f"{_core._EMOJI.ID.value} ID Fields", identity),
+            _core._Column(f"{_core._EMOJI.ID.value} ID Fields", identity),
         )
         super().__init__(_columns, *args, **kwargs)
         self.setWindowTitle("Taxonomy Editor")
 
         existing_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        existing_columns = (_sheets._Column("🧬 Existing", Usd.Prim.GetName),)
+        existing_columns = (_core._Column("🧬 Existing", Usd.Prim.GetName),)
         existing_model = _sheets.StageTableModel(columns=existing_columns)
         existing_model._root_paths = {cook._TAXONOMY_ROOT_PATH}
         existing_model._filter_predicate = lambda prim: prim.GetAssetInfoByKey(cook._ASSETINFO_TAXA_KEY)
@@ -220,7 +220,7 @@ class TaxonomyEditor(_CreatePrims):
             # TODO: see if columns "should" be passed always to the model. If so, then
             #   we can avoid passing it here.
             existing_columns,
-            _sheets._ColumnOptions.SEARCH,
+            _core._ColumnOptions.SEARCH,
         )
         existing.layout().setContentsMargins(0, 0, 0, 0)
         existing_splitter.addWidget(existing)

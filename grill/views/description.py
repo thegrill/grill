@@ -107,7 +107,8 @@ def _pseudo_layer(layer):
 
 
 def _layer_label(layer):
-    return Path(layer.realPath).stem or layer.identifier
+    # return Path(layer.realPath).stem or layer.identifier
+    return layer.GetDisplayName() or layer.identifier
 
 
 @lru_cache(maxsize=None)
@@ -358,9 +359,6 @@ class _GraphViewer(_DotViewer):
         self.sticky_nodes.clear()
         self._graph = graph
 
-def _display_text_for_layer(layer):
-    return layer.GetDisplayName() or layer.identifier
-
 
 # inheriting does not bring QTreeView stylesheet.
 class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
@@ -374,7 +372,7 @@ class PrimComposition(QtWidgets.QDialog):
     # TODO: when initializing this outside of the grill menu in USDView, the tree
     # does not have the appropiate stylesheet ):
     _COLUMNS = {
-        "Target Layer": lambda arc: _display_text_for_layer(arc.GetTargetNode().layerStack.layerTree.layer),
+        "Target Layer": lambda arc: _layer_label(arc.GetTargetNode().layerStack.layerTree.layer),
         "Arc": lambda arc: arc.GetArcType().displayName,
         "#": lambda arc: arc.GetTargetNode().siblingNumAtOrigin,
         "Target Path": lambda arc: arc.GetTargetNode().path,
