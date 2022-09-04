@@ -361,10 +361,15 @@ def _display_text_for_layer(layer):
 
 # inheriting does not bring QTreeView stylesheet.
 class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
-    pass
+    def _connect_search(self, options, index, model):
+        super()._connect_search(options, index, model)
+        model.setRecursiveFilteringEnabled(True)
+        options.filterChanged.connect(self.expandAll)
 
 
 class PrimComposition(QtWidgets.QDialog):
+    # TODO: when initializing this outside of the grill menu in USDView, the tree
+    # does not have the appropiate stylesheet ):
     _COLUMNS = {
         "Target Layer": lambda arc: _display_text_for_layer(arc.GetTargetNode().layerStack.layerTree.layer),
         "Arc": lambda arc: arc.GetArcType().displayName,
@@ -387,39 +392,32 @@ class PrimComposition(QtWidgets.QDialog):
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
-        self.composition_tree = tree = _Tree()
         self._composition_model = model = QtGui.QStandardItemModel()
-
+        columns = tuple(_core._Column(k, v) for k, v in self._COLUMNS.items())
+        options = _core._ColumnOptions.SEARCH
+        self.composition_tree = tree = _Tree(model, columns, options)
         tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._exec_context_menu)
         tree.setAlternatingRowColors(True)  # USDView style is ignored here:
         tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        columns = tuple(_sheets._Column(k, v) for k, v in self._COLUMNS.items())
-        options = _sheets._ColumnOptions.SEARCH
-        self._header = header = _sheets._Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
-
-        for column_index, column_data in enumerate(columns):
-            proxy_model = QtCore.QSortFilterProxyModel()
-            proxy_model.setSourceModel(model)
-            proxy_model.setFilterKeyColumn(column_index)
-
-            column_options = header.section_options[column_index]
-            if _sheets._ColumnOptions.SEARCH in options:
-                column_options.filterChanged.connect(
-                    proxy_model.setFilterRegularExpression)
-                column_options.filterChanged.connect(tree.expandAll)
-
-            model = proxy_model
-            model.setRecursiveFilteringEnabled(True)
-
-        header.setModel(model)
-        header.setSectionsClickable(True)
-        tree.setHeader(header)
-        tree.setModel(model)
-
         self._dot_view = _DotViewer(parent=self)
+
+        tree_controls = QtWidgets.QFrame()
+        tree_controls_layout = QtWidgets.QHBoxLayout()
+        tree_controls.setLayout(tree_controls_layout)
+        self._prim = None  # TODO: see if we can remove this
+        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
+        self._complete_target_layerstack.setChecked(False)
+        self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
+        tree_controls_layout.addWidget(self._complete_target_layerstack)
+        tree_controls_layout.addStretch(0)
+        tree_controls_layout.setContentsMargins(0,0,0,0)
+        tree_controls.setContentsMargins(0,0,0,0)
+        tree_controls.setFixedHeight(tree_controls.sizeHint().height())
+
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        vertical.addWidget(tree_controls)
         vertical.addWidget(tree)
         vertical.addWidget(self._dot_view)
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -445,14 +443,19 @@ class PrimComposition(QtWidgets.QDialog):
         menu.exec_(QtGui.QCursor.pos())
 
     def setPrim(self, prim):
+        self._prim = prim
+        if not self._prim:
+            self.clear()
+            return
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
         self._dot_view.setDotPath(fp)
 
+        complete_target_layerstack = self._complete_target_layerstack.isChecked()
         # model.clear() resizes the columns. So we keep track of current sizes.
-        header = self._header
+        header = self.composition_tree.header()
         sizes = {index: size for index in header.section_options if (size:=header.sectionSize(index))}
 
         tree = self.composition_tree
@@ -482,7 +485,7 @@ class PrimComposition(QtWidgets.QDialog):
             except KeyError:
                 highlight_color = None
 
-            sublayers = target_node.layerStack.layers
+            sublayers = target_node.layerStack.layers if complete_target_layerstack else (target_layer,)
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
                     arc_items = [QtGui.QStandardItem(str(s)) for s in values]
@@ -504,7 +507,7 @@ class PrimComposition(QtWidgets.QDialog):
             header.resizeSection(index, size)
 
 
-class LayerTableModel(_sheets._ObjectTableModel):
+class LayerTableModel(_core._ObjectTableModel):
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if role == QtCore.Qt.ForegroundRole:
             layer = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
@@ -602,7 +605,6 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
         with Ar.ResolverContextBinder(self._resolver_context):
-            print(f"Adding tab for {identifier=} and {anchor=}")
             try:
                 if not (layer := Sdf.Layer.FindOrOpen(identifier)):
                     layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier)
@@ -657,17 +659,17 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
 
 class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
-        _sheets._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
-        _sheets._Column("🚧 Dirty", operator.attrgetter('dirty')),
+        _core._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
+        _core._Column("🚧 Dirty", operator.attrgetter('dirty')),
     )
     _PRIM_COLUMNS = (
-        _sheets._Column("🧩 Opinion on Prim Path", lambda prim: str(prim.GetPath())),
-        _sheets._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
+        _core._Column("🧩 Opinion on Prim Path", lambda prim: str(prim.GetPath())),
+        _core._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
     )
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        options = _sheets._ColumnOptions.SEARCH
+        options = _core._ColumnOptions.SEARCH
         layers_model = LayerTableModel(columns=self._LAYERS_COLUMNS)
         self._layers = _LayersSheet(layers_model, self._LAYERS_COLUMNS, options)
         self._prims = _sheets._StageSpreadsheet(columns=self._PRIM_COLUMNS, options=options)
