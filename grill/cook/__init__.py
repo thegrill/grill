@@ -194,9 +194,11 @@ def itaxa(prims, taxon, *taxa):
 
 def _catalogue_path(taxon: Usd.Prim) -> Sdf.Path:
     taxon_fields = _get_id_fields(taxon)
-    return _CATALOGUE_ROOT_PATH.AppendPath(
-        f"{taxon_fields[_CATALOGUE_ID.name]}{Sdf.Path.childDelimiter}{taxon_fields[_TAXONOMY_UNIQUE_ID.name]}"
-    )
+    # Check if we need to enforce _CATALOGUE_ID to be on taxon fields
+    relpath = taxon_fields[_TAXONOMY_UNIQUE_ID.name]
+    if _CATALOGUE_ID.name in taxon_fields:  # TODO: ensure this can't be overwritten
+        relpath = f"{taxon_fields[_CATALOGUE_ID.name]}{Sdf.Path.childDelimiter}{relpath}"
+    return _CATALOGUE_ROOT_PATH.AppendPath(relpath)
 
 
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
