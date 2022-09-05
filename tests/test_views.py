@@ -95,6 +95,7 @@ class TestViews(unittest.TestCase):
         cook.Repository.reset(self._token)
         shutil.rmtree(self._tmpf)
 
+    @unittest.skip()
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
         widget.setStage(self.world)
