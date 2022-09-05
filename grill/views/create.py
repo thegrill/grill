@@ -30,7 +30,8 @@ class _CreatePrims(QtWidgets.QDialog):
         apply_btn = button_box.button(QtWidgets.QDialogButtonBox.Apply)
         self._applied = apply_btn.clicked
 
-        model = _core.EmptyTableModel(columns=columns)
+        model = QtGui.QStandardItemModel()
+        model.setHorizontalHeaderLabels([''] * len(columns))
         self.sheet = sheet = _sheets._Spreadsheet(model, columns, _core._ColumnOptions.NONE)
         self._amount.valueChanged.connect(sheet.model.setRowCount)
         sheet.layout().setContentsMargins(0, 0, 0, 0)

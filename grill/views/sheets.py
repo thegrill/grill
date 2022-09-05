@@ -159,7 +159,7 @@ class StageTableModel(_core._ObjectTableModel):
         col_index = index.column()
         # only allow edits when:
         if (col_index not in self._locked_columns  # column is unlocked
-            and self._columns_spec[col_index].setter  # a setter has been provided
+            and self._columns[col_index].setter  # a setter has been provided
             and not self._objects[index.row()].IsInstanceProxy()  # Not an instance proxy
         ):
             return flags | QtCore.Qt.ItemIsEditable
@@ -179,8 +179,8 @@ class _Spreadsheet(QtWidgets.QDialog):
     def __init__(self, model, columns, options: _core._ColumnOptions = _core._ColumnOptions.ALL, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
-        self._columns_spec = columns
-        self.table = table = _Table(model, columns, options)
+        self.table = table = _Table(columns, options)
+        table.setModel(model)
         # TODO: table.setModel(model)
 
         table.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked | QtWidgets.QAbstractItemView.SelectedClicked)
@@ -295,7 +295,7 @@ class _Spreadsheet(QtWidgets.QDialog):
             else:
                 prim = model.data(model.index(visual_row, 0), _core._QT_OBJECT_DATA_ROLE)
                 for column_index, column_data in enumerate(rowdata, start=selected_column):
-                    setter = self._columns_spec[column_index].setter
+                    setter = self.table._columns[column_index].setter
                     if prim:
                         if not setter:
                             logger.debug(f"Skipping since missing setter: {column_data}")

@@ -396,7 +396,8 @@ class PrimComposition(QtWidgets.QDialog):
         self._composition_model = model = QtGui.QStandardItemModel()
         columns = tuple(_core._Column(k, v) for k, v in self._COLUMNS.items())
         options = _core._ColumnOptions.SEARCH
-        self.composition_tree = tree = _Tree(model, columns, options)
+        self.composition_tree = tree = _Tree(columns, options)
+        tree.setModel(model)
         tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._exec_context_menu)
         tree.setAlternatingRowColors(True)  # USDView style is ignored here:
@@ -457,7 +458,7 @@ class PrimComposition(QtWidgets.QDialog):
         complete_target_layerstack = self._complete_target_layerstack.isChecked()
         # model.clear() resizes the columns. So we keep track of current sizes.
         header = self.composition_tree.header()
-        sizes = {index: size for index in header.section_options if (size:=header.sectionSize(index))}
+        sizes = {index: size for index in header.options_by_index if (size:=header.sectionSize(index))}
 
         tree = self.composition_tree
         model = self._composition_model
@@ -493,7 +494,7 @@ class PrimComposition(QtWidgets.QDialog):
                     items[str(target_node.site)] = arc_items[0]
                 else:
                     has_specs = bool(each.GetObjectAtPath(target_path))
-                    arc_items = [QtGui.QStandardItem(str(s)) for s in [_display_text_for_layer(each), values[1], values[2], values[3], str(has_specs)]]
+                    arc_items = [QtGui.QStandardItem(str(s)) for s in [_layer_label(each), values[1], values[2], values[3], str(has_specs)]]
 
                 edit_target = Usd.EditTarget(each, target_node)
                 for item in arc_items:
