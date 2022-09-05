@@ -141,7 +141,6 @@ class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.11
 
 
 class _Column(typing.NamedTuple):
-    """Foundational structure for a column and how to retrieve / set model data."""
     name: str
     getter: callable = None
     setter: callable = None
@@ -149,7 +148,7 @@ class _Column(typing.NamedTuple):
 
 
 class _ColumnOptions(enum.Flag):
-    """Options that will be available on the header columns of a view."""
+    """Options that will be available on the header of a table."""
     NONE = enum.auto()
     SEARCH = enum.auto()
     VISIBILITY = enum.auto()
@@ -164,19 +163,20 @@ class _ColumnItemDelegate(QtWidgets.QStyledItemDelegate):
     """
 
     def createEditor(self, parent: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtWidgets.QWidget:
-        creator = self.parent()._columns[index.column()].editor or super().createEditor
+        creator = self.parent()._model._columns_spec[index.column()].editor or super().createEditor
         return creator(parent, option, index)
 
 
 class _EmptyItemDelegate(_ColumnItemDelegate):
     def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex):
-        setter = self.parent()._columns[index.column()].setter or super().setModelData
+        setter = self.parent()._model._columns_spec[index.column()].setter or super().setModelData
         return setter(editor, model, index)
 
 
 class _ColumnHeaderOptions(QtWidgets.QWidget):
-    """A widget to be used within a header for columns on a table / tree view."""
+    """A widget to be used within a header for columns on a USD spreadsheet.
 
+    """
     def __init__(self, name, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
@@ -258,7 +258,7 @@ class _ColumnHeaderOptions(QtWidgets.QWidget):
 
 
 class _Header(QtWidgets.QHeaderView):
-    """A header that allows to display the column options for a table / tree.
+    """A header that allows to display the column options for a USD spreadsheet.
 
     See also:
         https://www.qt.io/blog/2014/04/11/qt-weekly-5-widgets-on-a-qheaderview
@@ -267,12 +267,12 @@ class _Header(QtWidgets.QHeaderView):
     """
     def __init__(self, columns, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.options_by_index = dict()  # {int: _ColumnHeaderOptions}
+        self.section_options = dict()
         self._proxy_labels = dict()  # I've found no other way around this
         for index, name in enumerate(columns):
             column_options = _ColumnHeaderOptions(name, options=options, parent=self)
             column_options.layout().setContentsMargins(0, 0, 0, 0)
-            self.options_by_index[index] = column_options
+            self.section_options[index] = column_options
             self.setMinimumHeight(column_options.sizeHint().height() + 20)
 
             # we keep track of the column options label but our proxy will bypass clicks
@@ -289,7 +289,7 @@ class _Header(QtWidgets.QHeaderView):
 
     def _updateOptionsGeometry(self, logical_index: int):
         """Updates the options geometry for the column at the logical index"""
-        widget = self.options_by_index[logical_index]
+        widget = self.section_options[logical_index]
         geometry = self._geometryForWidget(logical_index)
         widget.setGeometry(*geometry)
         label_geo = widget.label.geometry()
@@ -302,7 +302,7 @@ class _Header(QtWidgets.QHeaderView):
             self._updateOptionsGeometry(self.logicalIndex(index))
 
     def showEvent(self, event:QtGui.QShowEvent):
-        for index, widget in self.options_by_index.items():
+        for index, widget in self.section_options.items():
             self._updateOptionsGeometry(index)
             # ensure we have readable columns upon show
             widget.show()
@@ -311,7 +311,7 @@ class _Header(QtWidgets.QHeaderView):
 
     def _handleSectionResized(self, index):
         self._updateVisualSections(self.visualIndex(index))
-        for index, widget in self.options_by_index.items():
+        for index, widget in self.section_options.items():
             # if new size is smaller than the width hint half, make options invisible
             vis = widget.minimumSizeHint().width() / 2.0 < self.sectionSize(index)
             widget.setVisible(vis)
@@ -332,6 +332,18 @@ class _Header(QtWidgets.QHeaderView):
         return self.sectionViewportPosition(index) + 10, 10, self.sectionSize(index) - 20, self.height() - 20
 
 
+class EmptyTableModel(QtGui.QStandardItemModel):
+    """Minimal empty table for new data (unlike existing USD stages or layers).
+
+    This is a "transient" model which will eventually have data translated into USD.
+    """
+    def __init__(self, columns, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._columns_spec = columns
+        self._locked_columns = set()  # TODO: make sure this plays well with this and USD table
+        self.setHorizontalHeaderLabels([''] * len(columns))
+
+
 class _ObjectTableModel(QtCore.QAbstractTableModel):
     """Table model objects whose getters / setters are provided via columns.
 
@@ -340,28 +352,29 @@ class _ObjectTableModel(QtCore.QAbstractTableModel):
 
     def __init__(self, columns, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._columns = columns
+        self._columns_spec = columns
+        self._locked_columns = set()
         self._objects = []
 
     def rowCount(self, parent:QtCore.QModelIndex=...) -> int:
         return len(self._objects)
 
     def columnCount(self, parent:QtCore.QModelIndex=...) -> int:
-        return len(self._columns)
+        return len(self._columns_spec)
 
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if role == _QT_OBJECT_DATA_ROLE:  # raw data
             return self._objects[index.row()]
         elif role == QtCore.Qt.DisplayRole:
             obj = self.data(index, role=_QT_OBJECT_DATA_ROLE)
-            return self._columns[index.column()].getter(obj)
+            return self._columns_spec[index.column()].getter(obj)
         elif role == QtCore.Qt.EditRole:
             obj = self.data(index, role=_QT_OBJECT_DATA_ROLE)
-            return self._columns[index.column()].getter(obj)
+            return self._columns_spec[index.column()].getter(obj)
 
     def sort(self, column:int, order:QtCore.Qt.SortOrder=...) -> None:
         self.layoutAboutToBeChanged.emit()
-        key = self._columns[column].getter
+        key = self._columns_spec[column].getter
         reverse = order == QtCore.Qt.SortOrder.AscendingOrder
         try:
             self._objects = sorted(self._objects, key=key, reverse=reverse)
@@ -370,7 +383,7 @@ class _ObjectTableModel(QtCore.QAbstractTableModel):
 
     def setData(self, index:QtCore.QModelIndex, value:typing.Any, role:int=...) -> bool:
         obj = self.data(index, role=_QT_OBJECT_DATA_ROLE)
-        result = self._columns[index.column()].setter(obj, value)
+        result = self._columns_spec[index.column()].setter(obj, value)
         print(f"Result: {result}")
         # self.dataChanged.emit(topLeft, bottomRight)  # needed?
         return True
@@ -393,21 +406,15 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
 
 class _ColumnHeaderMixin:
     # TODO: see if this makes sense.
-    def __init__(self, columns, options, *args, **kwargs):
+    def __init__(self, model, columns, options, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._columns = columns
-        self._options = options
-
-    def setModel(self, model):
         self._model = model
-        model._locked_columns = set()
-        options = self._options
-        columns = self._columns
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
 
         # TODO: item delegate per model type? For now it works ):<
-        column_delegate_cls = _ColumnItemDelegate if isinstance(model, _ObjectTableModel) else _EmptyItemDelegate
-        self._column_options = header.options_by_index
+        column_delegate_cls = _ColumnItemDelegate if isinstance(model,
+                                                                _ObjectTableModel) else _EmptyItemDelegate
+        self._column_options = header.section_options
 
         # for every column, create a proxy model and chain it to the next one
         for column_index, column_data in enumerate(columns):
@@ -415,7 +422,7 @@ class _ColumnHeaderMixin:
             proxy_model.setSourceModel(model)
             proxy_model.setFilterKeyColumn(column_index)
 
-            column_options = header.options_by_index[column_index]
+            column_options = header.section_options[column_index]
             if _ColumnOptions.SEARCH in options:
                 self._connect_search(column_options, column_index, proxy_model)
             if _ColumnOptions.VISIBILITY in options:
@@ -424,18 +431,18 @@ class _ColumnHeaderMixin:
                 self._connect_locked(column_options, column_index, proxy_model)
 
             delegate = column_delegate_cls(parent=self)
-            super().setItemDelegateForColumn(column_index, delegate)
+            self.setItemDelegateForColumn(column_index, delegate)
 
             model = proxy_model
 
         header.setModel(model)
         header.setSectionsClickable(True)
 
-        super().setModel(model)
+        self.setModel(model)
         try:
-            super().setHorizontalHeader(header)
+            self.setHorizontalHeader(header)
         except AttributeError:
-            super().setHeader(header)
+            self.setHeader(header)
 
     def _connect_search(self, options, index, model):
         options.filterChanged.connect(model.setFilterRegularExpression)
@@ -463,4 +470,4 @@ class _ColumnHeaderMixin:
             header = self.horizontalHeader()  # Tables
         except AttributeError:
             header = self.header()  # Trees
-        header._updateVisualSections(min(header.options_by_index))
+        header._updateVisualSections(min(header.section_options))
