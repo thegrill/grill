@@ -409,8 +409,8 @@ class _ColumnHeaderMixin:
     def __init__(self, model, columns: typing.Iterable[_Column], options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         logging.getLogger(__name__).error(columns)
-        self._options = options
-        self._columns = columns
+        # self._options = options
+        # self._columns = columns
         # self._setModel(model)
 
         # def _setModel(self, model):
