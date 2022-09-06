@@ -266,7 +266,7 @@ class _Header(QtWidgets.QHeaderView):
     """
     def __init__(self, columns, options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.options_by_index = dict() # {int: _ColumnHeaderOptions}
+        self.options_by_index = dict()  # {int: _ColumnHeaderOptions}
         self._proxy_labels = dict()  # I've found no other way around this
         for index, name in enumerate(columns):
             column_options = _ColumnHeaderOptions(name, options=options, parent=self)
@@ -407,7 +407,14 @@ class _ColumnHeaderMixin:
     # TODO: see if this makes sense.
     def __init__(self, model, columns, options, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._columns = columns
+        self._options = options
+        self.setModel(model)
+
+    def setModel(self, model):
         self._model = model
+        columns = self._columns
+        options = self._options
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
 
         # TODO: item delegate per model type? For now it works ):<
@@ -436,11 +443,11 @@ class _ColumnHeaderMixin:
         header.setModel(model)
         header.setSectionsClickable(True)
 
-        self.setModel(model)
+        super().setModel(model)
         try:
-            self.setHorizontalHeader(header)
+            super().setHorizontalHeader(header)
         except AttributeError:
-            self.setHeader(header)
+            super().setHeader(header)
 
     def _connect_search(self, options, index, model):
         options.filterChanged.connect(model.setFilterRegularExpression)
