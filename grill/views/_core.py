@@ -408,6 +408,13 @@ class _ColumnHeaderMixin:
     def __init__(self, model, columns, options, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._model = model
+        self._columns = columns
+        self._options = options
+        self.setModel(model)
+
+    def setModel(self, model):
+        columns = self._columns
+        options = self._options
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
 
         # TODO: item delegate per model type? For now it works ):<
@@ -436,7 +443,7 @@ class _ColumnHeaderMixin:
         header.setModel(model)
         header.setSectionsClickable(True)
 
-        self.setModel(model)
+        super().setModel(model)
         try:
             self.setHorizontalHeader(header)
         except AttributeError:
