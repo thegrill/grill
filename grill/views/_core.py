@@ -1,5 +1,6 @@
 """Shared members for views modules, not considered public API."""
 import enum
+import logging
 import typing
 import contextlib
 from functools import partial
@@ -407,8 +408,9 @@ class _ColumnHeaderMixin:
     # TODO: see if this makes sense.
     def __init__(self, model, columns: typing.Iterable[_Column], options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # self._columns = columns
+        logging.getLogger(__name__).error(columns)
         self._options = options
+        self._columns = columns
         # self._setModel(model)
 
         # def _setModel(self, model):
