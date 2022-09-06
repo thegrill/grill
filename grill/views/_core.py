@@ -407,14 +407,14 @@ class _ColumnHeaderMixin:
     # TODO: see if this makes sense.
     def __init__(self, model, columns, options, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._columns = columns
-        self._options = options
+        # self._columns = columns
+        # self._options = options
         # self._setModel(model)
 
         # def _setModel(self, model):
         self._model = model
-        options = self._options
-        columns = self._columns
+        # options = self._options
+        # columns = self._columns
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
 
         # TODO: item delegate per model type? For now it works ):<
