@@ -410,9 +410,9 @@ class _ColumnHeaderMixin:
         self._model = model
         self._columns = columns
         self._options = options
-        self.setModel(model)
+        self._setModel(model)
 
-    def setModel(self, model):
+    def _setModel(self, model):
         columns = self._columns
         options = self._options
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
@@ -443,7 +443,7 @@ class _ColumnHeaderMixin:
         header.setModel(model)
         header.setSectionsClickable(True)
 
-        super().setModel(model)
+        self.setModel(model)
         try:
             self.setHorizontalHeader(header)
         except AttributeError:
