@@ -407,14 +407,7 @@ class _ColumnHeaderMixin:
     # TODO: see if this makes sense.
     def __init__(self, model, columns, options, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._columns = columns
-        self._options = options
-        self.setModel(model)
-
-    def setModel(self, model):
         self._model = model
-        columns = self._columns
-        options = self._options
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
 
         # TODO: item delegate per model type? For now it works ):<
@@ -443,11 +436,11 @@ class _ColumnHeaderMixin:
         header.setModel(model)
         header.setSectionsClickable(True)
 
-        super().setModel(model)
+        self.setModel(model)
         try:
-            super().setHorizontalHeader(header)
+            self.setHorizontalHeader(header)
         except AttributeError:
-            super().setHeader(header)
+            self.setHeader(header)
 
     def _connect_search(self, options, index, model):
         options.filterChanged.connect(model.setFilterRegularExpression)
