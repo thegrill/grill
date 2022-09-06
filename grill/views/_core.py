@@ -403,9 +403,9 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         self.sourceModel().sort(column, order)
 
 
-class _ColumnHeaderMixin(QtCore.QObject):
+class _ColumnHeaderMixin(QtWidgets.QWidget):
     # TODO: see if this makes sense.
-    def __init__(self, model, columns, options, *args, **kwargs):
+    def __init__(self, model, columns: typing.Iterable[_Column], options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._columns = columns
         self._options = options
