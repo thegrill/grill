@@ -407,10 +407,10 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
 class _ColumnHeaderMixin:
     # TODO: see if this makes sense.
     def __init__(self, model, columns: typing.Iterable[_Column], options: _ColumnOptions, *args, **kwargs):
+        self._options = options
+        self._columns = columns
         super().__init__(*args, **kwargs)
-        logging.getLogger(__name__).error(columns)
-        # self._options = options
-        # self._columns = columns
+        # logging.getLogger(__name__).error(columns)
         # self._setModel(model)
 
         # def _setModel(self, model):
