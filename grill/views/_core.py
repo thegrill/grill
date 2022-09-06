@@ -264,7 +264,7 @@ class _Header(QtWidgets.QHeaderView):
         https://www.qt.io/blog/2012/09/28/qt-support-weekly-27-widgets-on-a-header
         https://www.learnpyqt.com/courses/model-views/qtableview-modelviews-numpy-pandas/
     """
-    def __init__(self, columns, options: _ColumnOptions, *args, **kwargs):
+    def __init__(self, columns: typing.Iterable[_Column], options: _ColumnOptions, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.options_by_index = dict()  # {int: _ColumnHeaderOptions}
         self._proxy_labels = dict()  # I've found no other way around this
@@ -403,7 +403,7 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
         self.sourceModel().sort(column, order)
 
 
-class _ColumnHeaderMixin:
+class _ColumnHeaderMixin(QtCore.QObject):
     # TODO: see if this makes sense.
     def __init__(self, model, columns, options, *args, **kwargs):
         super().__init__(*args, **kwargs)
