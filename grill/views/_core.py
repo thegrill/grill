@@ -407,16 +407,12 @@ class _ProxyModel(QtCore.QSortFilterProxyModel):
 class _ColumnHeaderMixin:
     # TODO: see if this makes sense.
     def __init__(self, model, columns: typing.Iterable[_Column], options: _ColumnOptions, *args, **kwargs):
-        self._options = options
-        self._columns = columns
         super().__init__(*args, **kwargs)
-        # logging.getLogger(__name__).error(columns)
-        # self._setModel(model)
-
-        # def _setModel(self, model):
+        # TODO: I tried splitting this into a setModel method but keeping a self reference
+        #   for columns or options causes python to segfault on Travis (not locally)
+        # self._columns = columns
+        # self._options = options
         self._model = model
-        # options = self._options
-        # columns = self._columns
         header = _Header([col.name for col in columns], options, QtCore.Qt.Horizontal)
 
         # TODO: item delegate per model type? For now it works ):<
