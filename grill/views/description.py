@@ -107,7 +107,6 @@ def _pseudo_layer(layer):
 
 
 def _layer_label(layer):
-    # return Path(layer.realPath).stem or layer.identifier
     return layer.GetDisplayName() or layer.identifier
 
 
@@ -360,7 +359,7 @@ class _GraphViewer(_DotViewer):
         self._graph = graph
 
 
-# inheriting does not bring QTreeView stylesheet.
+# Reminder: Inheriting does not bring QTreeView stylesheet (Stylesheet needs to target this class specifically).
 class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
     def _connect_search(self, options, index, model):
         super()._connect_search(options, index, model)
@@ -370,7 +369,8 @@ class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
 
 class PrimComposition(QtWidgets.QDialog):
     # TODO: when initializing this outside of the grill menu in USDView, the tree
-    # does not have the appropiate stylesheet ):
+    #   does not have the appropiate stylesheet ):
+    # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
         "Target Layer": lambda arc: _layer_label(arc.GetTargetNode().layerStack.layerTree.layer),
         "Arc": lambda arc: arc.GetArcType().displayName,
@@ -399,7 +399,7 @@ class PrimComposition(QtWidgets.QDialog):
         self.composition_tree = tree = _Tree(model, columns, options)
         tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._exec_context_menu)
-        tree.setAlternatingRowColors(True)  # USDView style is ignored here:
+        tree.setAlternatingRowColors(True)
         tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
         self._dot_view = _DotViewer(parent=self)
@@ -407,7 +407,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree_controls = QtWidgets.QFrame()
         tree_controls_layout = QtWidgets.QHBoxLayout()
         tree_controls.setLayout(tree_controls_layout)
-        self._prim = None  # TODO: see if we can remove this
+        self._prim = None  # TODO: see if we can remove this. Atm needed for "enabling layer stack" checkbox
         self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
         self._complete_target_layerstack.setChecked(False)
         self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
@@ -435,7 +435,6 @@ class PrimComposition(QtWidgets.QDialog):
 
     def _exec_context_menu(self):
         # https://doc.qt.io/qtforpython-5/overviews/statemachine-api.html#the-state-machine-framework
-        # menu = QtWidgets.QMenu(tree:=self.composition_tree)
         menu = QtWidgets.QMenu(tree:=self.composition_tree)
         selection = tree.selectedIndexes()
         if len(set(i.row() for i in selection) ) == 1:
@@ -550,7 +549,7 @@ class _LayersSheet(_sheets._Spreadsheet):
         self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, self._display_contents)
         self.menu.popup(QtGui.QCursor.pos())
 
-    def _display_contents(self, *args, **kwargs):
+    def _display_contents(self, *_, **__):
         selected = self.table.selectedIndexes()
         layers = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in selected}
         _launch_content_browser(layers, self, self._resolver_context)

@@ -7,8 +7,8 @@ import logging
 import operator
 import textwrap
 import itertools
+from functools import lru_cache
 from collections import Counter
-from functools import partial, lru_cache
 
 from pxr import Usd, UsdGeom, Sdf
 from ._qt import QtCore, QtWidgets, QtGui

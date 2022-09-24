@@ -64,11 +64,8 @@ _CATALOGUE_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_CATALOGUE_NAME)
 _CATALOGUE_ID = ids.CGAsset.kingdom  # where all existing units will be "discoverable"
 _CATALOGUE_FIELDS = types.MappingProxyType({_CATALOGUE_ID.name: _CATALOGUE_NAME})
 
-_SPECIALIZED_NAME = 'Specialized'
-_SPECIALIZED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_SPECIALIZED_NAME)
-
-_INHERITED_NAME = 'Inherited'
-_INHERITED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild(_INHERITED_NAME)
+_INHERITED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild('Inherited')
+_SPECIALIZED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild('Specialized')
 
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 _UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
@@ -88,9 +85,8 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
         # TODO: see how to make this repo_path better, seems very experimental atm.
         if context.IsEmpty():
             raise ValueError(f"Empty context for: {context}")
-        #     context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
-        repo_path = Path(context.Get()[0].GetSearchPath()[0])
-        # repo_path = Repository.get()
+
+        repo_path = Path(context.Get()[0].GetSearchPath()[0])  # or just Repository.get()?
         Sdf.Layer.CreateNew(str(repo_path / identifier))
         if not (layer:=Sdf.Layer.FindOrOpen(identifier)):
             raise RuntimeError("Make sure a resolver context with statement is being used.")
@@ -177,9 +173,10 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
 
     with taxonomy_context(stage):
         prim = stage.DefinePrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
+        prim_references = prim.GetReferences()
         for reference in references:
-            prim.GetReferences().AddInternalReference(reference.GetPath())
-        prim.GetInherits().AddInherit(prim.GetPath().ReplacePrefix("/", "/Inherited"))  # TODO: needed?
+            prim_references.AddInternalReference(reference.GetPath())
+        prim.GetInherits().AddInherit(prim.GetPath().ReplacePrefix(Sdf.Path.absoluteRootPath, _INHERITED_ROOT_PATH))  # TODO: needed?
         taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
         prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
@@ -250,7 +247,6 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     def _fetch_layer_for_unit(name):
         layer_id = str(new_asset_name.get(**{_UNIT_UNIQUE_ID.name: name}))
         layer = _fetch_layer(layer_id, context)
-        # Sdf.CreatePrimInLayer(layer, _CATALOGUE_ROOT_PATH).specifier = Sdf.SpecifierClass  # not needed anymore?
         origin = Sdf.CreatePrimInLayer(layer, _UNIT_ORIGIN_PATH)
         origin.specifier = Sdf.SpecifierDef
         origin.specializesList.Prepend(specialized_path.AppendChild(name))
