@@ -62,5 +62,13 @@ class TestUSD(unittest.TestCase):
         prim = stage.DefinePrim("/Referenced")
         anon = Usd.Stage.CreateInMemory()
         reference = Sdf.Reference(anon.GetRootLayer().identifier)
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "without a prim path"):
             gusd.edit_context(reference, prim)
+
+    def test_missing_layer(self):
+        stage = Usd.Stage.CreateInMemory()
+        prim = stage.DefinePrim("/Referenced")
+        reference = Sdf.Reference("non_existing")
+        with self.assertRaisesRegex(ValueError, "ability to find layer"):
+            gusd.edit_context(reference, prim)
+

@@ -26,9 +26,9 @@ class TestWrite(unittest.TestCase):
         root_asset = self.root_asset
 
         # TODO: cleanup this test. fetch_stage used to keep stages in a cache but not anymore.
-        # root_stage = cook.fetch_stage(root_asset)
+        root_stage = cook.fetch_stage(root_asset)
         # fetching stage outside of AR _context should resolve to same stage
-        # self.assertIs(root_stage, cook.fetch_stage(root_asset))
+        self.assertEqual(root_stage.GetRootLayer().identifier, root_asset.name)
 
         repo_path = cook.Repository.get()
         resolver_ctx = Ar.DefaultResolverContext([str(repo_path)])
@@ -40,18 +40,29 @@ class TestWrite(unittest.TestCase):
             non_cache_stage = Usd.Stage.Open(usd_opened)
             cached_stage = cook.fetch_stage(usd_opened)
             self.assertIsNot(non_cache_stage, cached_stage)
-            # but after fetching once, subsequent fetches should persist
-            # self.assertIs(cached_stage, cook.fetch_stage(usd_opened))
+            # Even after fetching once, subsequent fetches should be different
+            self.assertIsNot(cached_stage, cook.fetch_stage(usd_opened))
 
             # creating a new layer + stage + adding it to the cache manually
-            # should allow fetch_stage to retrieve it as well.
+            # should still have fetch_stage to retrieve a different stage.
             sdf_opened = str(names.UsdAsset.get_default(item='sdf_opened'))
             Sdf.Layer.CreateNew(str(repo_path / sdf_opened))
             cached_layer = Sdf.Layer.FindOrOpen(sdf_opened)
             opened_stage = Usd.Stage.Open(cached_layer)
             cache = UsdUtils.StageCache.Get()
             cache.Insert(opened_stage)
-            # self.assertIs(opened_stage, cook.fetch_stage(sdf_opened))
+            self.assertIsNot(opened_stage, cook.fetch_stage(sdf_opened))
+
+        in_memory = Usd.Stage.CreateInMemory()
+        from_memory = str(names.UsdAsset.get_anonymous(item='from_memory'))
+        with self.assertRaises(ValueError):
+            # a stage with an empty resolver that fetches a valid identifier should fail.
+            cook.fetch_stage(from_memory, context=in_memory.GetPathResolverContext())
+
+        unbound_resolver = str(names.UsdAsset.get_anonymous(item='unbound_resolver'))
+        with self.assertRaises(RuntimeError):
+            # directly fetching a new layer without a context with statement should fail
+            cook._fetch_layer(unbound_resolver, root_stage.GetPathResolverContext())
 
     def test_match(self):
         root_stage = cook.fetch_stage(self.root_asset)
@@ -162,6 +173,13 @@ class TestWrite(unittest.TestCase):
         stage = cook.fetch_stage(self.root_asset)
         taxon = cook.define_taxon(stage, "Another")
         cook.create_many(taxon, (f"new_{x}" for x in range(10)))
+
+        anon_stage = Usd.Stage.CreateInMemory()
+        # An anon stage containing a grill layer on its stack should succeed.
+        anon_pipeline = cook.fetch_stage(names.UsdAsset.get_anonymous())
+        anon_stage.GetRootLayer().subLayerPaths.append(anon_pipeline.GetRootLayer().realPath)
+        anon_taxon = cook.define_taxon(anon_stage, "Anon")
+        cook.create_many(anon_taxon, ("first", "second"))
 
     def test_spawn_unit(self):
         stage = cook.fetch_stage(self.root_asset)

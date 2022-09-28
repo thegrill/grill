@@ -130,9 +130,15 @@ class TestViews(unittest.TestCase):
         widget.setPrim(self.nested)
 
         # cheap. prim is affected by 2 layers
-        topLevel = widget.composition_tree._model.item(0,0)
         # single child for this prim.
-        self.assertTrue(topLevel.hasChildren())
+        self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
+
+        widget._complete_target_layerstack.setChecked(True)
+
+        self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
+
+        widget.setPrim(None)
+        self.assertFalse(widget.composition_tree._model.invisibleRootItem().hasChildren())
 
         widget.clear()
 
