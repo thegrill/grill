@@ -241,11 +241,12 @@ def _(prim: Usd.Prim, /, query_filter, target_predicate):
 @edit_context.register(Sdf.Payload)
 def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
     identifier = arc.assetPath
-    with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):  # TODO: THIS FAILS WITH ANONYMOUS LAYERS + CREATE MANY
+    with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
         layer = Sdf.Layer.Find(identifier)
     if not layer:
-        logger.debug(f"Layer was not found on the stage's resolver context. Trying directly")
+        # Fallback to try find the layer directly. This might have been the result of an in memory stage.
+        logger.debug(f"Layer with {identifier=} was not found on the resolver context for {prim.GetStage()}. Trying to find the layer outside of its context.")
         layer = Sdf.Layer.Find(identifier)
     if not layer:
         raise ValueError(f"Can't proceed without ability to find layer with {identifier=}")
