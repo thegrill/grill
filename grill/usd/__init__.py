@@ -240,9 +240,16 @@ def _(prim: Usd.Prim, /, query_filter, target_predicate):
 @edit_context.register(Sdf.Reference)
 @edit_context.register(Sdf.Payload)
 def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
+    identifier = arc.assetPath
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
-        layer = Sdf.Layer.Find(arc.assetPath)
+        layer = Sdf.Layer.Find(identifier)
+    if not layer:
+        # Fallback to try find the layer directly. This might have been the result of an in memory stage.
+        logger.debug(f"Layer with {identifier=} was not found on the resolver context for {prim=} at {prim.GetStage()}. Trying to find the layer outside of its context.")
+        layer = Sdf.Layer.Find(identifier)
+    if not layer:
+        raise ValueError(f"Can't proceed without ability to find layer with {identifier=}")
     if not (arc.primPath or layer.defaultPrim):
         raise ValueError(f"Can't proceed without a prim path to target on arc {arc} for {layer}")
     path = arc.primPath or layer.GetPrimAtPath(layer.defaultPrim).path

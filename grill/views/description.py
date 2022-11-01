@@ -41,13 +41,13 @@ _HIGHLIGHT_COLORS = MappingProxyType(
         # A mix between:
         # https://en.wikipedia.org/wiki/Solarized#Colors
         # https://www.w3schools.com/colors/colors_palettes.asp
-        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references")),
+        *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references", "reference")),
         *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
         *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
-        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "prop_name", "rel_name")),
-        ("inherits", (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])),
-        ("payload", ("#6c71c4", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])),
-        ("specializes", ("#bd5734", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])),
+        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name")),
+        *((key, (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])) for key in ("inherit", "inherits")),
+        *((key, ("#9a94bf", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])) for key in ("payload", "payloads")),
+        *((key,  ("#c18f76", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])) for key in ("specialize", "specializes")),
         ("list_op", ("#e3eaa7", "#2aa198")),
         *((key, ("#5b9aa0", "#5b9aa0")) for key in ("prim_type", "prop_type", "prop_array")),
         *((key, ("#87bdd8", "#034f84")) for key in ("set_string", "string_value")),
@@ -98,7 +98,6 @@ def _dot_2_svg(sourcepath):
 
 
 def _pseudo_layer(layer):
-    # TODO: Houdini does not provide sdffilter ): so can't test it there atm
     with tempfile.TemporaryDirectory() as target_dir:
         name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
         path = Path(target_dir) / f"{name}.usd"
@@ -108,7 +107,7 @@ def _pseudo_layer(layer):
 
 
 def _layer_label(layer):
-    return Path(layer.realPath).stem or layer.identifier
+    return layer.GetDisplayName() or layer.identifier
 
 
 @lru_cache(maxsize=None)
@@ -153,8 +152,10 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        label = "{"
-        tooltip = "Layer Stack:"
+        # Wrap tooltip and label with double quotes since networkx==2.8.4
+        # https://github.com/networkx/networkx/issues/5962
+        label = '"{'
+        tooltip = '"Layer Stack:'
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
             if layer.dirty:
@@ -162,7 +163,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
             label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_cached_layer_label(layer)}"
-        label += "}"
+        tooltip += '"'
+        label += '}"'
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
@@ -357,11 +359,23 @@ class _GraphViewer(_DotViewer):
         self._graph = graph
 
 
+# Reminder: Inheriting does not bring QTreeView stylesheet (Stylesheet needs to target this class specifically).
+class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
+    def _connect_search(self, options, index, model):
+        super()._connect_search(options, index, model)
+        model.setRecursiveFilteringEnabled(True)
+        options.filterChanged.connect(self.expandAll)
+
+
 class PrimComposition(QtWidgets.QDialog):
+    # TODO: when initializing this outside of the grill menu in USDView, the tree
+    #   does not have the appropiate stylesheet ):
+    # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
-        "Target Layer": lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer.identifier,
-        "Target Path": lambda arc: arc.GetTargetNode().path,
+        "Target Layer": lambda arc: _layer_label(arc.GetTargetNode().layerStack.layerTree.layer),
         "Arc": lambda arc: arc.GetArcType().displayName,
+        "#": lambda arc: arc.GetTargetNode().siblingNumAtOrigin,
+        "Target Path": lambda arc: arc.GetTargetNode().path,
         "Has Specs": Usd.CompositionArc.HasSpecs,
         "Is Ancestral": Usd.CompositionArc.IsAncestral,
         "Is Implicit": Usd.CompositionArc.IsImplicit,
@@ -379,14 +393,32 @@ class PrimComposition(QtWidgets.QDialog):
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
         self.index_box.setLineWrapMode(self.index_box.NoWrap)
-        self.composition_tree = tree = QtWidgets.QTreeWidget()
+        self._composition_model = model = QtGui.QStandardItemModel()
+        columns = tuple(_core._Column(k, v) for k, v in self._COLUMNS.items())
+        options = _core._ColumnOptions.SEARCH
+        self.composition_tree = tree = _Tree(model, columns, options)
         tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._exec_context_menu)
-        tree.setColumnCount(len(self._COLUMNS))
-        tree.setHeaderLabels([k for k in self._COLUMNS])
         tree.setAlternatingRowColors(True)
+        tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
         self._dot_view = _DotViewer(parent=self)
+
+        tree_controls = QtWidgets.QFrame()
+        tree_controls_layout = QtWidgets.QHBoxLayout()
+        tree_controls.setLayout(tree_controls_layout)
+        self._prim = None  # TODO: see if we can remove this. Atm needed for "enabling layer stack" checkbox
+        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
+        self._complete_target_layerstack.setChecked(False)
+        self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
+        tree_controls_layout.addWidget(self._complete_target_layerstack)
+        tree_controls_layout.addStretch(0)
+        tree_controls_layout.setContentsMargins(0,0,0,0)
+        tree_controls.setContentsMargins(0,0,0,0)
+        tree_controls.setFixedHeight(tree_controls.sizeHint().height())
+
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        vertical.addWidget(tree_controls)
         vertical.addWidget(tree)
         vertical.addWidget(self._dot_view)
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -398,45 +430,84 @@ class PrimComposition(QtWidgets.QDialog):
         self.setWindowTitle("Prim Composition")
 
     def clear(self):
-        self.composition_tree.clear()
+        self._composition_model.clear()
         self.index_box.clear()
 
     def _exec_context_menu(self):
         # https://doc.qt.io/qtforpython-5/overviews/statemachine-api.html#the-state-machine-framework
         menu = QtWidgets.QMenu(tree:=self.composition_tree)
-        if len(selection:=tree.selectedItems()) == 1:
-            stage, edit_target = selection[0].data(0, QtCore.Qt.UserRole)
+        selection = tree.selectedIndexes()
+        if len(set(i.row() for i in selection) ) == 1:
+            stage, edit_target = selection[0].data(QtCore.Qt.UserRole)
             menu.addAction("Set As Edit Target", partial(stage.SetEditTarget, edit_target))
         menu.exec_(QtGui.QCursor.pos())
 
     def setPrim(self, prim):
+        self._prim = prim
+        if not self._prim:
+            self.clear()
+            return
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
-        tree = self.composition_tree
-        tree.clear()
-        query = Usd.PrimCompositionQuery(prim)
-        tree_items = dict()  # Sdf.Layer: QTreeWidgetItem
-        stage = prim.GetStage()
-        for arc in query.GetCompositionArcs():
-            strings = [str(getter(arc)) for getter in self._COLUMNS.values()]
-            intro_layer = arc.GetIntroducingLayer()
-            if intro_layer and intro_layer in tree_items:
-                parent = tree_items[intro_layer]
-            else:
-                parent = tree
-            target_node = arc.GetTargetNode()
-            target_layer = target_node.layerStack.identifier.rootLayer
-            widget = tree_items[target_layer] = QtWidgets.QTreeWidgetItem(parent, strings)
-            edit_target = Usd.EditTarget(target_layer, target_node)
-            widget.setData(0, QtCore.Qt.UserRole, (stage, edit_target))
-
-        tree.expandAll()
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
         self._dot_view.setDotPath(fp)
 
+        complete_target_layerstack = self._complete_target_layerstack.isChecked()
+        # model.clear() resizes the columns. So we keep track of current sizes.
+        header = self.composition_tree.header()
+        sizes = {index: size for index in header.options_by_index if (size:=header.sectionSize(index))}
 
-class LayerTableModel(_sheets._ObjectTableModel):
+        tree = self.composition_tree
+        model = self._composition_model
+        model.clear()
+        model.setHorizontalHeaderLabels([""] * len(self._COLUMNS))
+        root_item = model.invisibleRootItem()
+
+        query = Usd.PrimCompositionQuery(prim)
+        items = dict()
+        stage = prim.GetStage()
+        arcs = query.GetCompositionArcs()
+        for arc in arcs:
+            values = [getter(arc) for getter in self._COLUMNS.values()]
+
+            intro_node = arc.GetIntroducingNode()
+            target_node = arc.GetTargetNode()
+            target_path = target_node.path
+            target_layer = target_node.layerStack.identifier.rootLayer
+
+            # TODO: is there a better way than relying on str(node.site)???
+            key = str(intro_node.site)
+            parent = items[key] if key in items else root_item
+
+            try:
+                highlight_color = _HIGHLIGHT_COLORS[arc.GetArcType().displayName][_PALETTE.get()]
+            except KeyError:
+                highlight_color = None
+
+            sublayers = target_node.layerStack.layers if complete_target_layerstack else (target_layer,)
+            for each in sublayers:
+                if each == target_layer:  # we're the root layer of the target node's stack
+                    arc_items = [QtGui.QStandardItem(str(s)) for s in values]
+                    items[str(target_node.site)] = arc_items[0]
+                else:
+                    has_specs = bool(each.GetObjectAtPath(target_path))
+                    arc_items = [QtGui.QStandardItem(str(s)) for s in [_layer_label(each), values[1], values[2], values[3], str(has_specs)]]
+
+                edit_target = Usd.EditTarget(each, target_node)
+                for item in arc_items:
+                    item.setData((stage, edit_target), QtCore.Qt.UserRole)
+                    if highlight_color:
+                        item.setData(highlight_color, QtCore.Qt.ForegroundRole)
+
+                parent.appendRow(arc_items)
+
+        tree.expandAll()
+        for index, size in sizes.items():
+            header.resizeSection(index, size)
+
+
+class LayerTableModel(_core._ObjectTableModel):
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:
         if role == QtCore.Qt.ForegroundRole:
             layer = self.data(index, role=_core._QT_OBJECT_DATA_ROLE)
@@ -478,7 +549,7 @@ class _LayersSheet(_sheets._Spreadsheet):
         self.menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, self._display_contents)
         self.menu.popup(QtGui.QCursor.pos())
 
-    def _display_contents(self, *args, **kwargs):
+    def _display_contents(self, *_, **__):
         selected = self.table.selectedIndexes()
         layers = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in selected}
         _launch_content_browser(layers, self, self._resolver_context)
@@ -534,7 +605,6 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
         with Ar.ResolverContextBinder(self._resolver_context):
-            print(f"Adding tab for {identifier=} and {anchor=}")
             try:
                 if not (layer := Sdf.Layer.FindOrOpen(identifier)):
                     layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier)
@@ -589,17 +659,17 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
 
 class LayerStackComposition(QtWidgets.QDialog):
     _LAYERS_COLUMNS = (
-        _sheets._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
-        _sheets._Column("🚧 Dirty", operator.attrgetter('dirty')),
+        _core._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
+        _core._Column("🚧 Dirty", operator.attrgetter('dirty')),
     )
     _PRIM_COLUMNS = (
-        _sheets._Column("🧩 Opinion on Prim Path", lambda prim: str(prim.GetPath())),
-        _sheets._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
+        _core._Column("🧩 Opinion on Prim Path", lambda prim: str(prim.GetPath())),
+        _core._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
     )
 
     def __init__(self, stage=None, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        options = _sheets._ColumnOptions.SEARCH
+        options = _core._ColumnOptions.SEARCH
         layers_model = LayerTableModel(columns=self._LAYERS_COLUMNS)
         self._layers = _LayersSheet(layers_model, self._LAYERS_COLUMNS, options)
         self._prims = _sheets._StageSpreadsheet(columns=self._PRIM_COLUMNS, options=options)

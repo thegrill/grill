@@ -130,9 +130,15 @@ class TestViews(unittest.TestCase):
         widget.setPrim(self.nested)
 
         # cheap. prim is affected by 2 layers
-        topLevel = widget.composition_tree.topLevelItem(0)
         # single child for this prim.
-        self.assertEqual(topLevel.childCount(), 1)
+        self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
+
+        widget._complete_target_layerstack.setChecked(True)
+
+        self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
+
+        widget.setPrim(None)
+        self.assertFalse(widget.composition_tree._model.invisibleRootItem().hasChildren())
 
         widget.clear()
 
@@ -163,7 +169,7 @@ class TestViews(unittest.TestCase):
         widget.sheet.table.selectAll()
         widget.sheet._pasteClipboard()
         widget._create()
-        taxon_editor = widget.sheet._columns_spec[0].editor(widget, None, None)
+        taxon_editor = widget.sheet._columns[0].editor(widget, None, None)
         self.assertIsInstance(taxon_editor, QtWidgets.QComboBox)
         widget._apply()
 
@@ -205,9 +211,9 @@ class TestViews(unittest.TestCase):
 
         sheet_model = widget.sheet.model
         index = sheet_model.index(0, 1)
-        editor = widget.sheet._columns_spec[1].editor(None, None, index)
+        editor = widget.sheet._columns[1].editor(None, None, index)
         self.assertIsInstance(editor, QtWidgets.QDialog)
-        widget.sheet._columns_spec[1].setter(editor, sheet_model, index)
+        widget.sheet._columns[1].setter(editor, sheet_model, index)
         editor._options.selectAll()
         menu = editor._create_context_menu()
         menu.actions()[0].trigger()
