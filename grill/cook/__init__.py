@@ -84,12 +84,12 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
     if not (layer := Sdf.Layer.Find(identifier) or Sdf.Layer.FindOrOpen(identifier)):
         # TODO: see how to make this repo_path better, seems very experimental atm.
         if context.IsEmpty():
-            raise ValueError(f"Empty context for: {context}")
+            raise ValueError(f"Empty {context=} while fetching {identifier=}")
 
         repo_path = Path(context.Get()[0].GetSearchPath()[0])  # or just Repository.get()?
         Sdf.Layer.CreateNew(str(repo_path / identifier))
-        if not (layer:=Sdf.Layer.FindOrOpen(identifier)):
-            raise RuntimeError("Make sure a resolver context with statement is being used.")
+        if not (layer := Sdf.Layer.FindOrOpen(identifier)):
+            raise RuntimeError(f"Make sure a resolver context with statement is being used. {context=}, {identifier=}")
     return layer
 
 

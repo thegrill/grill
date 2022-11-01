@@ -246,7 +246,7 @@ def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
         layer = Sdf.Layer.Find(identifier)
     if not layer:
         # Fallback to try find the layer directly. This might have been the result of an in memory stage.
-        logger.debug(f"Layer with {identifier=} was not found on the resolver context for {prim.GetStage()}. Trying to find the layer outside of its context.")
+        logger.debug(f"Layer with {identifier=} was not found on the resolver context for {prim=} at {prim.GetStage()}. Trying to find the layer outside of its context.")
         layer = Sdf.Layer.Find(identifier)
     if not layer:
         raise ValueError(f"Can't proceed without ability to find layer with {identifier=}")
