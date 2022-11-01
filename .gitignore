@@ -1,5 +1,6 @@
 .idea/
 *.pyc
+*.vscode/
 dist/
 build/
 grill.egg-info/
