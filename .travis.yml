@@ -4,6 +4,7 @@ python:
   - 3.9
 
 before_install:
+  - sudo apt-get install graphviz graphviz-dev
   - pip install pytest codecov pytest-cov
 
 install:
