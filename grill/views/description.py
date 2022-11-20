@@ -82,9 +82,7 @@ def _run(args: list):
 
 @lru_cache(maxsize=None)
 def _edge_color(edge_arcs):
-    return dict(  # need to wrap color in quotes to allow multicolor
-        color=f'{":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs)}',
-    )
+    return dict(color=":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs))
 
 
 @lru_cache(maxsize=None)
