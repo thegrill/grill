@@ -4,8 +4,8 @@ python:
   - 3.9
 
 before_install:
-  - sudo apt-get install graphviz graphviz-dev
-  - pip install setuptools_rust
+  # - sudo apt-get install graphviz graphviz-dev
+  - pip install -U setuptools
   - pip install pytest codecov pytest-cov
 
 install:
