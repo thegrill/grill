@@ -149,8 +149,6 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='rounded,filled', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        # Wrap tooltip and label with double quotes since networkx==2.8.4
-        # https://github.com/networkx/networkx/issues/5962
         label = '{'
         tooltip = 'Layer Stack:'
         for layer, layer_index in sublayers.items():
