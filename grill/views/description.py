@@ -17,7 +17,6 @@ from functools import lru_cache, partial
 from types import MappingProxyType
 
 import networkx as nx
-from networkx.drawing import nx_pydot
 from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
 from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
@@ -84,7 +83,7 @@ def _run(args: list):
 @lru_cache(maxsize=None)
 def _edge_color(edge_arcs):
     return dict(  # need to wrap color in quotes to allow multicolor
-        color=f'"{":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs)}"',
+        color=f'{":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs)}',
     )
 
 
@@ -151,20 +150,20 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             pass  # layerStack still not processed, let's add it
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
-        attrs = dict(style='"rounded,filled"', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
+        attrs = dict(style='rounded,filled', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
         # Wrap tooltip and label with double quotes since networkx==2.8.4
         # https://github.com/networkx/networkx/issues/5962
-        label = '"{'
-        tooltip = '"Layer Stack:'
+        label = '{'
+        tooltip = 'Layer Stack:'
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
             if layer.dirty:
                 attrs['color'] = 'darkorange'  # can probably be dashed as well?
-            # https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
-            tooltip += f"&#10;{layer_index}: {layer.realPath or layer.identifier}"
+            # For new line: https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
+            # For Windows path sep: https://stackoverflow.com/questions/15094591/how-to-escape-forwardslash-character-in-html-but-have-it-passed-correctly-to-jav
+            tooltip += f"&#10;{layer_index}: {(layer.realPath or layer.identifier)}".replace('\\', '&#47;')
             label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_cached_layer_label(layer)}"
-        tooltip += '"'
-        label += '}"'
+        label += '}'
 
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
@@ -340,7 +339,7 @@ class _GraphViewer(_DotViewer):
         subgraph = graph.subgraph(nodes_of_interest)
 
         fd, fp = tempfile.mkstemp()
-        nx_pydot.write_dot(subgraph, fp)
+        nx.nx_agraph.write_dot(subgraph, fp)
         return fp
 
     def view(self, node_indices: typing.Iterable):
@@ -392,7 +391,7 @@ class PrimComposition(QtWidgets.QDialog):
         """
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
-        self.index_box.setLineWrapMode(self.index_box.NoWrap)
+        self.index_box.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
         self._composition_model = model = QtGui.QStandardItemModel()
         columns = tuple(_core._Column(k, v) for k, v in self._COLUMNS.items())
         options = _core._ColumnOptions.SEARCH
@@ -584,7 +583,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
             focus_widget.setLayout(browser_layout)
             browser = _PseudoUSDTabBrowser(parent=self)
-            browser.setLineWrapMode(browser.NoWrap)
+            browser.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
             _Highlighter(browser)
             browser.identifier_requested.connect(partial(self._on_identifier_requested, layer))
             browser.setText(text)
