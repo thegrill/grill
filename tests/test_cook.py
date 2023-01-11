@@ -12,7 +12,7 @@ from grill import cook, names, usd as gusd, tokens
 logger = logging.getLogger(__name__)
 
 
-class TestWrite(unittest.TestCase):
+class TestCook(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.mkdtemp()
         logger.debug(f"Repository root directory: {tempdir}")
