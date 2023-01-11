@@ -203,5 +203,5 @@ class TestCook(unittest.TestCase):
         valid_path = parent.GetPath().AppendPath("Deeper/Nested/Golden1")
         invalid_path = "/invalid/path"
         self.assertTrue(cook.spawn_unit(parent, child, valid_path))
-        with self.assertRaisesRegexp(ValueError, "needs to be a child path of parent path"):
+        with self.assertRaisesRegex(ValueError, "needs to be a child path of parent path"):
             cook.spawn_unit(parent, child, invalid_path)
