@@ -377,6 +377,14 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
     # this is because at the moment it is not straight forward to bring catalogue units under others.
     parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext(), Usd.Stage.LoadNone)
     origin = parent_stage.GetDefaultPrim()
+    if path and isinstance(path, str):
+        path = Sdf.Path(path)
+    if path and path.IsAbsolutePath(): # If path is an absolute path, fail if it sits outside of parent's path.
+        parent_path = parent.GetPath()
+        if not path.HasPrefix(parent_path) or path == parent_path:
+            raise ValueError(f"{path=} needs to be a child path of parent path {parent_path}")
+        path = path.MakeRelativePath(parent_path)
+
     relpath = path or child.GetName()
     path = origin.GetPath().AppendPath(relpath)
     spawned = parent_stage.DefinePrim(path)
