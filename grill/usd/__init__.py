@@ -301,6 +301,7 @@ class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
     # but are inherited by other faces derived from a given face (via subdivision, tessellation, etc.).
     UNIFORM = UsdGeom.Tokens.uniform, {
         UsdGeom.Mesh: lambda mesh: len(mesh.GetFaceVertexCountsAttr().Get()),
+        UsdGeom.BasisCurves: lambda curve: curve.ComputeUniformDataSize(0),
         UsdGeom.Sphere: 100,  # TODO: there must be a better way of finding these numbers.
         UsdGeom.Cube: 6,
         UsdGeom.Capsule: 90,
@@ -309,15 +310,17 @@ class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
     }
     # One element for each point of the mesh; interpolation of point data is:
     #   Varying: always linear.
-    #   Vertex: applied according to the subdivisionScheme attribute.
-    VERTEX, VARYING = (UsdGeom.Tokens.vertex, sizes := {
+    VARYING = UsdGeom.Tokens.varying, {
         UsdGeom.Mesh: lambda mesh: len(mesh.GetPointsAttr().Get()),
+        UsdGeom.BasisCurves: lambda curve: curve.ComputeVaryingDataSize(0),
         UsdGeom.Sphere: 92,
         UsdGeom.Cube: 8,
         UsdGeom.Capsule: 82,
         UsdGeom.Cone: 31,
         UsdGeom.Cylinder: 42,
-    }), (UsdGeom.Tokens.varying, sizes)
+    }
+    #   Vertex: applied according to the subdivisionScheme attribute.
+    VERTEX = UsdGeom.Tokens.vertex, {**VARYING[1], UsdGeom.BasisCurves: lambda curve: curve.ComputeVertexDataSize(0)}
     # One element for each of the face-vertices that define the mesh topology;
     # interpolation of face-vertex data may be smooth or linear, according to the
     # subdivisionScheme and faceVaryingLinearInterpolation attributes.
@@ -334,7 +337,7 @@ class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
         for geom_class, value in self.value[1].items():
             if geom := geom_class(prim):
                 return value(geom) if callable(value) else value
-        raise TypeError(f"Don't know how to count {self} on {prim}")
+        raise TypeError(f"Don't know how to compute '{self.interpolation()}' size on {self} for prim type '{prim.GetPrim().GetTypeName()}': {prim}")
 
     def interpolation(self):
         return self.value[0]
