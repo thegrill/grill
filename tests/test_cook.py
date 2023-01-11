@@ -194,3 +194,14 @@ class TestCook(unittest.TestCase):
                     ("Deeper/Nested/Golden3", (0, 10, -2)),
             ):
                 cook.spawn_unit(parent, child, path)
+
+    def test_spawn_unit_with_absolute_paths(self):
+        stage = cook.fetch_stage(self.root_asset)
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        valid_path = parent.GetPath().AppendPath("Deeper/Nested/Golden1")
+        invalid_path = "/invalid/path"
+        self.assertTrue(cook.spawn_unit(parent, child, valid_path))
+        with self.assertRaisesRegexp(ValueError, "needs to be a child path of parent path"):
+            cook.spawn_unit(parent, child, invalid_path)
