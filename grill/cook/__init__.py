@@ -374,37 +374,34 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
 
     """
     # TODO: spawn_many
-    # this is because at the moment it is not straight forward to bring catalogue units under others.
-    parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext(), Usd.Stage.LoadNone)
-    origin = parent_stage.GetDefaultPrim()
+    parent_path = parent.GetPath()
     if path and isinstance(path, str):
         path = Sdf.Path(path)
     if path and path.IsAbsolutePath(): # If path is an absolute path, fail if it sits outside of parent's path.
-        parent_path = parent.GetPath()
         if not path.HasPrefix(parent_path) or path == parent_path:
             raise ValueError(f"{path=} needs to be a child path of parent path {parent_path}")
         path = path.MakeRelativePath(parent_path)
+    path = parent_path.AppendPath(path or child.GetName())
 
-    relpath = path or child.GetName()
-    path = origin.GetPath().AppendPath(relpath)
+    parent_stage = parent.GetStage()
     spawned = parent_stage.DefinePrim(path)
     with Sdf.ChangeBlock():
         # Use reference for the asset to:
-        # 1. Make use of instancing as much as possible with less prototypes.
+        # 1. Make use of instancing as much as possible with fewer prototypes.
         # 2. Let specializes / inherits changes later.
         spawned.GetReferences().AddReference(_asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path))
         # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
         if child.IsModel():
-            Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
+            Usd.ModelAPI(parent).SetKind(Kind.Tokens.assembly)
             # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-            for inner_parent in _usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
+            for inner_parent in _usd.iprims(parent_stage, [parent_path], lambda p: p == spawned.GetParent()):
                 if not inner_parent.IsModel():
                     Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
             if not child.IsGroup():
                 # sensible defaults: component prims are instanced
                 spawned.SetInstanceable(True)
 
-    return parent.GetPrimAtPath(relpath)
+    return spawned
 
 
 def _root_asset(stage):
