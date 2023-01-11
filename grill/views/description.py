@@ -627,9 +627,9 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
 
     def mousePressEvent(self, event):
         cursor = self.cursorForPosition(event.pos())
-        cursor.select(cursor.WordUnderCursor)
+        cursor.select(QtGui.QTextCursor.WordUnderCursor)
         word = cursor.selectedText()
-        cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
+        cursor.movePosition(QtGui.QTextCursor.StartOfLine, QtGui.QTextCursor.KeepAnchor)
         # Take advantage that identifiers in pseudo sdffilter come always in separate lines
         if f"{cursor.selectedText()}{word}".count('@') == 1 and (
                 match := re.search(
