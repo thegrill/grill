@@ -422,7 +422,6 @@ def _root_asset(stage):
             return UsdAsset(Path(layer.identifier).name), layer
         except ValueError:
             seen.add(layer)
-            continue
     raise ValueError(f"Could not find a valid pipeline layer for stage {stage}. Searched layer stack: {pformat(seen)}")
 
 
