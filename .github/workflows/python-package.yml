@@ -3,6 +3,11 @@
 
 name: Python CI
 on: [push]
+env:
+  # This variable is required for Qt to work on CI.
+  # https://gist.github.com/popzxc/70fe145a3a1109d5c11f7b2f06dd269f
+  QT_QPA_PLATFORM: "offscreen"
+
 jobs:
   build:
     runs-on: ubuntu-latest
