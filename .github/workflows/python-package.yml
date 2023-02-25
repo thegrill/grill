@@ -1,0 +1,31 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Python CI
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9"]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Setup Graphviz
+        uses: ts-graphviz/setup-graphviz@v1
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest codecov pytest-cov
+      - name: Install Package
+        run: |
+          python -m pip install ".[full,test]"
+      - name: Tests
+        run: |
+          pytest --cov=./
+      - name: Codecov
+        uses: codecov/codecov-action@v3.1.1
