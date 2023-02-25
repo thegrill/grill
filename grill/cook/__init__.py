@@ -23,8 +23,6 @@
 
 """
 
-from __future__ import annotations
-
 import types
 import typing
 import logging
@@ -35,7 +33,7 @@ import contextvars
 from pathlib import Path
 from pprint import pformat
 
-from pxr import UsdGeom, UsdUI, Usd, Sdf, Kind, Ar
+from pxr import UsdGeom, Usd, Sdf, Kind, Ar
 
 from grill.tokens import ids
 from grill.names import UsdAsset
@@ -108,7 +106,7 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.St
 
 
 @typing.overload
-def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
+def fetch_stage(identifier: UsdAsset, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
 
 
@@ -143,7 +141,7 @@ def _(identifier: str, *args, **kwargs) -> Usd.Stage:
     return fetch_stage(UsdAsset(identifier), *args, **kwargs)
 
 
-def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
     """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
@@ -173,12 +171,13 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
 
     with taxonomy_context(stage):
         prim = stage.DefinePrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
-        prim_references = prim.GetReferences()
-        for reference in references:
-            prim_references.AddInternalReference(reference.GetPath())
-        prim.GetInherits().AddInherit(prim.GetPath().ReplacePrefix(Sdf.Path.absoluteRootPath, _INHERITED_ROOT_PATH))  # TODO: needed?
-        taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
-        prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
+        with Sdf.ChangeBlock():
+            prim_references = prim.GetReferences()
+            for reference in references:
+                prim_references.AddInternalReference(reference.GetPath())
+            prim.GetInherits().AddInherit(prim.GetPath().ReplacePrefix(Sdf.Path.absoluteRootPath, _INHERITED_ROOT_PATH))  # TODO: needed?
+            taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
+            prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
     return prim
 
@@ -277,20 +276,16 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
         prims_info = {stage.GetPrimAtPath(info[2]): info for info in prims_info}
         with Sdf.ChangeBlock():
-            for prim, (name, *__, layer, reference) in prims_info.items():
+            for prim, (name, label, *__, layer, reference) in prims_info.items():
                 prim.GetReferences().AddReference(reference)
                 with _usd.edit_context(reference, prim):
-                    UsdUI.SceneGraphPrimAPI.Apply(prim)
+                    if hasattr(prim, "SetDisplayName"):  # USD-23.02+
+                        prim.SetDisplayName(label)
                     UsdGeom.ModelAPI.Apply(prim)
                     modelAPI = Usd.ModelAPI(prim)
                     modelAPI.SetKind(Kind.Tokens.component)
                     modelAPI.SetAssetName(name)
                     modelAPI.SetAssetIdentifier(_asset_identifier(layer.identifier))
-
-        with Sdf.ChangeBlock():
-            for prim, (name, label, *__, reference) in prims_info.items():
-                with _usd.edit_context(reference, prim):
-                    UsdUI.SceneGraphPrimAPI(prim).GetDisplayNameAttr().Set(label or name)
 
     catalogue_layer.SetPermissionToEdit(current_permission)
     return list(prims_info)
@@ -361,7 +356,7 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     return _find_layer_matching(fields, (i.layer for i in prim.GetPrimStack()))
 
 
-def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
+def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
     """Spawn a unit prim as a descendant of another.
 
     * Both parent and child must be existing units in the catalogue.
@@ -373,34 +368,43 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
       3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
 
     """
-    # TODO: spawn_many
+    return spawn_many(parent, child, [path], [label])[0]
+
+
+def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = []):
+    """If provided, paths and labels must be of equal size."""
     parent_path = parent.GetPath()
-    if path and isinstance(path, str):
-        path = Sdf.Path(path)
-    if path and path.IsAbsolutePath(): # If path is an absolute path, fail if it sits outside of parent's path.
-        if not path.HasPrefix(parent_path) or path == parent_path:
-            raise ValueError(f"{path=} needs to be a child path of parent path {parent_path}")
-        path = path.MakeRelativePath(parent_path)
-    path = parent_path.AppendPath(path or child.GetName())
-
+    paths_to_create = []
+    for path in paths:
+        if path and isinstance(path, str):
+            path = Sdf.Path(path)
+        if path and path.IsAbsolutePath(): # If path is an absolute path, fail if it sits outside of parent's path.
+            if not path.HasPrefix(parent_path) or path == parent_path:
+                raise ValueError(f"{path=} needs to be a child path of parent path {parent_path}")
+            path = path.MakeRelativePath(parent_path)
+        paths_to_create.append(parent_path.AppendPath(path or child.GetName()))
+    if labels and (labels_amount := len(labels)) > (paths_amount := len(paths_to_create)):
+        raise ValueError(f"Labels ({labels_amount}) can not be larger than paths ({paths_amount}).")
+    reference = _asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path)
     parent_stage = parent.GetStage()
-    spawned = parent_stage.DefinePrim(path)
+    spawned = [parent_stage.DefinePrim(path) for path in paths_to_create]
+    child_is_model = child.IsModel()
     with Sdf.ChangeBlock():
-        # Use reference for the asset to:
-        # 1. Make use of instancing as much as possible with fewer prototypes.
-        # 2. Let specializes / inherits changes later.
-        spawned.GetReferences().AddReference(_asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path))
-        # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
-        if child.IsModel():
-            Usd.ModelAPI(parent).SetKind(Kind.Tokens.assembly)
-            # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-            for inner_parent in _usd.iprims(parent_stage, [parent_path], lambda p: p == spawned.GetParent()):
-                if not inner_parent.IsModel():
-                    Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
-            if not child.IsGroup():
-                # sensible defaults: component prims are instanced
-                spawned.SetInstanceable(True)
-
+        if child_is_model and not (parent_model:=Usd.ModelAPI(parent)).IsKind(Kind.Tokens.assembly):
+            parent_model.SetKind(Kind.Tokens.assembly)
+        for spawned_unit, label in itertools.zip_longest(spawned, labels):
+            spawned_unit.GetReferences().AddReference(reference)
+            if hasattr(spawned_unit, "SetDisplayName"):  # USD-23.02+
+                spawned_unit.SetDisplayName(label)
+            # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
+            if child_is_model:
+                # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
+                for inner_parent in _usd.iprims(parent_stage, [parent_path], lambda p: p == spawned_unit.GetParent()):
+                    if not inner_parent.IsModel():
+                        Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
+                if not child.IsGroup():
+                    # sensible defaults: component prims are instanced
+                    spawned_unit.SetInstanceable(True)
     return spawned
 
 
