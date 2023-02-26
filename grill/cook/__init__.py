@@ -93,6 +93,8 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
 
 def _asset_identifier(path):
     # Expect identifiers to not have folders in between.
+    if not path:
+        raise ValueError("Can not extract asset identifier from empty path.")
     path = Path(path)
     if not path.is_absolute():
         return str(path)
@@ -383,11 +385,14 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
         if path and path.IsAbsolutePath(): # If path is an absolute path, fail if it sits outside of parent's path.
             if not path.HasPrefix(parent_path) or path == parent_path:
                 raise ValueError(f"{path=} needs to be a child path of parent path {parent_path}")
-            path = path.MakeRelativePath(parent_path)
-        paths_to_create.append(parent_path.AppendPath(path or child.GetName()))
-    if labels and (labels_amount := len(labels)) > (paths_amount := len(paths_to_create)):
-        raise ValueError(f"Labels ({labels_amount}) can not be larger than paths ({paths_amount}).")
-    reference = _asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path)
+        else:
+            path = parent_path.AppendPath(path or child.GetName())
+        paths_to_create.append(path)
+    labels = itertools.chain(labels, itertools.repeat(""))
+    try:
+        reference = _asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path)
+    except ValueError:
+        raise ValueError(f"Could not extract identifier from {child} to spawn under {parent}.")
     parent_stage = parent.GetStage()
     spawned = [parent_stage.DefinePrim(path) for path in paths_to_create]
     child_is_model = child.IsModel()
@@ -395,12 +400,12 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
         # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
         if child_is_model and not (parent_model := Usd.ModelAPI(parent)).IsKind(Kind.Tokens.assembly):
             parent_model.SetKind(Kind.Tokens.assembly)
-        for spawned_unit, label in itertools.zip_longest(spawned, labels):
+        for spawned_unit, label in zip(spawned, labels):
             # Use reference for the asset to:
             # 1. Make use of instancing as much as possible with fewer prototypes.
             # 2. Let specializes / inherits changes later.
             spawned_unit.GetReferences().AddReference(reference)
-            if hasattr(spawned_unit, "SetDisplayName"):  # USD-23.02+
+            if label and hasattr(spawned_unit, "SetDisplayName"):  # USD-23.02+
                 spawned_unit.SetDisplayName(label)
             # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
             if child_is_model:
@@ -411,8 +416,6 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
                 if not child.IsGroup():
                     # Sensible defaults: component prims are instanced
                     spawned_unit.SetInstanceable(True)
-    if False:
-        print("This will not run")
     return spawned
 
 
