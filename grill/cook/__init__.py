@@ -369,24 +369,36 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
       2. Ensuring intermediate prims between parent and child are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
       3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
 
+    .. seealso:: :func:`spawn_many` and :func:`create_unit`
     """
-    return spawn_many(parent, child, [path], [label])[0]
+    return spawn_many(parent, child, [path or child.GetName()], [label])[0]
 
 
 def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = []):
-    """If provided, paths and labels must be of equal size."""
+    """Spawn many instances of a prim unit as descendants of another.
+
+    * Both parent and child must be existing units in the catalogue.
+    * ``paths`` can be relative or absolute. If absolute, they must include ``parent``'s `path <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Path>`_ as a prefix.
+    * A valid `Model Hierarchy <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-ModelHierarchy>`_ is preserved by:
+
+      1. Turning parent into an `assembly <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Assembly>`_ if ``child`` is a Model.
+      2. Ensuring intermediate prims between ``parent`` and spawned children are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
+      3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
+
+    .. seealso:: :func:`spawn_unit` and :func:`create_unit`
+    """
     if parent == child:
         raise ValueError(f"Can not spawn {parent} on to itself.")
     parent_path = parent.GetPath()
     paths_to_create = []
     for path in paths:
-        if path and isinstance(path, str):
+        if isinstance(path, str):
             path = Sdf.Path(path)
-        if path and path.IsAbsolutePath(): # If path is an absolute path, fail if it sits outside of parent's path.
+        if path.IsAbsolutePath():  # If path is an absolute path, fail if it sits outside of parent's path.
             if not path.HasPrefix(parent_path) or path == parent_path:
                 raise ValueError(f"{path=} needs to be a child path of parent path {parent_path}")
         else:
-            path = parent_path.AppendPath(path or child.GetName())
+            path = parent_path.AppendPath(path)
         paths_to_create.append(path)
     labels = itertools.chain(labels, itertools.repeat(""))
     try:
