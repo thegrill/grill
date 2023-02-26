@@ -554,8 +554,14 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
     def __init__(self, layer, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
         super(_PseudoUSDBrowser, self).__init__(*args, **kwargs)
         self._resolver_context = resolver_context
-        self._browsers_by_layer = dict()
+        self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
+        self._tab_layer_by_idx = dict()  # {tab_idx: Sdf.Layer}
         self._addLayerTab(layer)
+        self.setTabsClosable(True)
+        self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
+
+    def tabRemoved(self, index: int) -> None:
+         del self._browsers_by_layer[self._tab_layer_by_idx[index]]
 
     @_core.wait()
     def _addLayerTab(self, layer):
@@ -594,7 +600,8 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
             browser_layout.addWidget(browser)
 
-            self.addTab(focus_widget, _layer_label(layer))
+            tab_idx = self.addTab(focus_widget, _layer_label(layer))
+            self._tab_layer_by_idx[tab_idx] = layer
             self._browsers_by_layer[layer] = focus_widget
         self.setCurrentWidget(focus_widget)
 

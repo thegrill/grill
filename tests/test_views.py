@@ -368,7 +368,7 @@ class TestViews(unittest.TestCase):
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch("PySide2.QtWidgets.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
-
+            browser.tabCloseRequested.emit(0)  # request closing our first tab
 
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = None
