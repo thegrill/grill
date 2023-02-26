@@ -373,6 +373,8 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
 
 def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = []):
     """If provided, paths and labels must be of equal size."""
+    if parent == child:
+        raise ValueError(f"Can not spawn {parent} on to itself.")
     parent_path = parent.GetPath()
     paths_to_create = []
     for path in paths:
