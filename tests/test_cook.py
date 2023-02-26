@@ -205,3 +205,12 @@ class TestCook(unittest.TestCase):
         self.assertTrue(cook.spawn_unit(parent, child, valid_path))
         with self.assertRaisesRegex(ValueError, "needs to be a child path of parent path"):
             cook.spawn_unit(parent, child, invalid_path)
+
+    def test_spawn_many(self):
+        stage = Usd.Stage.CreateInMemory()
+        parent = stage.DefinePrim("/a")
+        with self.assertRaisesRegex(ValueError, "Can not spawn .* to itself."):
+            cook.spawn_many(parent, parent, ["impossible"])
+        child = stage.DefinePrim("/b")
+        with self.assertRaisesRegex(ValueError, "can not be larger than paths"):
+            cook.spawn_many(parent, child, ["b"], labels=["b1", "b2"])
