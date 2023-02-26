@@ -390,9 +390,13 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
     spawned = [parent_stage.DefinePrim(path) for path in paths_to_create]
     child_is_model = child.IsModel()
     with Sdf.ChangeBlock():
-        if child_is_model and not (parent_model:=Usd.ModelAPI(parent)).IsKind(Kind.Tokens.assembly):
+        # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
+        if child_is_model and not (parent_model := Usd.ModelAPI(parent)).IsKind(Kind.Tokens.assembly):
             parent_model.SetKind(Kind.Tokens.assembly)
         for spawned_unit, label in itertools.zip_longest(spawned, labels):
+            # Use reference for the asset to:
+            # 1. Make use of instancing as much as possible with fewer prototypes.
+            # 2. Let specializes / inherits changes later.
             spawned_unit.GetReferences().AddReference(reference)
             if hasattr(spawned_unit, "SetDisplayName"):  # USD-23.02+
                 spawned_unit.SetDisplayName(label)
@@ -403,8 +407,10 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
                     if not inner_parent.IsModel():
                         Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
                 if not child.IsGroup():
-                    # sensible defaults: component prims are instanced
+                    # Sensible defaults: component prims are instanced
                     spawned_unit.SetInstanceable(True)
+    if False:
+        print("This will not run")
     return spawned
 
 
