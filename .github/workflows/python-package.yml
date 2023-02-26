@@ -29,7 +29,7 @@ jobs:
           python -m pip install ".[full,test]"
       - name: Test
         run: |
-          pytest --cov=./
+          pytest --cov=./ --cov-report xml:coverage.xml
           codecov -f coverage.xml
       - name: Codecov Report
         uses: codecov/codecov-action@v3.1.1
