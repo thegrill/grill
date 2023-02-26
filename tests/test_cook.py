@@ -213,7 +213,7 @@ class TestCook(unittest.TestCase):
         parent, child = cook.create_many(taxon, ['A', 'B'])
         cook.spawn_many(parent, child, ["b"], labels=["1", "2"])
         self.assertEqual(len(parent.GetChildren()), 1)
-        
+
     def test_spawn_many_invalid(self):
         stage = Usd.Stage.CreateInMemory()
         parent = stage.DefinePrim("/a")
