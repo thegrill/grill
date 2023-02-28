@@ -12,7 +12,7 @@ from grill import cook, names, usd as gusd, tokens
 logger = logging.getLogger(__name__)
 
 
-class TestWrite(unittest.TestCase):
+class TestCook(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.mkdtemp()
         logger.debug(f"Repository root directory: {tempdir}")
@@ -194,3 +194,31 @@ class TestWrite(unittest.TestCase):
                     ("Deeper/Nested/Golden3", (0, 10, -2)),
             ):
                 cook.spawn_unit(parent, child, path)
+
+    def test_spawn_unit_with_absolute_paths(self):
+        stage = cook.fetch_stage(self.root_asset)
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        valid_path = parent.GetPath().AppendPath("Deeper/Nested/Golden1")
+        invalid_path = "/invalid/path"
+        self.assertTrue(cook.spawn_unit(parent, child, valid_path))
+        with self.assertRaisesRegex(ValueError, "needs to be a child path of parent path"):
+            cook.spawn_unit(parent, child, invalid_path)
+
+    def test_spawn_many(self):
+        stage = cook.fetch_stage(self.root_asset)
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        cook.spawn_many(parent, child, ["b"], labels=["1", "2"])
+        self.assertEqual(len(parent.GetChildren()), 1)
+
+    def test_spawn_many_invalid(self):
+        stage = Usd.Stage.CreateInMemory()
+        parent = stage.DefinePrim("/a")
+        with self.assertRaisesRegex(ValueError, "Can not spawn .* to itself."):
+            cook.spawn_many(parent, parent, ["impossible"])
+        child = stage.DefinePrim("/b")  # child needs to be a grill unit
+        with self.assertRaisesRegex(ValueError, "Could not extract identifier from"):
+            cook.spawn_many(parent, child, ["b"])

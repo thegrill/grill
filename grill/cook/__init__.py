@@ -23,8 +23,6 @@
 
 """
 
-from __future__ import annotations
-
 import types
 import typing
 import logging
@@ -35,7 +33,7 @@ import contextvars
 from pathlib import Path
 from pprint import pformat
 
-from pxr import UsdGeom, UsdUI, Usd, Sdf, Kind, Ar
+from pxr import UsdGeom, Usd, Sdf, Kind, Ar
 
 from grill.tokens import ids
 from grill.names import UsdAsset
@@ -95,6 +93,8 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
 
 def _asset_identifier(path):
     # Expect identifiers to not have folders in between.
+    if not path:
+        raise ValueError("Can not extract asset identifier from empty path.")
     path = Path(path)
     if not path.is_absolute():
         return str(path)
@@ -108,7 +108,7 @@ def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.St
 
 
 @typing.overload
-def fetch_stage(identifier: "grill.names.UsdAsset", context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
+def fetch_stage(identifier: UsdAsset, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
 
 
@@ -143,7 +143,7 @@ def _(identifier: str, *args, **kwargs) -> Usd.Stage:
     return fetch_stage(UsdAsset(identifier), *args, **kwargs)
 
 
-def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
     """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
@@ -173,12 +173,13 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple.Tuple[Usd.Pri
 
     with taxonomy_context(stage):
         prim = stage.DefinePrim(_TAXONOMY_ROOT_PATH.AppendChild(name))
-        prim_references = prim.GetReferences()
-        for reference in references:
-            prim_references.AddInternalReference(reference.GetPath())
-        prim.GetInherits().AddInherit(prim.GetPath().ReplacePrefix(Sdf.Path.absoluteRootPath, _INHERITED_ROOT_PATH))  # TODO: needed?
-        taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
-        prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
+        with Sdf.ChangeBlock():
+            prim_references = prim.GetReferences()
+            for reference in references:
+                prim_references.AddInternalReference(reference.GetPath())
+            prim.GetInherits().AddInherit(prim.GetPath().ReplacePrefix(Sdf.Path.absoluteRootPath, _INHERITED_ROOT_PATH))  # TODO: needed?
+            taxon_fields = {**fields, _TAXONOMY_UNIQUE_ID.name: name}
+            prim.SetAssetInfoByKey(_ASSETINFO_KEY, {_FIELDS_KEY: taxon_fields, _TAXA_KEY: {name: 0}})
 
     return prim
 
@@ -277,20 +278,16 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
         prims_info = {stage.GetPrimAtPath(info[2]): info for info in prims_info}
         with Sdf.ChangeBlock():
-            for prim, (name, *__, layer, reference) in prims_info.items():
+            for prim, (name, label, *__, layer, reference) in prims_info.items():
                 prim.GetReferences().AddReference(reference)
                 with _usd.edit_context(reference, prim):
-                    UsdUI.SceneGraphPrimAPI.Apply(prim)
+                    if hasattr(prim, "SetDisplayName"):  # USD-23.02+
+                        prim.SetDisplayName(label)
                     UsdGeom.ModelAPI.Apply(prim)
                     modelAPI = Usd.ModelAPI(prim)
                     modelAPI.SetKind(Kind.Tokens.component)
                     modelAPI.SetAssetName(name)
                     modelAPI.SetAssetIdentifier(_asset_identifier(layer.identifier))
-
-        with Sdf.ChangeBlock():
-            for prim, (name, label, *__, reference) in prims_info.items():
-                with _usd.edit_context(reference, prim):
-                    UsdUI.SceneGraphPrimAPI(prim).GetDisplayNameAttr().Set(label or name)
 
     catalogue_layer.SetPermissionToEdit(current_permission)
     return list(prims_info)
@@ -361,7 +358,7 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     return _find_layer_matching(fields, (i.layer for i in prim.GetPrimStack()))
 
 
-def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
+def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
     """Spawn a unit prim as a descendant of another.
 
     * Both parent and child must be existing units in the catalogue.
@@ -372,31 +369,66 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath):
       2. Ensuring intermediate prims between parent and child are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
       3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
 
+    .. seealso:: :func:`spawn_many` and :func:`create_unit`
     """
-    # TODO: spawn_many
-    # this is because at the moment it is not straight forward to bring catalogue units under others.
-    parent_stage = fetch_stage(Usd.ModelAPI(parent).GetAssetIdentifier().path, parent.GetStage().GetPathResolverContext(), Usd.Stage.LoadNone)
-    origin = parent_stage.GetDefaultPrim()
-    relpath = path or child.GetName()
-    path = origin.GetPath().AppendPath(relpath)
-    spawned = parent_stage.DefinePrim(path)
-    with Sdf.ChangeBlock():
-        # Use reference for the asset to:
-        # 1. Make use of instancing as much as possible with less prototypes.
-        # 2. Let specializes / inherits changes later.
-        spawned.GetReferences().AddReference(_asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path))
-        # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
-        if child.IsModel():
-            Usd.ModelAPI(origin).SetKind(Kind.Tokens.assembly)
-            # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-            for inner_parent in _usd.iprims(origin.GetStage(), [origin.GetPath()], lambda p: p == spawned.GetParent()):
-                if not inner_parent.IsModel():
-                    Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
-            if not child.IsGroup():
-                # sensible defaults: component prims are instanced
-                spawned.SetInstanceable(True)
+    return spawn_many(parent, child, [path or child.GetName()], [label])[0]
 
-    return parent.GetPrimAtPath(relpath)
+
+def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = []):
+    """Spawn many instances of a prim unit as descendants of another.
+
+    * Both parent and child must be existing units in the catalogue.
+    * ``paths`` can be relative or absolute. If absolute, they must include ``parent``'s `path <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Path>`_ as a prefix.
+    * A valid `Model Hierarchy <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-ModelHierarchy>`_ is preserved by:
+
+      1. Turning parent into an `assembly <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Assembly>`_ if ``child`` is a Model.
+      2. Ensuring intermediate prims between ``parent`` and spawned children are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
+      3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
+
+    .. seealso:: :func:`spawn_unit` and :func:`create_unit`
+    """
+    if parent == child:
+        raise ValueError(f"Can not spawn {parent} on to itself.")
+    parent_path = parent.GetPath()
+    paths_to_create = []
+    for path in paths:
+        if isinstance(path, str):
+            path = Sdf.Path(path)
+        if path.IsAbsolutePath():  # If path is an absolute path, fail if it sits outside of parent's path.
+            if not path.HasPrefix(parent_path) or path == parent_path:
+                raise ValueError(f"{path=} needs to be a child path of parent path {parent_path}")
+        else:
+            path = parent_path.AppendPath(path)
+        paths_to_create.append(path)
+    labels = itertools.chain(labels, itertools.repeat(""))
+    try:
+        reference = _asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path)
+    except ValueError:
+        raise ValueError(f"Could not extract identifier from {child} to spawn under {parent}.")
+    parent_stage = parent.GetStage()
+    spawned = [parent_stage.DefinePrim(path) for path in paths_to_create]
+    child_is_model = child.IsModel()
+    with Sdf.ChangeBlock():
+        # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
+        if child_is_model and not (parent_model := Usd.ModelAPI(parent)).IsKind(Kind.Tokens.assembly):
+            parent_model.SetKind(Kind.Tokens.assembly)
+        for spawned_unit, label in zip(spawned, labels):
+            # Use reference for the asset to:
+            # 1. Make use of instancing as much as possible with fewer prototypes.
+            # 2. Let specializes / inherits changes later.
+            spawned_unit.GetReferences().AddReference(reference)
+            if label and hasattr(spawned_unit, "SetDisplayName"):  # USD-23.02+
+                spawned_unit.SetDisplayName(label)
+            # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
+            if child_is_model:
+                # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
+                for inner_parent in _usd.iprims(parent_stage, [parent_path], lambda p: p == spawned_unit.GetParent()):
+                    if not inner_parent.IsModel():
+                        Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
+                if not child.IsGroup():
+                    # Sensible defaults: component prims are instanced
+                    spawned_unit.SetInstanceable(True)
+    return spawned
 
 
 def _root_asset(stage):
@@ -417,7 +449,6 @@ def _root_asset(stage):
             return UsdAsset(Path(layer.identifier).name), layer
         except ValueError:
             seen.add(layer)
-            continue
     raise ValueError(f"Could not find a valid pipeline layer for stage {stage}. Searched layer stack: {pformat(seen)}")
 
 
