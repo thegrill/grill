@@ -5,7 +5,7 @@ import contextvars
 from functools import lru_cache, partial
 
 from pxr import UsdGeom, Usd, Sdf, Ar, Tf
-from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu
+from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu, primContextMenuItems, primContextMenu
 
 from ._qt import QtWidgets
 
@@ -81,6 +81,19 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
                         print(f"Could not find layer from {layerPath}")
                         return
             _description._launch_content_browser([layer], usdview_api.qMainWindow, context)
+
+
+class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):
+    def GetText(self):
+        return "Inspect Prim Composition"
+
+    def RunCommand(self):
+        usdview_api = _usdview_api.get()
+        for prim in self._selectionDataModel.getPrims():
+            widget = _description.PrimComposition(parent=usdview_api.qMainWindow)
+            widget.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
+            widget.setPrim(prim)
+            widget.show()
 
 
 class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
@@ -191,9 +204,13 @@ def _extend_menu(_extender, original, *args):
 
 
 for module, member_name, extender in (
+        (primContextMenuItems, "_GetContextMenuItems", GrillPrimCompositionMenuItem),  # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
         (layerStackContextMenu, "_GetContextMenuItems", GrillContentBrowserLayerMenuItem),
         (attributeViewContextMenu, "_GetContextMenuItems", lambda *args: GrillAttributeEditorMenuItem(*reversed(args)))  # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
 ):
     setattr(module, member_name, partial(_extend_menu, extender, getattr(module, member_name)))
 
+
+# We need to do this since primContextMenu imports the function directly, so re-assign with our recently patched one
+primContextMenu._GetContextMenuItems = primContextMenuItems._GetContextMenuItems
 Tf.Type.Define(GrillPlugin)

@@ -441,7 +441,9 @@ class PrimComposition(QtWidgets.QDialog):
         self._prim = prim
         if not self._prim:
             self.clear()
+            self.setWindowTitle("Prim Composition")
             return
+        self.setWindowTitle(f"Prim Composition: {prim.GetName()} ({prim.GetPath()})")
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
         fd, fp = tempfile.mkstemp()
