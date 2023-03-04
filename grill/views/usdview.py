@@ -85,10 +85,11 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
 
 class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):
     def GetText(self):
-        return "Inspect Prim Composition"
+        return f"Inspect Prim{'s' if len(self._selectionDataModel.getPrims())>1 else ''} Composition"
 
     def RunCommand(self):
         usdview_api = _usdview_api.get()
+        # The "double pop up" upon showing widgets does not happen on PySide2, only on PySide6
         for prim in self._selectionDataModel.getPrims():
             widget = _description.PrimComposition(parent=usdview_api.qMainWindow)
             widget.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
