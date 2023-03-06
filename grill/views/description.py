@@ -247,6 +247,14 @@ class _Dot2SvgSignals(QtCore.QObject):
     result = QtCore.Signal(str)
 
 
+_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
+the 'dot' command must be available on the current environment.
+
+Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
+
+For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
+"""
+
 class _Dot2Svg(QtCore.QRunnable):
     def __init__(self, source_fp, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -256,12 +264,7 @@ class _Dot2Svg(QtCore.QRunnable):
     @QtCore.Slot()
     def run(self):
         if not _which("dot"):
-            self.signals.error.emit(
-                "In order to display composition arcs in a graph,\n"
-                "the 'dot' command must be available on the current environment.\n\n"
-                "Please make sure graphviz is installed and 'dot' available \n"
-                "on the system's PATH environment variable."
-            )
+            self.signals.error.emit(_DOT_ENVIRONMENT_ERROR)
             return
         error, svg_fp = _dot_2_svg(self.source_fp)
         self.signals.error.emit(error) if error else self.signals.result.emit(svg_fp)
@@ -335,13 +338,22 @@ class _GraphViewer(_DotViewer):
         subgraph = graph.subgraph(nodes_of_interest)
 
         fd, fp = tempfile.mkstemp()
-        nx.nx_agraph.write_dot(subgraph, fp)
-        return fp
+        try:
+            nx.nx_agraph.write_dot(subgraph, fp)
+        except ImportError as exc:
+            # self._dot2svg.signals.error.emit(exc)
+            error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+        else:
+            error = ""
+        return error, fp
 
     def view(self, node_indices: typing.Iterable):
-        dot_path = self._subgraph_dot_path(tuple(node_indices))
+        error, dot_path = self._subgraph_dot_path(tuple(node_indices))
         self._viewing = frozenset(node_indices)
-        self.setDotPath(dot_path)
+        if error:
+            self._on_dot_error(error)
+        else:
+            self.setDotPath(dot_path)
 
     @property
     def graph(self):
@@ -403,7 +415,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree_controls_layout = QtWidgets.QHBoxLayout()
         tree_controls.setLayout(tree_controls_layout)
         self._prim = None  # TODO: see if we can remove this. Atm needed for "enabling layer stack" checkbox
-        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
+        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStackz")
         self._complete_target_layerstack.setChecked(False)
         self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
         tree_controls_layout.addWidget(self._complete_target_layerstack)
@@ -435,6 +447,7 @@ class PrimComposition(QtWidgets.QDialog):
         if len(set(i.row() for i in selection) ) == 1:
             stage, edit_target = selection[0].data(QtCore.Qt.UserRole)
             menu.addAction("Set As Edit Target", partial(stage.SetEditTarget, edit_target))
+            menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, partial(_launch_content_browser, (edit_target.GetLayer(),), self, stage.GetPathResolverContext()))
         menu.exec_(QtGui.QCursor.pos())
 
     def setPrim(self, prim):
@@ -500,6 +513,7 @@ class PrimComposition(QtWidgets.QDialog):
                 parent.appendRow(arc_items)
 
         tree.expandAll()
+        tree._fixPositions()  # TODO: Houdini needs this. Why?
         for index, size in sizes.items():
             header.resizeSection(index, size)
 
@@ -557,13 +571,13 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         super(_PseudoUSDBrowser, self).__init__(*args, **kwargs)
         self._resolver_context = resolver_context
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
-        self._tab_layer_by_idx = dict()  # {tab_idx: Sdf.Layer}
+        self._tab_layer_by_idx = list()  # {tab_idx: Sdf.Layer}
         self._addLayerTab(layer)
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
     def tabRemoved(self, index: int) -> None:
-         del self._browsers_by_layer[self._tab_layer_by_idx[index]]
+        del self._browsers_by_layer[self._tab_layer_by_idx.pop(index)]
 
     @_core.wait()
     def _addLayerTab(self, layer):
@@ -603,7 +617,8 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_layout.addWidget(browser)
 
             tab_idx = self.addTab(focus_widget, _layer_label(layer))
-            self._tab_layer_by_idx[tab_idx] = layer
+            self._tab_layer_by_idx.append(layer)
+            assert len(self._tab_layer_by_idx) == (tab_idx+1)
             self._browsers_by_layer[layer] = focus_widget
         self.setCurrentWidget(focus_widget)
 
