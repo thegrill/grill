@@ -116,28 +116,29 @@ def wait():
 
 
 class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.11
+    # All emojis have an additional space at the end since Maya-2023.2 and Houdini-19.5 are unable to display emoji otherwise
     # GENERAL
-    ID = "🕵"
-    VISIBILITY = "👀"
-    SEARCH = "🔎"
-    LOCK = "🔐"
-    UNLOCK = "🔓"
+    ID = "🕵 "
+    VISIBILITY = "👀 "
+    SEARCH = "🔎 "
+    LOCK = "🔐 "
+    UNLOCK = "🔓 "
 
     # STAGE TRAVERSAL
-    MODEL_HIERARCHY = "🏡"
-    INSTANCE_PROXIES = "💠"
+    MODEL_HIERARCHY = "🏡 "
+    INSTANCE_PROXIES = "💠 "
 
     # PRIM SPECIFIER
-    ORPHANED = "👻"
-    CLASSES = "🧪"
-    DEFINED = "🧱"
+    ORPHANED = "👻 "
+    CLASSES = "🧪 "
+    DEFINED = "🧱 "
 
     # PRIM STATUS
-    ACTIVE = "💡"
-    INACTIVE = "🌒"
+    ACTIVE = "💡 "
+    INACTIVE = "🌒 "
 
     # IDENTIFICATION
-    NAME = "🔖"
+    NAME = "🔖 "
 
 
 class _Column(typing.NamedTuple):
