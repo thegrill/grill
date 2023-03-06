@@ -9,7 +9,7 @@ import mayaUsd
 import maya.OpenMayaUI as omui
 import maya.api.OpenMaya as om
 
-from . import description as _description, sheets as _sheets, create as _create, _core
+from . import description as _description, sheets as _sheets, create as _create, _core, stats as _stats
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
 
 
@@ -18,8 +18,7 @@ def _main_window():
     return wrapInstance(int(omui.MQtUtil.mainWindow()), QtWidgets.QWidget)
 
 
-def _stage_on_widget(widget_creator):
-    @cache
+def _stage_on_widget(widget_creator, _cache=True):
     def _launcher():
         widget = widget_creator(parent=_main_window())
         widget.setStyleSheet(
@@ -35,6 +34,8 @@ def _stage_on_widget(widget_creator):
         if stage:
             widget.setStage(stage)
         return widget
+    if _cache:
+        _launcher = cache(_launcher)
     return _launcher
 
 
@@ -70,6 +71,7 @@ def create_menu():
             ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
             ("Prim Composition", _prim_composition),
             ("LayerStack Composition", _stage_on_widget(_description.LayerStackComposition)),
+            ("Stage Stats", _stage_on_widget(_stats.StageStats, _cache=False)),
     ):
         cmds.menuItem(title, command=partial(show, launcher), parent=menu)
 
