@@ -415,7 +415,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree_controls_layout = QtWidgets.QHBoxLayout()
         tree_controls.setLayout(tree_controls_layout)
         self._prim = None  # TODO: see if we can remove this. Atm needed for "enabling layer stack" checkbox
-        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStackz")
+        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
         self._complete_target_layerstack.setChecked(False)
         self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
         tree_controls_layout.addWidget(self._complete_target_layerstack)
