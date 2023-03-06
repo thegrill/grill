@@ -35,6 +35,11 @@ houdini._prim_composition().show()]]></scriptCode>
 houdini._layerstack_composition().show()]]></scriptCode>
             </scriptItem>
 
+            <scriptItem id="stage_stats">
+                <label>Stage Stats</label>
+                <scriptCode><![CDATA[from grill.views import houdini
+houdini._stage_stats().show()]]></scriptCode>
+            </scriptItem>
         </subMenu>
     </menuBar>
 </mainMenu>
