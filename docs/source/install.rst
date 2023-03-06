@@ -30,7 +30,7 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
         .. code-block:: bash
 
-            hython3.7 -m pip install grill
+            hython -m pip install grill
 
     .. tab:: Maya
 
@@ -39,11 +39,6 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
         .. code-block:: bash
 
             mayapy -m pip install grill
-
-
-.. warning::
-
-    Some DCC applications like **Houdini-19** and **Maya-2022** are still on ``python-3.7``, so installing ``grill`` for those applications will require ``grill<0.13.0``.
 
 
 Extra Dependencies
@@ -93,11 +88,11 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
       (grilldemo01) C:\>python -m pip install grill[full]
 
-6. If missing, (optionally) install ``graphviz`` via ``conda``:
+6. If missing, (optionally) install `pygraphviz <https://pygraphviz.github.io/documentation/stable/install.html>`_ via ``conda``:
 
    .. code:: bash
 
-      (grilldemo01) C:\>conda install -c anaconda graphviz
+      (grilldemo01) C:\>conda install --channel conda-forge pygraphviz
 
 7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView**, **Maya** and **Houdini***.
 
