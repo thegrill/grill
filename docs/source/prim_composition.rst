@@ -10,7 +10,7 @@ To visualize the composition graph, the ``graphviz`` library needs to be availab
 
 .. tab:: Houdini
 
-    .. image:: https://user-images.githubusercontent.com/8294116/98945804-1dee6300-2547-11eb-8e9b-3f0211af6f3c.gif
+    .. image:: https://user-images.githubusercontent.com/8294116/223416152-d7c456d1-6995-48e4-93e0-a89f89200d4e.gif
 
 .. tab:: Maya
 

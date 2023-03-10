@@ -46,7 +46,7 @@ Extra Dependencies
 
 The following optional dependencies should be installed separately.
 
-- `graphviz <http://graphviz.org/>`_ (for graph widgets).
+- `graphviz <http://graphviz.org/>`_ and `pygraphviz`_ for graph widgets. See conda example below for instructions.
 - `usdview <https://graphics.pixar.com/usd/docs/USD-Toolset.html#USDToolset-usdview>`_
   (hopefully will be available soon via `pypi <https://pypi.org/>`_). In the meantime, it can be built from USD source
   (`conda recipe <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888>`_).
@@ -71,28 +71,56 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
 3. Create a new ``conda`` environment with ``python=3.9``, for example:
 
-   .. code:: bash
+   .. code:: PowerShell
 
       (base) C:\>conda create -n grilldemo01 python=3.9
 
 4. Activate that environment:
 
-   .. code:: bash
+   .. code:: PowerShell
 
       (base) C:\>conda activate grilldemo01
 
 5. Install ``grill`` via ``pip``; use the ``full`` option to use standalone.
    Refer to the `pip install instructions <#pip-install>`_ for more details.
 
-   .. code:: bash
+   .. code:: PowerShell
 
       (grilldemo01) C:\>python -m pip install grill[full]
 
-6. If missing, (optionally) install `pygraphviz <https://pygraphviz.github.io/documentation/stable/install.html>`_ via ``conda``:
+6. If missing, (optionally) install `pygraphviz`_ via ``conda``:
 
-   .. code:: bash
+   .. warning::
 
-      (grilldemo01) C:\>conda install --channel conda-forge pygraphviz
+      At the moment, installing pygraphviz can be tricky. Hopefully a simpler pip based solution comes with `pygraphviz#167 <https://github.com/pygraphviz/pygraphviz/issues/167>`_.
+
+   .. tab:: Standalone Python
+
+     Replace ``--global-option`` to the correct Include and Lib paths on the system:
+
+     .. code:: PowerShell
+
+        (grilldemo01) C:\>conda install --channel conda-forge pygraphviz
+        (grilldemo01) C:\>python -m pip install --global-option=build_ext --global-option="-IC:\Users\Christian\.conda\envs\glowdeps\Library\include" --global-option="-LC:\Users\Christian\.conda\envs\glowdeps\Library\lib" pygraphviz
+
+   .. tab:: Houdini
+
+     Replace ``--global-option`` to the correct Include and Lib paths on the system:
+
+     .. code:: PowerShell
+
+        (grilldemo01) C:\>conda install --channel conda-forge pygraphviz
+        (grilldemo01) C:\Program Files\Side Effects Software\Houdini 19.5.534\bin>hython -m pip install --global-option=build_ext --global-option="-IC:\Users\Christian\.conda\envs\glowdeps\Library\include" --global-option="-LC:\Users\Christian\.conda\envs\glowdeps\Library\lib" pygraphviz
+
+   .. tab:: Maya
+
+     Replace ``--global-option`` to the correct Include and Lib paths on the system **and** the Maya Python include and lib paths:
+
+     .. code:: PowerShell
+
+        (grilldemo01) C:\>conda install --channel conda-forge pygraphviz
+        (grilldemo01) C:\Program Files\Autodesk\Maya2023\bin>mayapy -m pip install --global-option=build_ext  --global-option="-IC:\Users\Christian\.conda\envs\glowdeps\Library\include;C:\Program Files\Autodesk\Maya2023\include\Python39\Python" --global-option="-LC:\Users\Christian\.conda\envs\glowdeps\Library\lib;C:\Program Files\Autodesk\Maya2023\lib" pygraphviz
+
 
 7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView**, **Maya** and **Houdini***.
 
@@ -114,10 +142,11 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
         .. code:: bash
 
-            hython3.7.exe -c "from grill.__startup__ import houdini;houdini.install_package()"
+            hython -c "from grill.__startup__ import houdini;houdini.install_package()"
 
         The manual execution of this step might be removed in the future.
 
+.. _pygraphviz: https://pygraphviz.github.io/documentation/stable/install.html
 .. _miniconda: https://docs.conda.io/en/latest/miniconda.html
 .. _Anaconda: https://docs.anaconda.com/anaconda/user-guide/getting-started/
 .. _conda: https://docs.conda.io/projects/conda/en/latest/index.html
