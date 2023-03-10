@@ -1,13 +1,9 @@
 import hou
 import toolutils
 from functools import cache, lru_cache, partial
-# pygraphviz required vvvvvvvvvvvv
-# https://github.com/pygraphviz/pygraphviz/issues/360
-import os
-os.add_dll_directory(r"C:\Users\Christian\.conda\envs\glowdeps\Library\bin")  # sigh, patch pygraphviz?
-# pygraphviz required ^^^^^^^^^^^^
-from . import sheets as _sheets, description as _description, create as _create, stats as _stats
+from . import sheets as _sheets, description as _description, create as _create, stats as _stats, _core
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
+_core._ensure_dot()
 
 
 def _stage_on_widget(widget_creator, _cache=True):

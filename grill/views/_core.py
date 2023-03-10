@@ -1,8 +1,11 @@
 """Shared members for views modules, not considered public API."""
+import os
 import enum
+import shutil
 import typing
 import contextlib
-from functools import partial
+from pathlib import Path
+from functools import partial, cache
 
 from ._qt import QtWidgets, QtGui, QtCore
 
@@ -104,6 +107,20 @@ _Tree::branch:selected:open:has-children:has-siblings  {
     image: url(%(RESOURCE_DIR)s/icons/branch-open-selected.png);
 }
 """
+
+@cache
+def _which(what):
+    return shutil.which(what)
+
+
+@cache
+def _ensure_dot():
+    """For usage only when DCC python interpreter fails to install pygraphviz properly."""
+    dotpath = _which("dot")
+    if dotpath:
+        # https://github.com/pygraphviz/pygraphviz/issues/360
+        # TODO: is this the best approach to solve current Houdini and Maya failing to import graphviz??
+        os.add_dll_directory(Path(dotpath).parent)  # sigh, patch pygraphviz?
 
 
 @contextlib.contextmanager

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import shutil
 import typing
 import operator
 import tempfile
@@ -22,6 +21,7 @@ from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from .. import usd as _usd
 from . import sheets as _sheets, _core
+from ._core import _which
 
 
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
@@ -60,9 +60,7 @@ _HIGHLIGHT_PATTERN = re.compile(
 )
 
 
-@lru_cache(maxsize=None)
-def _which(what):
-    return shutil.which(what)
+
 
 
 def _run(args: list):
