@@ -1,3 +1,4 @@
+import contextlib
 import os
 import io
 import csv
@@ -127,11 +128,11 @@ class TestViews(unittest.TestCase):
         self.assertEqual(1, widget._prims.model.rowCount())
 
         if not hasattr(os, "add_dll_directory"):  # add_dll_directory only on Windows
-            new_method = lambda path: print(f"Added {path}")
+            os_dll_ctx = mock.patch("os.add_dll_directory", new=lambda path: print(f"Added {path}"))
         else:
-            new_method = os.add_dll_directory
+            os_dll_ctx = contextlib.nullcontext()
 
-        with mock.patch("os.add_dll_directory", new=new_method):
+        with os_dll_ctx:
             _core._which.cache_clear()
             with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
                 patch.return_value = None
