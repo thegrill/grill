@@ -127,21 +127,18 @@ class TestViews(unittest.TestCase):
         self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
 
-        if hasattr(os, "add_dll_directory"):  # add_dll_directory only on Windows
-            os_dll_ctx = contextlib.nullcontext()
-        else:
-            os_dll_ctx = mock.patch("os.add_dll_directory", new=lambda path: print(f"Added {path}"))
+        # add_dll_directory only on Windows
+        os.add_dll_directory = lambda path: print(f"Added {path}") if not hasattr(os, "add_dll_directory") else os.add_dll_directory
 
-        with os_dll_ctx:
-            _core._which.cache_clear()
-            with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
-                patch.return_value = None
-                widget._graph_view.view([0,1])
+        _core._which.cache_clear()
+        with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
+            patch.return_value = None
+            widget._graph_view.view([0,1])
 
-            _core._which.cache_clear()
-            with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pygraphviz is not installed
-                patch.side_effect = ImportError
-                widget._graph_view.view([0])
+        _core._which.cache_clear()
+        with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pygraphviz is not installed
+            patch.side_effect = ImportError
+            widget._graph_view.view([0])
 
         widget.deleteLater()
 
