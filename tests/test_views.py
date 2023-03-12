@@ -97,7 +97,7 @@ class TestViews(unittest.TestCase):
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
-        # shutil.rmtree(self._tmpf)
+        shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
