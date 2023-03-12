@@ -119,7 +119,8 @@ def _ensure_dot():
     if dotpath := _which("dot"):
         # https://github.com/pygraphviz/pygraphviz/issues/360
         # TODO: is this the best approach to solve current Houdini and Maya failing to import graphviz??
-        os.add_dll_directory(Path(dotpath).parent)  # sigh, patch pygraphviz?
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(Path(dotpath).parent)  # sigh, patch pygraphviz?
 
 
 @contextlib.contextmanager

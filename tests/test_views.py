@@ -1,3 +1,4 @@
+import os
 import io
 import csv
 import shutil
@@ -125,15 +126,21 @@ class TestViews(unittest.TestCase):
         self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
 
-        _core._which.cache_clear()
-        with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
-            patch.return_value = None
-            widget._graph_view.view([0,1])
+        if not hasattr(os, "add_dll_directory"):  # add_dll_directory only on Windows
+            new_method = lambda path: print(f"Added {path}")
+        else:
+            new_method = os.add_dll_directory
 
-        _core._which.cache_clear()
-        with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pygraphviz is not installed
-            patch.side_effect = ImportError
-            widget._graph_view.view([0])
+        with mock.patch("os.add_dll_directory", new=new_method):
+            _core._which.cache_clear()
+            with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
+                patch.return_value = None
+                widget._graph_view.view([0,1])
+
+            _core._which.cache_clear()
+            with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pygraphviz is not installed
+                patch.side_effect = ImportError
+                widget._graph_view.view([0])
 
         widget.deleteLater()
 
