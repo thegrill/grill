@@ -127,10 +127,10 @@ class TestViews(unittest.TestCase):
         self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
 
-        if not hasattr(os, "add_dll_directory"):  # add_dll_directory only on Windows
-            os_dll_ctx = mock.patch("os.add_dll_directory", new=lambda path: print(f"Added {path}"))
-        else:
+        if hasattr(os, "add_dll_directory"):  # add_dll_directory only on Windows
             os_dll_ctx = contextlib.nullcontext()
+        else:
+            os_dll_ctx = mock.patch("os.add_dll_directory", new=lambda path: print(f"Added {path}"))
 
         with os_dll_ctx:
             _core._which.cache_clear()
