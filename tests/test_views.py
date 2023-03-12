@@ -8,7 +8,7 @@ from unittest import mock
 from pxr import Usd, UsdGeom, Sdf
 
 from grill import cook, usd, names
-from grill.views import description, sheets, create, _attributes, stats
+from grill.views import description, sheets, create, _attributes, stats, _core
 from grill.views._qt import QtWidgets, QtCore
 
 
@@ -48,6 +48,8 @@ class TestPrivate(unittest.TestCase):
             Sdf.Path('/world/hi'),
         ]
         self.assertEqual(actual, expected)
+    def test_core(self):
+        _core._ensure_dot()
 
 
 class TestViews(unittest.TestCase):
@@ -93,7 +95,7 @@ class TestViews(unittest.TestCase):
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
-        shutil.rmtree(self._tmpf)
+        # shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
@@ -122,6 +124,16 @@ class TestViews(unittest.TestCase):
         widget._layers.table.selectAll()
         self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
+
+        _core._which.cache_clear()
+        with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
+            patch.return_value = None
+            widget._graph_view.view([0,1])
+
+        _core._which.cache_clear()
+        with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pygraphviz is not installed
+            patch.side_effect = ImportError
+            widget._graph_view.view([0])
 
         widget.deleteLater()
 

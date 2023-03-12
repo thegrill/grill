@@ -116,8 +116,7 @@ def _which(what):
 @cache
 def _ensure_dot():
     """For usage only when DCC python interpreter fails to install pygraphviz properly."""
-    dotpath = _which("dot")
-    if dotpath:
+    if dotpath := _which("dot"):
         # https://github.com/pygraphviz/pygraphviz/issues/360
         # TODO: is this the best approach to solve current Houdini and Maya failing to import graphviz??
         os.add_dll_directory(Path(dotpath).parent)  # sigh, patch pygraphviz?
