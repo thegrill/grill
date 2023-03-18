@@ -33,10 +33,6 @@ class _ContainerTree(QtWidgets.QTreeWidget):
 
 
 class _StatsPie(QtWidgets.QWidget):
-    def __init__(self, *args, stats=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if stats:
-            self.setStats(stats)
 
     def setStats(self, value, *, title=None):
         layout = QtWidgets.QVBoxLayout()
