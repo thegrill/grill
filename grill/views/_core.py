@@ -81,31 +81,6 @@ QTableView::item:hover:!pressed:selected {
 /*    background: rgb(132, 109, 59); */
     background: rgb(227, 186, 101);
 }
-
-/* Set the branch triangle icons */
-_Tree::branch:has-children:!has-siblings:closed,
-_Tree::branch:closed:has-children:has-siblings {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-closed.png);
-}
-
-_Tree::branch:open:has-children:!has-siblings,
-_Tree::branch:open:has-children:has-siblings  {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-open.png);
-}
-
-_Tree::branch:selected:has-children:!has-siblings:closed,
-_Tree::branch:selected:closed:has-children:has-siblings {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-closed-selected.png);
-}
-
-_Tree::branch:selected:open:has-children:!has-siblings,
-_Tree::branch:selected:open:has-children:has-siblings  {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-open-selected.png);
-}
 """
 
 @cache
@@ -299,6 +274,7 @@ class _Header(QtWidgets.QHeaderView):
             proxy_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             self._proxy_labels[column_options.label] = proxy_label
 
+        self.setStretchLastSection(True)
         self.setSectionsMovable(True)
         self.sectionResized.connect(self._handleSectionResized)
         self.sectionMoved.connect(self._handleSectionMoved)

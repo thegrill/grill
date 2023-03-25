@@ -15,6 +15,16 @@ _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better
 _description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
 
 
+_tree_init = _description._Tree.__init__
+def _usdview_tree_init(self, *args, **kwargs):
+    _tree_init(self, *args, **kwargs)
+    self.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
+
+# Only when in USDView we want to extend the stylesheet of the _Tree class
+# TODO: is there a better way?
+_description._Tree.__init__ = _usdview_tree_init
+
+
 def _stage_on_widget(widget_creator):
     @lru_cache(maxsize=None)
     def _launcher(usdviewApi):
@@ -36,7 +46,6 @@ def _layer_stack_from_prims(usdviewApi):
 @lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
     widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
-    widget.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
     def primChanged(new_paths, __):
         new_path = next(iter(new_paths), None)
         widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()
@@ -92,7 +101,6 @@ class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):
         # The "double pop up" upon showing widgets does not happen on PySide2, only on PySide6
         for prim in self._selectionDataModel.getPrims():
             widget = _description.PrimComposition(parent=usdview_api.qMainWindow)
-            widget.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
             widget.setPrim(prim)
             widget.show()
 
@@ -205,7 +213,7 @@ def _extend_menu(_extender, original, *args):
 
 
 for module, member_name, extender in (
-        (primContextMenuItems, "_GetContextMenuItems", GrillPrimCompositionMenuItem),  # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
+        (primContextMenuItems, "_GetContextMenuItems", GrillPrimCompositionMenuItem),
         (layerStackContextMenu, "_GetContextMenuItems", GrillContentBrowserLayerMenuItem),
         (attributeViewContextMenu, "_GetContextMenuItems", lambda *args: GrillAttributeEditorMenuItem(*reversed(args)))  # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
 ):
