@@ -80,6 +80,8 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
 
     def RunCommand(self):
         if self._item:
+            # from testing, only entries in the Composition tab without HasSpecs miss "path"
+            paths = [path] if (path := getattr(self._item, "path", None)) else []
             usdview_api = _usdview_api.get()
             context = usdview_api.stage.GetPathResolverContext()
             if not (layer:= getattr(self._item, 'layer', None)):  # USDView allows for single layer selection in composition tab :(
@@ -89,7 +91,7 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
                     if not (layer:=Sdf.Layer.FindOrOpen(layerPath)):  # edge case, is this possible?
                         print(f"Could not find layer from {layerPath}")
                         return
-            _description._launch_content_browser([layer], usdview_api.qMainWindow, context)
+            _description._launch_content_browser([layer], usdview_api.qMainWindow, context, paths=paths)
 
 
 class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):

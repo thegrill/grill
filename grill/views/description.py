@@ -215,18 +215,18 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     )
 
 
-def _launch_content_browser(layers, parent, context):
-    dialog = _start_content_browser(layers, parent, context)
+def _launch_content_browser(layers, parent, context, paths=tuple()):
+    dialog = _start_content_browser(layers, parent, context, paths)
     dialog.show()
 
 
-def _start_content_browser(layers, parent, context):
+def _start_content_browser(layers, parent, context, paths=tuple()):
     dialog = QtWidgets.QDialog(parent=parent)
     dialog.setWindowTitle("Layer Content Browser")
     layout = QtWidgets.QVBoxLayout()
     vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
     for layer in layers:
-        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context)
+        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context, paths=paths)
         vertical.addWidget(browser)
     layout.addWidget(vertical)
     dialog.setLayout(layout)
@@ -467,9 +467,9 @@ class PrimComposition(QtWidgets.QDialog):
         menu = QtWidgets.QMenu(tree:=self.composition_tree)
         selection = tree.selectedIndexes()
         if len(set(i.row() for i in selection) ) == 1:
-            stage, edit_target = selection[0].data(QtCore.Qt.UserRole)
+            stage, edit_target, target_path = selection[0].data(QtCore.Qt.UserRole)
             menu.addAction("Set As Edit Target", partial(stage.SetEditTarget, edit_target))
-            menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, partial(_launch_content_browser, (edit_target.GetLayer(),), self, stage.GetPathResolverContext()))
+            menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, partial(_launch_content_browser, (edit_target.GetLayer(),), self, stage.GetPathResolverContext(), [target_path]))
         menu.exec_(QtGui.QCursor.pos())
 
     def setPrim(self, prim):
@@ -528,7 +528,7 @@ class PrimComposition(QtWidgets.QDialog):
 
                 edit_target = Usd.EditTarget(each, target_node)
                 for item in arc_items:
-                    item.setData((stage, edit_target), QtCore.Qt.UserRole)
+                    item.setData((stage, edit_target, target_path), QtCore.Qt.UserRole)
                     if highlight_color:
                         item.setData(highlight_color, QtCore.Qt.ForegroundRole)
 
@@ -589,12 +589,12 @@ class _LayersSheet(_sheets._Spreadsheet):
 
 
 class _PseudoUSDBrowser(QtWidgets.QTabWidget):
-    def __init__(self, layer, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
+    def __init__(self, layer, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), paths=tuple(), **kwargs):
         super().__init__(*args, **kwargs)
         self._resolver_context = resolver_context
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
         self._tab_layer_by_idx = list()  # {tab_idx: Sdf.Layer}
-        self._addLayerTab(layer)
+        self._addLayerTab(layer, paths)
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
@@ -602,11 +602,12 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         del self._browsers_by_layer[self._tab_layer_by_idx.pop(index)]
 
     @_core.wait()
-    def _addLayerTab(self, layer):
+    def _addLayerTab(self, layer, paths=tuple()):
         try:
             focus_widget = self._browsers_by_layer[layer]
         except KeyError:
-            error, text = _browse_layer_contents(layer)
+            paths_in_layer = [path for path in paths if layer.GetObjectAtPath(path)]
+            error, text = _browse_layer_contents(layer, paths=paths_in_layer)
             if error:
                 QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
                 return
@@ -618,10 +619,10 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             outline_model.setHorizontalHeaderLabels([""] * len(outliner_columns))
             root_item = outline_model.invisibleRootItem()
 
-            items = dict()  # {Sdf.Path: [QtGui.QItem]}
+            items = dict()  # {Sdf.Path: QtGui.QItem}
 
-            def populate(paths, *args, **kwargs):
-                for path in paths:
+            def populate(spec_paths, *args, **kwargs):
+                for path in spec_paths:
                     if path.IsPropertyPath() or path.IsTargetPath():
                         continue
                     values = [column.getter(path) for column in outliner_columns]
@@ -635,8 +636,8 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     new_items[0].setData(path, QtCore.Qt.UserRole)
                     items[path] = new_items[0]
 
-            paths = list()
-            layer.Traverse(layer.pseudoRoot.path, lambda path: paths.append(path))
+            content_paths = list()
+            layer.Traverse(layer.pseudoRoot.path, lambda path: content_paths.append(path))
             selection_model = outline_tree.selectionModel()
 
             def update_contents(*args, **kwargs):
@@ -665,8 +666,18 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 error, text = _browse_layer_contents(layer, format_combo.currentText(), paths, output_args)
                 browser.setText(error if error else text)
 
-            populate(sorted(paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
-            outline_tree.expandRecursively(root_item.index(), 3)
+            populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
+
+            tree_model = outline_tree.model()
+            with QtCore.QSignalBlocker(outline_tree):
+                for path in paths_in_layer:
+                    proxy_index = tree_model.mapFromSource(outline_model.indexFromItem(items[path]))
+                    selection_model.select(proxy_index, QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
+                    outline_tree.setCurrentIndex(proxy_index)  # possible to set multiple?
+
+            if not paths_in_layer:
+                outline_tree.expandRecursively(root_item.index(), 3)
+
             focus_widget = QtWidgets.QFrame(parent=self)
             focus_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             focus_splitter.addWidget(outline_tree)

@@ -366,7 +366,7 @@ class TestViews(unittest.TestCase):
 
         # sdffilter still not coming via pypi, so patch for now
         if not description._which("sdffilter"):
-            def _to_ascii(layer):
+            def _to_ascii(layer, *args, **kwargs):
                 return "", layer.ExportToString()
         else:
             _to_ascii = description._browse_layer_contents
