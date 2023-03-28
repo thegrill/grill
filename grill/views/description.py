@@ -606,7 +606,14 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         try:
             focus_widget = self._browsers_by_layer[layer]
         except KeyError:
-            paths_in_layer = [path for path in paths if layer.GetObjectAtPath(path)]
+            paths_in_layer = []
+            for path in paths:
+                if not layer.GetObjectAtPath(path):
+                    print(f"{path=} does not exist on {layer=}")
+                    continue
+                if path.IsPropertyPath():
+                    path = path.GetParentPath()
+                paths_in_layer.append(path)
             error, text = _browse_layer_contents(layer, paths=paths_in_layer)
             if error:
                 QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
