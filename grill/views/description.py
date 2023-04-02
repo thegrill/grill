@@ -43,7 +43,7 @@ _HIGHLIGHT_COLORS = MappingProxyType(
         *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references", "reference")),
         *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
         *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
-        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name")),
+        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name", "outline_details")),
         *((key, (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])) for key in ("inherit", "inherits")),
         *((key, ("#9a94bf", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])) for key in ("payload", "payloads")),
         *((key,  ("#c18f76", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])) for key in ("specialize", "specializes")),
@@ -59,6 +59,9 @@ _HIGHLIGHT_PATTERN = re.compile(
     rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
 )
 
+_OUTLINE_SDF_PATTERN = re.compile(  # this is a very minimal draft to have colors on the outline sdffilter mode.
+    rf'^((?P<identifier_prim_path>(  )?</[/\w+.:{{}}=]*(\[[/\w+.:{{}}=]+])?>)( : (?P<specifier>\w+))?|(  )?(?P<metadata>\w+)(: ((?P<number>-?[\d.]+)|(?P<string_value>[\w:.]+)(?P<prop_array>\[])?|(?P<collapsed><< [^>]+ >>)|(\[ (?P<relationship>[\w /.:{{}}=]+) ])|(?P<outline_details>.+)))?)$'  # sad, last item is a dot, lazy atm
+)
 
 
 
@@ -92,7 +95,8 @@ def _dot_2_svg(sourcepath):
     return error, targetpath
 
 
-def _browse_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), output_args=tuple()):
+def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), output_args=tuple()):
+    """Textual representation of a layer using ``sdffilter``."""
     with tempfile.TemporaryDirectory() as target_dir:
         name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
         path = Path(target_dir) / f"{name}.usd"
@@ -556,13 +560,19 @@ class LayerTableModel(_core._ObjectTableModel):
 
 
 class _Highlighter(QtGui.QSyntaxHighlighter):
+    _pattern = _HIGHLIGHT_PATTERN
+
     def highlightBlock(self, text):
-        for match in re.finditer(_HIGHLIGHT_PATTERN, text):
+        for match in re.finditer(self._pattern, text):
             for syntax_group, value in match.groupdict().items():
                 if not value:
                     continue
                 start, end = match.span(syntax_group)
                 self.setFormat(start, end-start, _highlight_syntax_format(syntax_group, value))
+
+
+class _SdfOutlineHighlighter(_Highlighter):
+    _pattern = _OUTLINE_SDF_PATTERN
 
 
 class _LayersSheet(_sheets._Spreadsheet):
@@ -614,7 +624,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 if path.IsPropertyPath():
                     path = path.GetParentPath()
                 paths_in_layer.append(path)
-            error, text = _browse_layer_contents(layer, paths=paths_in_layer)
+            error, text = _format_layer_contents(layer, paths=paths_in_layer)
             if error:
                 QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
                 return
@@ -628,17 +638,16 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
             items = dict()  # {Sdf.Path: QtGui.QItem}
 
-            def populate(spec_paths, *args, **kwargs):
+            def populate(spec_paths, *_, **__):
                 for path in spec_paths:
                     if path.IsPropertyPath() or path.IsTargetPath():
                         continue
-                    values = [column.getter(path) for column in outliner_columns]
                     parent_key = path.GetParentPath()
                     variant_set, selection = path.GetVariantSelection()
                     if path.IsPrimVariantSelectionPath() and selection:  # place all variant selections under the variant set
                         parent_key = parent_key.AppendVariantSelection(variant_set, "")
                     parent = items[parent_key] if parent_key in items else root_item
-                    new_items = [QtGui.QStandardItem(str(s)) for s in values]
+                    new_items = [QtGui.QStandardItem(str(column.getter(path))) for column in outliner_columns]
                     parent.appendRow(new_items)
                     new_items[0].setData(path, QtCore.Qt.UserRole)
                     items[path] = new_items[0]
@@ -646,16 +655,25 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             content_paths = list()
             layer.Traverse(layer.pseudoRoot.path, lambda path: content_paths.append(path))
             selection_model = outline_tree.selectionModel()
-
-            def update_contents(*args, **kwargs):
+            highligther_cls = _Highlighter
+            def update_contents(*_, **__):
+                nonlocal highligther_cls
                 if format_combo.currentText() == "pseudoLayer":
                     output_args = ["--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6"]
+                    if highligther_cls != _Highlighter:
+                        highligther_cls = _Highlighter
+                        print(f"Updating highlighter to be: {_Highlighter}")
+                        highligther_cls(browser)
                     sorting_combo.setEnabled(False)
                     outline_valies_check.setEnabled(False)
                 elif format_combo.currentText() == "outline":
                     output_args = ["--sortBy", sorting_combo.currentText()]
                     if not outline_valies_check.isChecked():
                         output_args.append("--noValues")
+                    if highligther_cls != _SdfOutlineHighlighter:
+                        highligther_cls = _SdfOutlineHighlighter
+                        print(f"Updating highlighter to be: {_SdfOutlineHighlighter}")
+                        highligther_cls(browser)
                     sorting_combo.setEnabled(True)
                     outline_valies_check.setEnabled(True)
                 else:
@@ -670,7 +688,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                         paths.extend([v.path for v in layer.GetObjectAtPath(path).variants.values()])
                     else:
                         paths.append(path)
-                error, text = _browse_layer_contents(layer, format_combo.currentText(), paths, output_args)
+                error, text = _format_layer_contents(layer, format_combo.currentText(), paths, output_args)
                 browser.setText(error if error else text)
 
             populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
