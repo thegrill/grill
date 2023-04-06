@@ -369,7 +369,7 @@ class TestViews(unittest.TestCase):
             def _to_ascii(layer, *args, **kwargs):
                 return "", layer.ExportToString()
         else:
-            _to_ascii = description._browse_layer_contents
+            _to_ascii = description._format_layer_contents
 
         layers = stage.GetLayerStack()
         args = stage.GetLayerStack(), None, stage.GetPathResolverContext()
@@ -378,7 +378,7 @@ class TestViews(unittest.TestCase):
         def _log(*args):
             print(args)
 
-        with mock.patch("grill.views.description._browse_layer_contents", new=_to_ascii):
+        with mock.patch("grill.views.description._format_layer_contents", new=_to_ascii):
             dialog = description._start_content_browser(*args)
             browser = dialog.findChild(description._PseudoUSDBrowser)
             browser._on_identifier_requested(anchor, layers[1].identifier)

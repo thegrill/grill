@@ -344,7 +344,6 @@ class _GraphViewer(_DotViewer):
         try:
             nx.nx_agraph.write_dot(subgraph, fp)
         except ImportError as exc:
-            # self._dot2svg.signals.error.emit(exc)
             error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
         else:
             error = ""
@@ -656,28 +655,26 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             layer.Traverse(layer.pseudoRoot.path, lambda path: content_paths.append(path))
             selection_model = outline_tree.selectionModel()
             highligther_cls = _Highlighter
-            def update_contents(*_, **__):
+            highlighters = {"pseudoLayer": _Highlighter, "outline": _SdfOutlineHighlighter}
+            def _ensure_highligther(cls):
                 nonlocal highligther_cls
-                if format_combo.currentText() == "pseudoLayer":
-                    output_args = ["--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6"]
-                    if highligther_cls != _Highlighter:
-                        highligther_cls = _Highlighter
-                        print(f"Updating highlighter to be: {_Highlighter}")
-                        highligther_cls(browser)
-                    sorting_combo.setEnabled(False)
-                    outline_valies_check.setEnabled(False)
-                elif format_combo.currentText() == "outline":
-                    output_args = ["--sortBy", sorting_combo.currentText()]
+                if highligther_cls != _Highlighter:
+                    print(f"Updating highlighter {highligther_cls} to be now: {cls}")
+                    highligther_cls = _Highlighter
+                    highligther_cls(browser)
+                sorting_combo.setEnabled(cls == _Highlighter)
+                outline_valies_check.setEnabled(cls == _Highlighter)
+
+            def update_contents(*_, **__):
+                format_choice = format_combo.currentText()
+                _ensure_highligther(highlighters.get(format_choice))
+                output_args = []
+                if format_choice == "pseudoLayer":
+                    output_args += ["--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6"]
+                elif format_choice == "outline":
+                    output_args += ["--sortBy", sorting_combo.currentText()]
                     if not outline_valies_check.isChecked():
                         output_args.append("--noValues")
-                    if highligther_cls != _SdfOutlineHighlighter:
-                        highligther_cls = _SdfOutlineHighlighter
-                        print(f"Updating highlighter to be: {_SdfOutlineHighlighter}")
-                        highligther_cls(browser)
-                    sorting_combo.setEnabled(True)
-                    outline_valies_check.setEnabled(True)
-                else:
-                    output_args = []
 
                 selected_indices = selection_model.selectedIndexes()
                 paths = list()
@@ -693,14 +690,14 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
             populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
 
-            tree_model = outline_tree.model()
-            with QtCore.QSignalBlocker(outline_tree):
-                for path in paths_in_layer:
-                    proxy_index = tree_model.mapFromSource(outline_model.indexFromItem(items[path]))
-                    selection_model.select(proxy_index, QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
-                    outline_tree.setCurrentIndex(proxy_index)  # possible to set multiple?
-
-            if not paths_in_layer:
+            if paths_in_layer:
+                tree_model = outline_tree.model()
+                with QtCore.QSignalBlocker(outline_tree):
+                    for path in paths_in_layer:
+                        proxy_index = tree_model.mapFromSource(outline_model.indexFromItem(items[path]))
+                        selection_model.select(proxy_index, QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
+                        outline_tree.setCurrentIndex(proxy_index)  # possible to set multiple?
+            else:
                 outline_tree.expandRecursively(root_item.index(), 3)
 
             focus_widget = QtWidgets.QFrame(parent=self)
