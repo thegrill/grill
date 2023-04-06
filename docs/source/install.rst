@@ -96,7 +96,7 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
    .. tab:: Standalone Python
 
-     Replace ``--global-option`` to the correct Include and Lib paths on the system:
+     Replace ``--global-option`` to the correct ``Include`` and ``Lib`` paths on the system (where ``graphviz\cgraph.h`` and ``cgraph.lib`` paths exist, respectively):
 
      .. code:: PowerShell
 
@@ -105,7 +105,7 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
    .. tab:: Houdini
 
-     Replace ``--global-option`` to the correct Include and Lib paths on the system:
+     Replace ``--global-option`` to the correct ``Include`` and ``Lib`` paths on the system (where ``graphviz\cgraph.h`` and ``cgraph.lib`` paths exist, respectively):
 
      .. code:: PowerShell
 
@@ -114,7 +114,7 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
    .. tab:: Maya
 
-     Replace ``--global-option`` to the correct Include and Lib paths on the system **and** the Maya Python include and lib paths:
+     Replace ``--global-option`` to the correct ``Include`` and ``Lib`` paths on the system (where ``graphviz\cgraph.h`` and ``cgraph.lib`` paths exist, respectively) **and** the Maya Python ``include`` and ``lib`` paths:
 
      .. code:: PowerShell
 
