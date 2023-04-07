@@ -96,7 +96,7 @@ class TestViews(unittest.TestCase):
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
-        shutil.rmtree(self._tmpf)
+        # shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
@@ -152,6 +152,12 @@ class TestViews(unittest.TestCase):
         widget._complete_target_layerstack.setChecked(True)
 
         self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
+
+        with mock.patch("grill.views.description.QtWidgets.QApplication.keyboardModifiers") as patch:
+            patch.return_value = QtCore.Qt.ShiftModifier
+            root_idx = widget.composition_tree._model.index(0, 0)
+            widget.composition_tree.expanded.emit(root_idx)
+            widget.composition_tree.collapsed.emit(root_idx)
 
         widget.setPrim(None)
         self.assertFalse(widget.composition_tree._model.invisibleRootItem().hasChildren())
