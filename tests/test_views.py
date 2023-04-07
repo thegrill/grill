@@ -378,7 +378,7 @@ class TestViews(unittest.TestCase):
             _to_ascii = description._format_layer_contents
 
         layers = stage.GetLayerStack()
-        args = stage.GetLayerStack(), None, stage.GetPathResolverContext()
+        args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned.GetPrim().GetPath(),)
         anchor = layers[0]
 
         def _log(*args):
@@ -388,7 +388,7 @@ class TestViews(unittest.TestCase):
             dialog = description._start_content_browser(*args)
             browser = dialog.findChild(description._PseudoUSDBrowser)
             browser._on_identifier_requested(anchor, layers[1].identifier)
-            with mock.patch("PySide2.QtWidgets.QMessageBox.warning", new=_log):
+            with mock.patch("PySide6.QtWidgets.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
             browser.tabCloseRequested.emit(0)  # request closing our first tab
 
