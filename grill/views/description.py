@@ -645,8 +645,12 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     variant_set, selection = path.GetVariantSelection()
                     if path.IsPrimVariantSelectionPath() and selection:  # place all variant selections under the variant set
                         parent_key = parent_key.AppendVariantSelection(variant_set, "")
+                    highlight_color = _HIGHLIGHT_COLORS["variantSets"][_PALETTE.get()] if variant_set else None
                     parent = items[parent_key] if parent_key in items else root_item
                     new_items = [QtGui.QStandardItem(str(column.getter(path))) for column in outliner_columns]
+                    if highlight_color:
+                        for item in new_items:
+                            item.setData(highlight_color, QtCore.Qt.ForegroundRole)
                     parent.appendRow(new_items)
                     new_items[0].setData(path, QtCore.Qt.UserRole)
                     items[path] = new_items[0]
