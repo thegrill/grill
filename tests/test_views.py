@@ -96,7 +96,7 @@ class TestViews(unittest.TestCase):
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
-        shutil.rmtree(self._tmpf)
+        # shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
@@ -387,8 +387,13 @@ class TestViews(unittest.TestCase):
         with mock.patch("grill.views.description._format_layer_contents", new=_to_ascii):
             dialog = description._start_content_browser(*args)
             browser = dialog.findChild(description._PseudoUSDBrowser)
+            assert browser._browsers_by_layer.values()
+            first_browser_widget, = browser._browsers_by_layer.values()
+            first_browser_widget._format_options.setCurrentIndex(0)
+            first_browser_widget._format_options.setCurrentIndex(1)
+            first_browser_widget._format_options.setCurrentIndex(0)
             browser._on_identifier_requested(anchor, layers[1].identifier)
-            with mock.patch("PySide2.QtWidgets.QMessageBox.warning", new=_log):
+            with mock.patch("PySide6.QtWidgets.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
             browser.tabCloseRequested.emit(0)  # request closing our first tab
 

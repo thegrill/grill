@@ -658,16 +658,15 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             highlighters = {"pseudoLayer": _Highlighter, "outline": _SdfOutlineHighlighter}
             def _ensure_highligther(cls):
                 nonlocal highligther_cls
-                if highligther_cls != _Highlighter:
-                    print(f"Updating highlighter {highligther_cls} to be now: {cls}")
-                    highligther_cls = _Highlighter
+                if highligther_cls != cls:
+                    browser.setText("")  # clear contents before changing highlighting to avoid locks with huge contents
+                    highligther_cls = cls
                     highligther_cls(browser)
-                sorting_combo.setEnabled(cls == _Highlighter)
-                outline_valies_check.setEnabled(cls == _Highlighter)
+                sorting_combo.setEnabled(cls == _SdfOutlineHighlighter)
+                outline_valies_check.setEnabled(cls == _SdfOutlineHighlighter)
 
             def update_contents(*_, **__):
                 format_choice = format_combo.currentText()
-                _ensure_highligther(highlighters.get(format_choice))
                 output_args = []
                 if format_choice == "pseudoLayer":
                     output_args += ["--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6"]
@@ -675,7 +674,6 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     output_args += ["--sortBy", sorting_combo.currentText()]
                     if not outline_valies_check.isChecked():
                         output_args.append("--noValues")
-
                 selected_indices = selection_model.selectedIndexes()
                 paths = list()
                 for each in selected_indices:
@@ -685,8 +683,11 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                         paths.extend([v.path for v in layer.GetObjectAtPath(path).variants.values()])
                     else:
                         paths.append(path)
-                error, text = _format_layer_contents(layer, format_combo.currentText(), paths, output_args)
-                browser.setText(error if error else text)
+
+                with QtCore.QSignalBlocker(browser):
+                    _ensure_highligther(highlighters.get(format_choice))
+                    error, text = _format_layer_contents(layer, format_combo.currentText(), paths, output_args)
+                    browser.setText(error if error else text)
 
             populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
 
@@ -710,6 +711,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             format_layout = QtWidgets.QFormLayout()
             format_combo = QtWidgets.QComboBox()
             format_combo.addItems(["pseudoLayer", "outline"])
+            focus_widget._format_options = format_combo
             format_layout.addRow("Format", format_combo)
             options_layout.addLayout(format_layout)
 
