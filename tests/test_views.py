@@ -369,7 +369,14 @@ class TestViews(unittest.TestCase):
         ):
             spawned = UsdGeom.Xform(cook.spawn_unit(parent, child, path))
             spawned.AddTranslateOp().Set(value=value)
-
+        variant_set_name = "testset"
+        variant_name = "testvar"
+        vset = child.GetVariantSet(variant_set_name)
+        vset.AddVariant(variant_name)
+        vset.SetVariantSelection(variant_name)
+        with vset.GetVariantEditContext():
+            stage.DefinePrim(child.GetPath().AppendChild("in_variant"))
+        path_with_variant = child.GetPath().AppendVariantSelection(variant_set_name, variant_name)
         # sdffilter still not coming via pypi, so patch for now
         if not description._which("sdffilter"):
             def _to_ascii(layer, *args, **kwargs):
@@ -378,7 +385,7 @@ class TestViews(unittest.TestCase):
             _to_ascii = description._format_layer_contents
 
         layers = stage.GetLayerStack()
-        args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned.GetPrim().GetPath(),)
+        args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned.GetPrim().GetPath(), path_with_variant)
         anchor = layers[0]
 
         def _log(*args):
