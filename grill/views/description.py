@@ -56,14 +56,16 @@ _HIGHLIGHT_COLORS = MappingProxyType(
     )}
 )
 _HIGHLIGHT_PATTERN = re.compile(
-    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
 )
 
 _OUTLINE_SDF_PATTERN = re.compile(  # this is a very minimal draft to have colors on the outline sdffilter mode.
     rf'^((?P<identifier_prim_path>(  )?</[/\w+.:{{}}=]*(\[[/\w+.:{{}}=]+])?>)( : (?P<specifier>\w+))?|(  )?(?P<metadata>\w+)(: ((?P<number>-?[\d.]+)|(?P<string_value>[\w:.]+)(?P<prop_array>\[])?|(?P<collapsed><< [^>]+ >>)|(\[ (?P<relationship>[\w /.:{{}}=]+) ])|(?P<outline_details>.+)))?)$'  # sad, last item is a dot, lazy atm
 )
 
-
+_TREE_PATTERN = re.compile(  # draft as well output of usdtree
+    rf'^(?P<identifier_prim_path>([/`|\s:]+-+)(\w+)?)(\((?P<metadata>\w+)\)|(?P<prop_name>\.[\w:]+)|( \[(?P<specifier>def|over|class)( (?P<prim_type>\w+))?])( \((?P<custom_meta>[\w\s=]+)\))?)'
+)
 
 
 def _run(args: list):
@@ -102,7 +104,10 @@ def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), outp
         path = Path(target_dir) / f"{name}.usd"
         layer.Export(str(path))
         path_args = ("-p", "|".join(re.escape(str(p)) for p in paths)) if paths else tuple()
-        args = [_which("sdffilter"), "--outputType", output_type, *output_args, *path_args, str(path)]
+        if output_type == "usdtree":
+            args = [_which("usdtree"), "-a", "-m", str(path)]
+        else:
+            args = [_which("sdffilter"), "--outputType", output_type, *output_args, *path_args, str(path)]
         return _run(args)
 
 
@@ -574,6 +579,10 @@ class _SdfOutlineHighlighter(_Highlighter):
     _pattern = _OUTLINE_SDF_PATTERN
 
 
+class _TreeOutlineHighlighter(_Highlighter):
+    _pattern = _TREE_PATTERN
+
+
 class _LayersSheet(_sheets._Spreadsheet):
     def __init__(self, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
         super().__init__(*args, **kwargs)
@@ -659,7 +668,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             layer.Traverse(layer.pseudoRoot.path, lambda path: content_paths.append(path))
             selection_model = outline_tree.selectionModel()
             highligther_cls = _Highlighter
-            highlighters = {"pseudoLayer": _Highlighter, "outline": _SdfOutlineHighlighter}
+            highlighters = {"pseudoLayer": _Highlighter, "outline": _SdfOutlineHighlighter, "usdtree": _TreeOutlineHighlighter}
             def _ensure_highligther(cls):
                 nonlocal highligther_cls
                 if highligther_cls != cls:
@@ -689,7 +698,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                         paths.append(path)
 
                 with QtCore.QSignalBlocker(browser):
-                    _ensure_highligther(highlighters.get(format_choice))
+                    _ensure_highligther(highlighters.get(format_choice, _Highlighter))
                     error, text = _format_layer_contents(layer, format_combo.currentText(), paths, output_args)
                     browser.setText(error if error else text)
 
@@ -714,7 +723,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             options_layout = QtWidgets.QHBoxLayout()
             format_layout = QtWidgets.QFormLayout()
             format_combo = QtWidgets.QComboBox()
-            format_combo.addItems(["pseudoLayer", "outline"])
+            format_combo.addItems(["pseudoLayer", "outline", "usdtree"])
             focus_widget._format_options = format_combo
             format_layout.addRow("Format", format_combo)
             options_layout.addLayout(format_layout)
