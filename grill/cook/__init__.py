@@ -22,6 +22,7 @@
         WindowsPath('C:/Users/CHRIST~1/AppData/Local/Temp/tmp767wqaya')
 
 """
+from __future__ import annotations
 
 import types
 import typing
