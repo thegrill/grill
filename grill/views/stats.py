@@ -1,7 +1,12 @@
-from functools import partial
+from functools import partial, cache
 from pxr import UsdUtils
 
-from ._qt import QtWidgets, QtCore, QtCharts, QtGui
+from ._qt import QtWidgets, QtCore, QtGui
+
+
+@cache
+def _report_no_charts():
+    print("No QtCharts module could be imported. Are you in a DCC app?")
 
 
 class _ContainerTree(QtWidgets.QTreeWidget):
@@ -28,10 +33,6 @@ class _ContainerTree(QtWidgets.QTreeWidget):
 
 
 class _StatsPie(QtWidgets.QWidget):
-    def __init__(self, *args, stats=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if stats:
-            self.setStats(stats)
 
     def setStats(self, value, *, title=None):
         layout = QtWidgets.QVBoxLayout()
@@ -47,7 +48,12 @@ class _StatsPie(QtWidgets.QWidget):
                 target = substats if isinstance(data_value, dict) else stats
                 target.append((data_key, data_value))
 
-            if stats:
+            def _add_pie():
+                try:
+                    from ._qt import QtCharts  # Hou-19.5 & Maya-2023 don't include QtCharts
+                except ImportError:
+                    _report_no_charts()
+                    return
                 series = QtCharts.QPieSeries()
                 for stat_key, stat_value in stats:
                     series.append(f"{stat_key}: {stat_value}", stat_value)
@@ -63,6 +69,9 @@ class _StatsPie(QtWidgets.QWidget):
                 view = QtCharts.QChartView(chart)
                 view.setRenderHint(QtGui.QPainter.Antialiasing)
                 parent.addWidget(view)
+
+            if stats:
+                _add_pie()
 
             if substats:
                 subparent = QtWidgets.QSplitter(QtCore.Qt.Horizontal)

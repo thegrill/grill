@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import shutil
 import typing
 import operator
 import tempfile
@@ -22,6 +21,7 @@ from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from .. import usd as _usd
 from . import sheets as _sheets, _core
+from ._core import _which
 
 
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
@@ -43,7 +43,7 @@ _HIGHLIGHT_COLORS = MappingProxyType(
         *((key, ("#f7786b", "#d33682")) for key in ("specifier", "rel_op", "value_assignment", "references", "reference")),
         *((key, ("#f7cac9", "#f7786b")) for key in ("prim_name", "identifier_prim_path", "relationship", "apiSchemas")),
         *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
-        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name")),
+        *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name", "outline_details")),
         *((key, (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])) for key in ("inherit", "inherits")),
         *((key, ("#9a94bf", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])) for key in ("payload", "payloads")),
         *((key,  ("#c18f76", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])) for key in ("specialize", "specializes")),
@@ -56,13 +56,16 @@ _HIGHLIGHT_COLORS = MappingProxyType(
     )}
 )
 _HIGHLIGHT_PATTERN = re.compile(
-    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>\w+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
 )
 
+_OUTLINE_SDF_PATTERN = re.compile(  # this is a very minimal draft to have colors on the outline sdffilter mode.
+    rf'^((?P<identifier_prim_path>(  )?</[/\w+.:{{}}=]*(\[[/\w+.:{{}}=]+])?>)( : (?P<specifier>\w+))?|(  )?(?P<metadata>\w+)(: ((?P<number>-?[\d.]+)|(?P<string_value>[\w:.]+)(?P<prop_array>\[])?|(?P<collapsed><< [^>]+ >>)|(\[ (?P<relationship>[\w /.:{{}}=]+) ])|(?P<outline_details>.+)))?)$'  # sad, last item is a dot, lazy atm
+)
 
-@lru_cache(maxsize=None)
-def _which(what):
-    return shutil.which(what)
+_TREE_PATTERN = re.compile(  # draft as well output of usdtree
+    rf'^(?P<identifier_prim_path>([/`|\s:]+-+)(\w+)?)(\((?P<metadata>\w+)\)|(?P<prop_name>\.[\w:]+)|( \[(?P<specifier>def|over|class)( (?P<prim_type>\w+))?])( \((?P<custom_meta>[\w\s=]+)\))?)'
+)
 
 
 def _run(args: list):
@@ -94,12 +97,17 @@ def _dot_2_svg(sourcepath):
     return error, targetpath
 
 
-def _pseudo_layer(layer):
+def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), output_args=tuple()):
+    """Textual representation of a layer using ``sdffilter``."""
     with tempfile.TemporaryDirectory() as target_dir:
         name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
         path = Path(target_dir) / f"{name}.usd"
         layer.Export(str(path))
-        args = [_which("sdffilter"), "--outputType", "pseudoLayer", "--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6", str(path)]
+        path_args = ("-p", "|".join(re.escape(str(p)) for p in paths)) if paths else tuple()
+        if output_type == "usdtree":
+            args = [_which("usdtree"), "-a", "-m", str(path)]
+        else:
+            args = [_which("sdffilter"), "--outputType", output_type, *output_args, *path_args, str(path)]
         return _run(args)
 
 
@@ -216,18 +224,18 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     )
 
 
-def _launch_content_browser(layers, parent, context):
-    dialog = _start_content_browser(layers, parent, context)
+def _launch_content_browser(layers, parent, context, paths=tuple()):
+    dialog = _start_content_browser(layers, parent, context, paths)
     dialog.show()
 
 
-def _start_content_browser(layers, parent, context):
+def _start_content_browser(layers, parent, context, paths=tuple()):
     dialog = QtWidgets.QDialog(parent=parent)
     dialog.setWindowTitle("Layer Content Browser")
     layout = QtWidgets.QVBoxLayout()
     vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
     for layer in layers:
-        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context)
+        browser = _PseudoUSDBrowser(layer, parent=dialog, resolver_context=context, paths=paths)
         vertical.addWidget(browser)
     layout.addWidget(vertical)
     dialog.setLayout(layout)
@@ -247,6 +255,14 @@ class _Dot2SvgSignals(QtCore.QObject):
     result = QtCore.Signal(str)
 
 
+_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
+the 'dot' command must be available on the current environment.
+
+Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
+
+For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
+"""
+
 class _Dot2Svg(QtCore.QRunnable):
     def __init__(self, source_fp, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -256,12 +272,7 @@ class _Dot2Svg(QtCore.QRunnable):
     @QtCore.Slot()
     def run(self):
         if not _which("dot"):
-            self.signals.error.emit(
-                "In order to display composition arcs in a graph,\n"
-                "the 'dot' command must be available on the current environment.\n\n"
-                "Please make sure graphviz is installed and 'dot' available \n"
-                "on the system's PATH environment variable."
-            )
+            self.signals.error.emit(_DOT_ENVIRONMENT_ERROR)
             return
         error, svg_fp = _dot_2_svg(self.source_fp)
         self.signals.error.emit(error) if error else self.signals.result.emit(svg_fp)
@@ -335,13 +346,21 @@ class _GraphViewer(_DotViewer):
         subgraph = graph.subgraph(nodes_of_interest)
 
         fd, fp = tempfile.mkstemp()
-        nx.nx_agraph.write_dot(subgraph, fp)
-        return fp
+        try:
+            nx.nx_agraph.write_dot(subgraph, fp)
+        except ImportError as exc:
+            error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+        else:
+            error = ""
+        return error, fp
 
     def view(self, node_indices: typing.Iterable):
-        dot_path = self._subgraph_dot_path(tuple(node_indices))
+        error, dot_path = self._subgraph_dot_path(tuple(node_indices))
         self._viewing = frozenset(node_indices)
-        self.setDotPath(dot_path)
+        if error:
+            self._on_dot_error(error)
+        else:
+            self.setDotPath(dot_path)
 
     @property
     def graph(self):
@@ -356,6 +375,29 @@ class _GraphViewer(_DotViewer):
 
 # Reminder: Inheriting does not bring QTreeView stylesheet (Stylesheet needs to target this class specifically).
 class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.expanded.connect(self._expand_all_children)
+        self.collapsed.connect(self._collapse_all_children)
+
+    def _expand_all_children(self, index):
+        if QtWidgets.QApplication.keyboardModifiers() == QtCore.Qt.ShiftModifier:
+            with QtCore.QSignalBlocker(self):
+                self.expandRecursively(index)
+
+    def _collapse_all_children(self, index):
+        model = index.model()
+
+        def _collapse_recursively(_index):  # No "self.collapseRecursively", Qt? ):
+            self.setExpanded(_index, False)
+            for row in range(model.rowCount(_index)):
+                if child := model.index(row, 0, _index):
+                    _collapse_recursively(child)
+
+        if QtWidgets.QApplication.keyboardModifiers() == QtCore.Qt.ShiftModifier:
+            with QtCore.QSignalBlocker(self):
+                _collapse_recursively(index)
+
     def _connect_search(self, options, index, model):
         super()._connect_search(options, index, model)
         model.setRecursiveFilteringEnabled(True)
@@ -433,15 +475,18 @@ class PrimComposition(QtWidgets.QDialog):
         menu = QtWidgets.QMenu(tree:=self.composition_tree)
         selection = tree.selectedIndexes()
         if len(set(i.row() for i in selection) ) == 1:
-            stage, edit_target = selection[0].data(QtCore.Qt.UserRole)
+            stage, edit_target, target_path = selection[0].data(QtCore.Qt.UserRole)
             menu.addAction("Set As Edit Target", partial(stage.SetEditTarget, edit_target))
+            menu.addAction(_BROWSE_CONTENTS_MENU_TITLE, partial(_launch_content_browser, (edit_target.GetLayer(),), self, stage.GetPathResolverContext(), [target_path]))
         menu.exec_(QtGui.QCursor.pos())
 
     def setPrim(self, prim):
         self._prim = prim
         if not self._prim:
             self.clear()
+            self.setWindowTitle("Prim Composition")
             return
+        self.setWindowTitle(f"Prim Composition: {prim.GetName()} ({prim.GetPath()})")
         prim_index = prim.GetPrimIndex()
         self.index_box.setText(prim_index.DumpToString())
         fd, fp = tempfile.mkstemp()
@@ -491,13 +536,14 @@ class PrimComposition(QtWidgets.QDialog):
 
                 edit_target = Usd.EditTarget(each, target_node)
                 for item in arc_items:
-                    item.setData((stage, edit_target), QtCore.Qt.UserRole)
+                    item.setData((stage, edit_target, target_path), QtCore.Qt.UserRole)
                     if highlight_color:
                         item.setData(highlight_color, QtCore.Qt.ForegroundRole)
 
                 parent.appendRow(arc_items)
 
         tree.expandAll()
+        tree._fixPositions()  # TODO: Houdini needs this. Why?
         for index, size in sizes.items():
             header.resizeSection(index, size)
 
@@ -518,13 +564,23 @@ class LayerTableModel(_core._ObjectTableModel):
 
 
 class _Highlighter(QtGui.QSyntaxHighlighter):
+    _pattern = _HIGHLIGHT_PATTERN
+
     def highlightBlock(self, text):
-        for match in re.finditer(_HIGHLIGHT_PATTERN, text):
+        for match in re.finditer(self._pattern, text):
             for syntax_group, value in match.groupdict().items():
                 if not value:
                     continue
                 start, end = match.span(syntax_group)
                 self.setFormat(start, end-start, _highlight_syntax_format(syntax_group, value))
+
+
+class _SdfOutlineHighlighter(_Highlighter):
+    _pattern = _OUTLINE_SDF_PATTERN
+
+
+class _TreeOutlineHighlighter(_Highlighter):
+    _pattern = _TREE_PATTERN
 
 
 class _LayersSheet(_sheets._Spreadsheet):
@@ -551,30 +607,145 @@ class _LayersSheet(_sheets._Spreadsheet):
 
 
 class _PseudoUSDBrowser(QtWidgets.QTabWidget):
-    def __init__(self, layer, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
-        super(_PseudoUSDBrowser, self).__init__(*args, **kwargs)
+    def __init__(self, layer, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), paths=tuple(), **kwargs):
+        super().__init__(*args, **kwargs)
         self._resolver_context = resolver_context
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
-        self._tab_layer_by_idx = dict()  # {tab_idx: Sdf.Layer}
-        self._addLayerTab(layer)
+        self._tab_layer_by_idx = list()  # {tab_idx: Sdf.Layer}
+        self._addLayerTab(layer, paths)
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
     def tabRemoved(self, index: int) -> None:
-         del self._browsers_by_layer[self._tab_layer_by_idx[index]]
+        del self._browsers_by_layer[self._tab_layer_by_idx.pop(index)]
 
     @_core.wait()
-    def _addLayerTab(self, layer):
+    def _addLayerTab(self, layer, paths=tuple()):
         try:
             focus_widget = self._browsers_by_layer[layer]
         except KeyError:
-            error, text = _pseudo_layer(layer)
+            paths_in_layer = []
+            for path in paths:
+                if not layer.GetObjectAtPath(path):
+                    print(f"{path=} does not exist on {layer=}")
+                    continue
+                if path.IsPropertyPath():
+                    path = path.GetParentPath()
+                paths_in_layer.append(path)
+            error, text = _format_layer_contents(layer, paths=paths_in_layer)
             if error:
                 QtWidgets.QMessageBox.warning(self, "Error Opening Contents", error)
                 return
+
+            outliner_columns = (_core._Column("Path", lambda path: path.name),)
+            outline_model = QtGui.QStandardItemModel()
+            outline_tree = _Tree(outline_model, outliner_columns, _core._ColumnOptions.SEARCH)
+            outline_tree.setSelectionMode(outline_tree.SelectionMode.ExtendedSelection)
+            outline_model.setHorizontalHeaderLabels([""] * len(outliner_columns))
+            root_item = outline_model.invisibleRootItem()
+
+            items = dict()  # {Sdf.Path: QtGui.QItem}
+
+            def populate(spec_paths, *_, **__):
+                for path in spec_paths:
+                    if path.IsPropertyPath() or path.IsTargetPath():
+                        continue
+                    parent_key = path.GetParentPath()
+                    variant_set, selection = path.GetVariantSelection()
+                    if path.IsPrimVariantSelectionPath() and selection:  # place all variant selections under the variant set
+                        parent_key = parent_key.AppendVariantSelection(variant_set, "")
+                    highlight_color = _HIGHLIGHT_COLORS["variantSets"][_PALETTE.get()] if variant_set else None
+                    parent = items[parent_key] if parent_key in items else root_item
+                    new_items = [QtGui.QStandardItem(str(column.getter(path))) for column in outliner_columns]
+                    if highlight_color:
+                        for item in new_items:
+                            item.setData(highlight_color, QtCore.Qt.ForegroundRole)
+                    parent.appendRow(new_items)
+                    new_items[0].setData(path, QtCore.Qt.UserRole)
+                    items[path] = new_items[0]
+
+            content_paths = list()
+            layer.Traverse(layer.pseudoRoot.path, lambda path: content_paths.append(path))
+            selection_model = outline_tree.selectionModel()
+            highligther_cls = _Highlighter
+            highlighters = {"pseudoLayer": _Highlighter, "outline": _SdfOutlineHighlighter, "usdtree": _TreeOutlineHighlighter}
+            def _ensure_highligther(cls):
+                nonlocal highligther_cls
+                if highligther_cls != cls:
+                    browser.setText("")  # clear contents before changing highlighting to avoid locks with huge contents
+                    highligther_cls = cls
+                    highligther_cls(browser)
+                sorting_combo.setEnabled(cls == _SdfOutlineHighlighter)
+                outline_valies_check.setEnabled(cls == _SdfOutlineHighlighter)
+
+            def update_contents(*_, **__):
+                format_choice = format_combo.currentText()
+                output_args = []
+                if format_choice == "pseudoLayer":
+                    output_args += ["--arraySizeLimit", "6", "--timeSamplesSizeLimit", "6"]
+                elif format_choice == "outline":
+                    output_args += ["--sortBy", sorting_combo.currentText()]
+                    if not outline_valies_check.isChecked():
+                        output_args.append("--noValues")
+                selected_indices = selection_model.selectedIndexes()
+                paths = list()
+                for each in selected_indices:
+                    path = each.data(QtCore.Qt.UserRole)
+                    variant_set, selection = path.GetVariantSelection()
+                    if path.IsPrimVariantSelectionPath() and not selection:  # we're the "parent" variant. collect all variant paths as sdffilter does not math unselected variants ):
+                        paths.extend([v.path for v in layer.GetObjectAtPath(path).variants.values()])
+                    else:
+                        paths.append(path)
+
+                with QtCore.QSignalBlocker(browser):
+                    _ensure_highligther(highlighters.get(format_choice, _Highlighter))
+                    error, text = _format_layer_contents(layer, format_combo.currentText(), paths, output_args)
+                    browser.setText(error if error else text)
+
+            populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
+
+            if paths_in_layer:
+                tree_model = outline_tree.model()
+                with QtCore.QSignalBlocker(outline_tree):
+                    for path in paths_in_layer:
+                        proxy_index = tree_model.mapFromSource(outline_model.indexFromItem(items[path]))
+                        selection_model.select(proxy_index, QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
+                        outline_tree.setCurrentIndex(proxy_index)  # possible to set multiple?
+            else:
+                outline_tree.expandRecursively(root_item.index(), 3)
+
             focus_widget = QtWidgets.QFrame(parent=self)
+            focus_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+            focus_splitter.addWidget(outline_tree)
+            focus_layout = QtWidgets.QHBoxLayout()
+            focus_layout.setContentsMargins(0, 0, 0, 0)
+
+            options_layout = QtWidgets.QHBoxLayout()
+            format_layout = QtWidgets.QFormLayout()
+            format_combo = QtWidgets.QComboBox()
+            format_combo.addItems(["pseudoLayer", "outline", "usdtree"])
+            focus_widget._format_options = format_combo
+            format_layout.addRow("Format", format_combo)
+            options_layout.addLayout(format_layout)
+
+            outline_sorting_layout = QtWidgets.QFormLayout()
+            sorting_combo = QtWidgets.QComboBox()
+            sorting_combo.addItems(["path", "field"])
+            outline_sorting_layout.addRow("Sort By", sorting_combo)
+            options_layout.addLayout(outline_sorting_layout)
+            outline_valies_check = QtWidgets.QCheckBox("Values")
+            outline_valies_check.setChecked(True)
+            options_layout.addWidget(outline_valies_check)
+            options_layout.addStretch()
+
+            format_combo.setCurrentIndex(0)
+            sorting_combo.setEnabled(False)
+            outline_valies_check.setEnabled(False)
+
+            browser_frame = QtWidgets.QFrame(parent=self)
             browser_layout = QtWidgets.QVBoxLayout()
             browser_layout.setContentsMargins(0, 0, 0, 0)
+            browser_layout.addLayout(options_layout)
 
             self._line_filter = browser_line_filter = QtWidgets.QLineEdit()
             browser_line_filter.setPlaceholderText("Find")
@@ -583,7 +754,20 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             filter_layout.addRow(_core._EMOJI.SEARCH.value, browser_line_filter)
             browser_layout.addLayout(filter_layout)
 
-            focus_widget.setLayout(browser_layout)
+            browser_frame.setLayout(browser_layout)
+            for trigger in (
+                    outline_valies_check.toggled,
+                    selection_model.selectionChanged,
+                    format_combo.currentIndexChanged,
+                    sorting_combo.currentIndexChanged,
+            ):
+                trigger.connect(update_contents)
+
+            focus_layout.addWidget(focus_splitter)
+            focus_splitter.addWidget(browser_frame)
+            focus_splitter.setStretchFactor(1, 2)
+            focus_widget.setLayout(focus_layout)
+
             browser = _PseudoUSDTabBrowser(parent=self)
             browser.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
             _Highlighter(browser)
@@ -601,7 +785,8 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_layout.addWidget(browser)
 
             tab_idx = self.addTab(focus_widget, _layer_label(layer))
-            self._tab_layer_by_idx[tab_idx] = layer
+            self._tab_layer_by_idx.append(layer)
+            assert len(self._tab_layer_by_idx) == (tab_idx+1)
             self._browsers_by_layer[layer] = focus_widget
         self.setCurrentWidget(focus_widget)
 

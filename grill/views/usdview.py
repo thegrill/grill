@@ -5,7 +5,7 @@ import contextvars
 from functools import lru_cache, partial
 
 from pxr import UsdGeom, Usd, Sdf, Ar, Tf
-from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu
+from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu, primContextMenuItems, primContextMenu
 
 from ._qt import QtWidgets
 
@@ -13,6 +13,16 @@ from . import _core, _attributes, sheets as _sheets, description as _description
 
 _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
 _description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
+
+
+_tree_init = _description._Tree.__init__
+def _usdview_tree_init(self, *args, **kwargs):
+    _tree_init(self, *args, **kwargs)
+    self.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
+
+# Only when in USDView we want to extend the stylesheet of the _Tree class
+# TODO: is there a better way?
+_description._Tree.__init__ = _usdview_tree_init
 
 
 def _stage_on_widget(widget_creator):
@@ -36,7 +46,6 @@ def _layer_stack_from_prims(usdviewApi):
 @lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
     widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
-    widget.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
     def primChanged(new_paths, __):
         new_path = next(iter(new_paths), None)
         widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()
@@ -71,6 +80,13 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
 
     def RunCommand(self):
         if self._item:
+            # from testing, only entries in the Composition tab without HasSpecs miss "path"
+            if path := getattr(self._item, "path", None):
+                if isinstance(path, str):
+                    path = Sdf.Path(path)
+                paths = [path]
+            else:
+                paths = []
             usdview_api = _usdview_api.get()
             context = usdview_api.stage.GetPathResolverContext()
             if not (layer:= getattr(self._item, 'layer', None)):  # USDView allows for single layer selection in composition tab :(
@@ -80,7 +96,20 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
                     if not (layer:=Sdf.Layer.FindOrOpen(layerPath)):  # edge case, is this possible?
                         print(f"Could not find layer from {layerPath}")
                         return
-            _description._launch_content_browser([layer], usdview_api.qMainWindow, context)
+            _description._launch_content_browser([layer], usdview_api.qMainWindow, context, paths=paths)
+
+
+class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):
+    def GetText(self):
+        return f"Inspect Prim{'s' if len(self._selectionDataModel.getPrims())>1 else ''} Composition"
+
+    def RunCommand(self):
+        usdview_api = _usdview_api.get()
+        # The "double pop up" upon showing widgets does not happen on PySide2, only on PySide6
+        for prim in self._selectionDataModel.getPrims():
+            widget = _description.PrimComposition(parent=usdview_api.qMainWindow)
+            widget.setPrim(prim)
+            widget.show()
 
 
 class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
@@ -191,9 +220,13 @@ def _extend_menu(_extender, original, *args):
 
 
 for module, member_name, extender in (
+        (primContextMenuItems, "_GetContextMenuItems", GrillPrimCompositionMenuItem),
         (layerStackContextMenu, "_GetContextMenuItems", GrillContentBrowserLayerMenuItem),
         (attributeViewContextMenu, "_GetContextMenuItems", lambda *args: GrillAttributeEditorMenuItem(*reversed(args)))  # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
 ):
     setattr(module, member_name, partial(_extend_menu, extender, getattr(module, member_name)))
 
+
+# We need to do this since primContextMenu imports the function directly, so re-assign with our recently patched one
+primContextMenu._GetContextMenuItems = primContextMenuItems._GetContextMenuItems
 Tf.Type.Define(GrillPlugin)

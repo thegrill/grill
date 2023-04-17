@@ -1,8 +1,11 @@
 """Shared members for views modules, not considered public API."""
+import os
 import enum
+import shutil
 import typing
 import contextlib
-from functools import partial
+from pathlib import Path
+from functools import partial, cache
 
 from ._qt import QtWidgets, QtGui, QtCore
 
@@ -78,32 +81,21 @@ QTableView::item:hover:!pressed:selected {
 /*    background: rgb(132, 109, 59); */
     background: rgb(227, 186, 101);
 }
-
-/* Set the branch triangle icons */
-_Tree::branch:has-children:!has-siblings:closed,
-_Tree::branch:closed:has-children:has-siblings {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-closed.png);
-}
-
-_Tree::branch:open:has-children:!has-siblings,
-_Tree::branch:open:has-children:has-siblings  {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-open.png);
-}
-
-_Tree::branch:selected:has-children:!has-siblings:closed,
-_Tree::branch:selected:closed:has-children:has-siblings {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-closed-selected.png);
-}
-
-_Tree::branch:selected:open:has-children:!has-siblings,
-_Tree::branch:selected:open:has-children:has-siblings  {
-    border-image: none;
-    image: url(%(RESOURCE_DIR)s/icons/branch-open-selected.png);
-}
 """
+
+@cache
+def _which(what):
+    return shutil.which(what)
+
+
+@cache
+def _ensure_dot():
+    """For usage only when DCC python interpreter fails to install pygraphviz properly."""
+    if dotpath := _which("dot"):
+        # https://github.com/pygraphviz/pygraphviz/issues/360
+        # TODO: is this the best approach to solve current Houdini and Maya failing to import graphviz??
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(Path(dotpath).parent)  # sigh, patch pygraphviz?
 
 
 @contextlib.contextmanager
@@ -116,28 +108,29 @@ def wait():
 
 
 class _EMOJI(enum.Enum):  # Replace with StrEnum in 3.11
+    # All emojis have an additional space at the end since Maya-2023.2 and Houdini-19.5 are unable to display emoji otherwise
     # GENERAL
-    ID = "🕵"
-    VISIBILITY = "👀"
-    SEARCH = "🔎"
-    LOCK = "🔐"
-    UNLOCK = "🔓"
+    ID = "🕵 "
+    VISIBILITY = "👀 "
+    SEARCH = "🔎 "
+    LOCK = "🔐 "
+    UNLOCK = "🔓 "
 
     # STAGE TRAVERSAL
-    MODEL_HIERARCHY = "🏡"
-    INSTANCE_PROXIES = "💠"
+    MODEL_HIERARCHY = "🏡 "
+    INSTANCE_PROXIES = "💠 "
 
     # PRIM SPECIFIER
-    ORPHANED = "👻"
-    CLASSES = "🧪"
-    DEFINED = "🧱"
+    ORPHANED = "👻 "
+    CLASSES = "🧪 "
+    DEFINED = "🧱 "
 
     # PRIM STATUS
-    ACTIVE = "💡"
-    INACTIVE = "🌒"
+    ACTIVE = "💡 "
+    INACTIVE = "🌒 "
 
     # IDENTIFICATION
-    NAME = "🔖"
+    NAME = "🔖 "
 
 
 class _Column(typing.NamedTuple):
@@ -281,6 +274,7 @@ class _Header(QtWidgets.QHeaderView):
             proxy_label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
             self._proxy_labels[column_options.label] = proxy_label
 
+        self.setStretchLastSection(True)
         self.setSectionsMovable(True)
         self.sectionResized.connect(self._handleSectionResized)
         self.sectionMoved.connect(self._handleSectionMoved)

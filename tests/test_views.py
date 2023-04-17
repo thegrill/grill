@@ -1,3 +1,4 @@
+import os
 import io
 import csv
 import shutil
@@ -8,7 +9,7 @@ from unittest import mock
 from pxr import Usd, UsdGeom, Sdf
 
 from grill import cook, usd, names
-from grill.views import description, sheets, create, _attributes, stats
+from grill.views import description, sheets, create, _attributes, stats, _core
 from grill.views._qt import QtWidgets, QtCore
 
 
@@ -48,6 +49,8 @@ class TestPrivate(unittest.TestCase):
             Sdf.Path('/world/hi'),
         ]
         self.assertEqual(actual, expected)
+    def test_core(self):
+        _core._ensure_dot()
 
 
 class TestViews(unittest.TestCase):
@@ -123,6 +126,19 @@ class TestViews(unittest.TestCase):
         self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
 
+        # add_dll_directory only on Windows
+        os.add_dll_directory = lambda path: print(f"Added {path}") if not hasattr(os, "add_dll_directory") else os.add_dll_directory
+
+        _core._which.cache_clear()
+        with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
+            patch.return_value = None
+            widget._graph_view.view([0,1])
+
+        _core._which.cache_clear()
+        with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pygraphviz is not installed
+            patch.side_effect = ImportError
+            widget._graph_view.view([0])
+
         widget.deleteLater()
 
     def test_prim_composition(self):
@@ -136,6 +152,12 @@ class TestViews(unittest.TestCase):
         widget._complete_target_layerstack.setChecked(True)
 
         self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
+
+        with mock.patch("grill.views.description.QtWidgets.QApplication.keyboardModifiers") as patch:
+            patch.return_value = QtCore.Qt.ShiftModifier
+            root_idx = widget.composition_tree._model.index(0, 0)
+            widget.composition_tree.expanded.emit(root_idx)
+            widget.composition_tree.collapsed.emit(root_idx)
 
         widget.setPrim(None)
         self.assertFalse(widget.composition_tree._model.invisibleRootItem().hasChildren())
@@ -347,24 +369,36 @@ class TestViews(unittest.TestCase):
         ):
             spawned = UsdGeom.Xform(cook.spawn_unit(parent, child, path))
             spawned.AddTranslateOp().Set(value=value)
-
+        variant_set_name = "testset"
+        variant_name = "testvar"
+        vset = child.GetVariantSet(variant_set_name)
+        vset.AddVariant(variant_name)
+        vset.SetVariantSelection(variant_name)
+        with vset.GetVariantEditContext():
+            stage.DefinePrim(child.GetPath().AppendChild("in_variant"))
+        path_with_variant = child.GetPath().AppendVariantSelection(variant_set_name, variant_name)
         # sdffilter still not coming via pypi, so patch for now
         if not description._which("sdffilter"):
-            def _to_ascii(layer):
+            def _to_ascii(layer, *args, **kwargs):
                 return "", layer.ExportToString()
         else:
-            _to_ascii = description._pseudo_layer
+            _to_ascii = description._format_layer_contents
 
         layers = stage.GetLayerStack()
-        args = stage.GetLayerStack(), None, stage.GetPathResolverContext()
+        args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned.GetPrim().GetPath(), path_with_variant)
         anchor = layers[0]
 
         def _log(*args):
             print(args)
 
-        with mock.patch("grill.views.description._pseudo_layer", new=_to_ascii):
+        with mock.patch("grill.views.description._format_layer_contents", new=_to_ascii):
             dialog = description._start_content_browser(*args)
             browser = dialog.findChild(description._PseudoUSDBrowser)
+            assert browser._browsers_by_layer.values()
+            first_browser_widget, = browser._browsers_by_layer.values()
+            first_browser_widget._format_options.setCurrentIndex(0)
+            first_browser_widget._format_options.setCurrentIndex(1)
+            first_browser_widget._format_options.setCurrentIndex(0)
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch("PySide2.QtWidgets.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")

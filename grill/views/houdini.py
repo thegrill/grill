@@ -1,13 +1,13 @@
 import hou
 import toolutils
 from functools import cache, lru_cache, partial
-
-from . import sheets as _sheets, description as _description, create as _create
+from . import sheets as _sheets, description as _description, create as _create, stats as _stats, _core
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
+_core._ensure_dot()
 
 
-def _stage_on_widget(widget_creator):
-    @cache
+def _stage_on_widget(widget_creator, _cache=True):
+    _description._PALETTE.set(0)  # (0 == dark, 1 == light)
     def _launcher():
         widget = widget_creator(parent=hou.qt.mainWindow())
         # TODO: Get stage from current node or from current viewport?
@@ -19,6 +19,8 @@ def _stage_on_widget(widget_creator):
 
         return widget
 
+    if _cache:
+        _launcher = cache(_launcher)
     return _launcher
 
 
@@ -54,6 +56,7 @@ def _spreadsheet():
 
 
 def _prim_composition():
+    _description._PALETTE.set(0)  # (0 == dark, 1 == light)
     editor = _description.PrimComposition(parent=hou.qt.mainWindow())
     editor._prim = None
 
@@ -84,3 +87,4 @@ def _prim_composition():
 _create_assets = partial(_creator, _create.CreateAssets)
 _taxonomy_editor = partial(_creator, _create.TaxonomyEditor)
 _layerstack_composition = _stage_on_widget(_description.LayerStackComposition)
+_stage_stats = _stage_on_widget(_stats.StageStats, _cache=False)
