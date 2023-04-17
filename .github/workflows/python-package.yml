@@ -30,6 +30,5 @@ jobs:
       - name: Test
         run: |
           pytest --cov=./ --cov-report xml
-          codecov
       - name: Codecov Report
         uses: codecov/codecov-action@v3
