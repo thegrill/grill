@@ -1,5 +1,5 @@
 # 👨‍🍳 The Grill
-[![Build Status](https://travis-ci.org/thegrill/grill.svg?branch=main)](https://travis-ci.org/thegrill/grill)
+[![Python CI](https://github.com/thegrill/grill/actions/workflows/python-package.yml/badge.svg)](https://github.com/thegrill/grill/actions/workflows/python-package.yml)
 [![codecov](https://codecov.io/gh/thegrill/grill/branch/main/graph/badge.svg)](https://codecov.io/gh/thegrill/grill)
 [![Documentation Status](https://readthedocs.org/projects/grill/badge/?version=latest)](https://grill.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/grill.svg)](https://badge.fury.io/py/grill)
