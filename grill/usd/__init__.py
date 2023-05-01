@@ -294,7 +294,6 @@ def _(variant_set: Usd.VariantSet, /, layer):
 
 
 class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
-    _ignore_ = 'sizes'
     # One element for the entire Gprim; no interpolation.
     CONSTANT = UsdGeom.Tokens.constant, {UsdGeom.Gprim: 1}
     # One element for each face of the mesh; elements are typically not interpolated
