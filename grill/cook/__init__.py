@@ -479,3 +479,31 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
             continue
         return layer
     raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
+
+
+@_usd.edit_context.register(Usd.Inherits)
+@_usd.edit_context.register(Usd.Specializes)
+def _inherit_or_specialize_unit(method, target_layer):
+    """This is on cook since it relies on some pipeline knowledge to find proper target. Could request the target
+    path as well at the expense of the caller if need arises or enough value is perceived."""
+    broadcast_method = type(method)
+    target_prim = method.GetPrim()
+    broadcast_methods = {
+        Usd.Inherits: (Usd.PrimCompositionQuery.ArcTypeFilter.Inherit, _INHERITED_ROOT_PATH),
+        Usd.Specializes: (Usd.PrimCompositionQuery.ArcTypeFilter.Specialize, _SPECIALIZED_ROOT_PATH),
+    }
+
+    def _broadcast_unit_path(prim, method):
+        scope_path = _catalogue_path(prim)
+        specialized_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, broadcast_methods[method][1])
+        # TODO: fail if prim is not a valid unit in the catalogue
+        return specialized_path.AppendPath(Usd.ModelAPI(prim).GetAssetName())
+
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.arcTypeFilter = broadcast_methods[broadcast_method][0]
+    target_path = _broadcast_unit_path(target_prim, broadcast_method)
+
+    def is_valid_target(node):
+        return node.path == target_path and node.layerStack.identifier.rootLayer == target_layer
+
+    return _usd.edit_context(target_prim, query_filter, is_valid_target)
