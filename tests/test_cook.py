@@ -20,6 +20,7 @@ class TestCook(unittest.TestCase):
         self.token = cook.Repository.set(Path(tempdir) / "repo")
 
     def tearDown(self) -> None:
+        ...
         cook.Repository.reset(self.token)
 
     def test_fetch_stage(self):
@@ -158,7 +159,7 @@ class TestCook(unittest.TestCase):
 
         layer = Sdf.Layer.CreateAnonymous()
         with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda node: node.layerStack.identifier.rootLayer == layer)
+            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda arc: arc.GetTargetLayer() == layer)
 
         # break the unit model API
         Usd.ModelAPI(emil).SetAssetIdentifier("")

@@ -343,8 +343,8 @@ def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
     layer = unit_asset(prim)
 
-    def target_predicate(node):
-        return node.path == _UNIT_ORIGIN_PATH and node.layerStack.identifier.rootLayer == layer
+    def target_predicate(arc):
+        return arc.GetTargetPrimPath() == _UNIT_ORIGIN_PATH and arc.GetTargetLayer() == layer
 
     return _usd.edit_context(prim, _ASSET_UNIT_QUERY_FILTER, target_predicate)
 
@@ -481,29 +481,33 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
     raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
 
 
-@_usd.edit_context.register(Usd.Inherits)
-@_usd.edit_context.register(Usd.Specializes)
-def _inherit_or_specialize_unit(method, target_layer):
+def specialize_unit(prim, context_unit=None):
+    return _inherit_or_specialize_unit(prim.GetSpecializes(), context_unit)
+
+
+def inherit_unit(prim, context_unit=None):
+    return _inherit_or_specialize_unit(prim.GetInherits(), context_unit)
+
+
+def _inherit_or_specialize_unit(method, context_unit):
     """This is on cook since it relies on some pipeline knowledge to find proper target. Could request the target
     path as well at the expense of the caller if need arises or enough value is perceived."""
-    broadcast_method = type(method)
     target_prim = method.GetPrim()
+    context_unit = context_unit or target_prim
+    assert target_prim.GetPath().HasPrefix(context_unit.GetPath())
+    target_layer = unit_asset(context_unit)
+    broadcast_method = type(method)
     broadcast_methods = {
-        Usd.Inherits: (Usd.PrimCompositionQuery.ArcTypeFilter.Inherit, _INHERITED_ROOT_PATH),
-        Usd.Specializes: (Usd.PrimCompositionQuery.ArcTypeFilter.Specialize, _SPECIALIZED_ROOT_PATH),
+        Usd.Inherits: _INHERITED_ROOT_PATH,
+        Usd.Specializes: _SPECIALIZED_ROOT_PATH,
     }
 
-    def _broadcast_unit_path(prim, method):
-        scope_path = _catalogue_path(prim)
-        specialized_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, broadcast_methods[method][1])
+    def _broadcast_unit_path(method):  #TODO: this needs to be a shared function above
+        scope_path = _catalogue_path(target_prim)
+        target_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, broadcast_methods[method])
         # TODO: fail if prim is not a valid unit in the catalogue
-        return specialized_path.AppendPath(Usd.ModelAPI(prim).GetAssetName())
+        return target_path.AppendPath(Usd.ModelAPI(target_prim).GetAssetName())
 
-    query_filter = Usd.PrimCompositionQuery.Filter()
-    query_filter.arcTypeFilter = broadcast_methods[broadcast_method][0]
-    target_path = _broadcast_unit_path(target_prim, broadcast_method)
+    target_path = _broadcast_unit_path(broadcast_method)
 
-    def is_valid_target(node):
-        return node.path == target_path and node.layerStack.identifier.rootLayer == target_layer
-
-    return _usd.edit_context(target_prim, query_filter, is_valid_target)
+    return _usd.edit_context(method, target_path, target_layer)

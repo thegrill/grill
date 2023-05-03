@@ -82,12 +82,22 @@ def edit_context(reference: Sdf.Reference, /, prim: Usd.Prim) -> Usd.EditContext
 
 
 @typing.overload
+def edit_context(inherits: Usd.Inherits, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
+    ...
+
+
+@typing.overload
+def edit_context(specializes: Usd.Specializes, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
+    ...
+
+
+@typing.overload
 def edit_context(variant: Usd.VariantSet, /, layer: Sdf.Layer) -> Usd.EditContext:
     ...
 
 
 @typing.overload
-def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, target_predicate: typing.Callable) -> Usd.EditContext:
+def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: typing.Callable) -> Usd.EditContext:
     ...
 
 
@@ -222,7 +232,7 @@ def edit_context(obj, /, *args, **kwargs) -> Usd.EditContext:
 
 
 @edit_context.register
-def _(prim: Usd.Prim, /, query_filter, target_predicate):
+def _(prim: Usd.Prim, /, query_filter, arc_predicate):
     # https://blogs.mathworks.com/developer/2015/03/31/dont-get-in-too-deep/
     # with write.context(prim, dict(kingdom="assets")):
     #     prim.GetAttribute("abc").Set(True)
@@ -231,10 +241,10 @@ def _(prim: Usd.Prim, /, query_filter, target_predicate):
     query = Usd.PrimCompositionQuery(prim)
     query.filter = query_filter
     for arc in query.GetCompositionArcs():
-        if target_predicate(node := arc.GetTargetNode()):
-            target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
+        if arc_predicate(arc):
+            target = Usd.EditTarget(arc.GetTargetLayer(), arc.GetTargetNode())
             return Usd.EditContext(prim.GetStage(), target)
-    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {target_predicate}")
+    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {arc_predicate}")
 
 
 @edit_context.register(Sdf.Reference)
@@ -254,18 +264,13 @@ def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
         raise ValueError(f"Can't proceed without a prim path to target on arc {arc} for {layer}")
     path = arc.primPath or layer.GetPrimAtPath(layer.defaultPrim).path
     logger.debug(f"Searching to target {layer} on {path}")
+    return _edit_context_by_arc(prim, type(arc), path, layer)
 
-    def is_valid_target(node):
-        return node.path == path and node.layerStack.identifier.rootLayer == layer
 
-    query_filter = Usd.PrimCompositionQuery.Filter()
-    if isinstance(arc, Sdf.Payload):
-        query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Payload
-    elif isinstance(arc, Sdf.Reference):
-        query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Reference
-
-    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
-    return edit_context(prim, query_filter, is_valid_target)
+@edit_context.register(Usd.Inherits)
+@edit_context.register(Usd.Specializes)
+def _(arc_type: typing.Union[Usd.Inherits, Usd.Specializes], /, path, layer):
+    return _edit_context_by_arc(arc_type.GetPrim(), type(arc_type), path, layer)
 
 
 @edit_context.register
@@ -284,13 +289,29 @@ def _(variant_set: Usd.VariantSet, /, layer):
     selection = variant_set.GetVariantSelection()
     logger.debug(f"Searching target for {prim} with variant {name}, {selection} on {layer}")
 
-    def is_valid_target(node):
-        return node.path.GetVariantSelection() == (name, selection) and layer == node.layerStack.identifier.rootLayer
+    def is_target(arc):
+        return arc.GetTargetPrimPath().GetVariantSelection() == (name, selection) and layer == arc.GetTargetLayer()
 
     query_filter = Usd.PrimCompositionQuery.Filter()
     query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Variant
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
-    return edit_context(prim, query_filter, is_valid_target)
+    return edit_context(prim, query_filter, is_target)
+
+
+def _edit_context_by_arc(prim, arc_type, path, layer):
+    arc_filter = {
+        Sdf.Payload: Usd.PrimCompositionQuery.ArcTypeFilter.Payload,
+        Sdf.Reference: Usd.PrimCompositionQuery.ArcTypeFilter.Reference,
+        Usd.Inherits: Usd.PrimCompositionQuery.ArcTypeFilter.Inherit,
+        Usd.Specializes: Usd.PrimCompositionQuery.ArcTypeFilter.Specialize,
+    }
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.arcTypeFilter = arc_filter[arc_type]
+
+    def is_target(arc):
+        return arc.GetTargetPrimPath() == path and arc.GetTargetLayer() == layer
+
+    return edit_context(prim, query_filter, is_target)
 
 
 class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name

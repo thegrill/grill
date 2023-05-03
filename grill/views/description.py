@@ -409,10 +409,10 @@ class PrimComposition(QtWidgets.QDialog):
     #   does not have the appropiate stylesheet ):
     # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
-        "Target Layer": lambda arc: _layer_label(arc.GetTargetNode().layerStack.layerTree.layer),
+        "Target Layer": lambda arc: _layer_label(arc.GetTargetLayer()),
         "Arc": lambda arc: arc.GetArcType().displayName,
         "#": lambda arc: arc.GetTargetNode().siblingNumAtOrigin,
-        "Target Path": lambda arc: arc.GetTargetNode().path,
+        "Target Path": lambda arc: arc.GetTargetPrimPath(),
         "Has Specs": Usd.CompositionArc.HasSpecs,
         "Is Ancestral": Usd.CompositionArc.IsAncestral,
         "Is Implicit": Usd.CompositionArc.IsImplicit,
@@ -513,8 +513,8 @@ class PrimComposition(QtWidgets.QDialog):
 
             intro_node = arc.GetIntroducingNode()
             target_node = arc.GetTargetNode()
-            target_path = target_node.path
-            target_layer = target_node.layerStack.identifier.rootLayer
+            target_path = arc.GetTargetPrimPath()
+            target_layer = arc.GetTargetLayer()
 
             # TODO: is there a better way than relying on str(node.site)???
             key = str(intro_node.site)
