@@ -29,6 +29,6 @@ jobs:
           python -m pip install ".[full,test]"
       - name: Test
         run: |
-          pytest --cov=./ --cov-report xml
+          pytest --cov=./ --cov-report xml -s
       - name: Codecov Report
         uses: codecov/codecov-action@v3
