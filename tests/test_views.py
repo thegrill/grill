@@ -99,8 +99,8 @@ class TestViews(unittest.TestCase):
         logger = logging.getLogger(__name__)
         cook.Repository.reset(self._token)
         from pprint import pformat
-        logger.info(pformat(Sdf.Layer.GetLoadedLayers()))
-        logger.info(pformat(len(Sdf.Layer.GetLoadedLayers())))
+        logger.warning(pformat(Sdf.Layer.GetLoadedLayers()))
+        logger.warning(pformat(len(Sdf.Layer.GetLoadedLayers())))
         self.generic_agent = None
         self.agent = None
         self.person = None
@@ -111,8 +111,8 @@ class TestViews(unittest.TestCase):
         self.world = None
         self.nested = None
         self.sibling = None
-        logger.info(pformat(Sdf.Layer.GetLoadedLayers()))
-        logger.info(pformat(len(Sdf.Layer.GetLoadedLayers())))
+        logger.warning(pformat(Sdf.Layer.GetLoadedLayers()))
+        logger.warning(pformat(len(Sdf.Layer.GetLoadedLayers())))
         shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
