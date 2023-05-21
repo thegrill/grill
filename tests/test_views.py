@@ -95,10 +95,12 @@ class TestViews(unittest.TestCase):
         self.generic_agent = cook.create_unit(self.agent, "GenericAgent")
 
     def tearDown(self) -> None:
+        import logging
+        logger = logging.getLogger(__name__)
         cook.Repository.reset(self._token)
-        from pprint import pp
-        pp(Sdf.Layer.GetLoadedLayers())
-        pp(len(Sdf.Layer.GetLoadedLayers()))
+        from pprint import pformat
+        logger.info(pformat(Sdf.Layer.GetLoadedLayers()))
+        logger.info(pformat(len(Sdf.Layer.GetLoadedLayers())))
         self.generic_agent = None
         self.agent = None
         self.person = None
@@ -109,9 +111,8 @@ class TestViews(unittest.TestCase):
         self.world = None
         self.nested = None
         self.sibling = None
-        from pprint import pp
-        pp(Sdf.Layer.GetLoadedLayers())
-        pp(len(Sdf.Layer.GetLoadedLayers()))
+        logger.info(pformat(Sdf.Layer.GetLoadedLayers()))
+        logger.info(pformat(len(Sdf.Layer.GetLoadedLayers())))
         shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
