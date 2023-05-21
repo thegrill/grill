@@ -96,6 +96,22 @@ class TestViews(unittest.TestCase):
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
+        from pprint import pp
+        pp(Sdf.Layer.GetLoadedLayers())
+        pp(len(Sdf.Layer.GetLoadedLayers()))
+        self.generic_agent = None
+        self.agent = None
+        self.person = None
+        self.grill_world = None
+        self.capsule = None
+        self.sphere = None
+        self.merge = None
+        self.world = None
+        self.nested = None
+        self.sibling = None
+        from pprint import pp
+        pp(Sdf.Layer.GetLoadedLayers())
+        pp(len(Sdf.Layer.GetLoadedLayers()))
         shutil.rmtree(self._tmpf)
 
     def test_layer_composition(self):
@@ -400,7 +416,7 @@ class TestViews(unittest.TestCase):
             first_browser_widget._format_options.setCurrentIndex(1)
             first_browser_widget._format_options.setCurrentIndex(0)
             browser._on_identifier_requested(anchor, layers[1].identifier)
-            with mock.patch("PySide2.QtWidgets.QMessageBox.warning", new=_log):
+            with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
             browser.tabCloseRequested.emit(0)  # request closing our first tab
 

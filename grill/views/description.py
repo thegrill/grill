@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import typing
+import weakref
 import operator
 import tempfile
 import subprocess
@@ -621,8 +622,9 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
     @_core.wait()
     def _addLayerTab(self, layer, paths=tuple()):
+        layer_ref = weakref.ref(layer)
         try:
-            focus_widget = self._browsers_by_layer[layer]
+            focus_widget = self._browsers_by_layer[layer_ref]
         except KeyError:
             paths_in_layer = []
             for path in paths:
@@ -679,6 +681,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 outline_valies_check.setEnabled(cls == _SdfOutlineHighlighter)
 
             def update_contents(*_, **__):
+                layer = layer_ref()
                 format_choice = format_combo.currentText()
                 output_args = []
                 if format_choice == "pseudoLayer":
@@ -771,7 +774,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser = _PseudoUSDTabBrowser(parent=self)
             browser.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
             _Highlighter(browser)
-            browser.identifier_requested.connect(partial(self._on_identifier_requested, layer))
+            browser.identifier_requested.connect(partial(self._on_identifier_requested, weakref.proxy(layer)))
             browser.setText(text)
 
             def _find(text):
@@ -785,9 +788,9 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_layout.addWidget(browser)
 
             tab_idx = self.addTab(focus_widget, _layer_label(layer))
-            self._tab_layer_by_idx.append(layer)
+            self._tab_layer_by_idx.append(layer_ref)
             assert len(self._tab_layer_by_idx) == (tab_idx+1)
-            self._browsers_by_layer[layer] = focus_widget
+            self._browsers_by_layer[layer_ref] = focus_widget
         self.setCurrentWidget(focus_widget)
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):

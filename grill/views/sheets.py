@@ -2,6 +2,7 @@ import io
 import csv
 import enum
 import typing
+import weakref
 import inspect
 import logging
 import operator
@@ -108,12 +109,11 @@ class StageTableModel(_core._ObjectTableModel):
 
     @property
     def stage(self):
-        return self._stage
+        return self._stage.__repr__.__self__  # a proxy is currently stored, return the real one when requested
 
     @stage.setter
     def stage(self, value):
         self.beginResetModel()
-        self._stage = value
         if value:
             prims = _usd.iprims(
                 value,
@@ -124,6 +124,8 @@ class StageTableModel(_core._ObjectTableModel):
             self._objects = list(filter(self._filter_predicate, prims))
         else:
             self._objects = []
+        # TODO: check if this _stage variable can be avoided
+        self._stage = weakref.proxy(value) if value and not isinstance(value, weakref.ProxyType) else value
         self.endResetModel()
 
     def data(self, index:QtCore.QModelIndex, role:int=...) -> typing.Any:

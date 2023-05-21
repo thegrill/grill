@@ -97,7 +97,7 @@ class CreateAssets(_CreatePrims):
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
                 return
         # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
-        root = self._stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
+        root = self._existing_model.stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
             taxon_name = model.data(model.index(row, 0))
@@ -111,14 +111,13 @@ class CreateAssets(_CreatePrims):
             cook.create_unit(taxon, asset_name, label)
 
     def setStage(self, stage):
-        self._stage = stage
         self._existing_model.stage = stage
 
     def _apply(self):
         """Apply current changes and keep dialog open."""
         # TODO: move this to the base _CreatePrims class
         self._create()
-        self.setStage(self._stage)
+        self.setStage(self._existing_model.stage)
 
 
 class TaxonomyEditor(_CreatePrims):
@@ -243,7 +242,7 @@ class TaxonomyEditor(_CreatePrims):
         """Apply current changes and keep dialog open."""
         # TODO: move this to the base _CreatePrims class
         self._create()
-        self.setStage(self._stage)
+        self.setStage(self._existing.model.stage)
 
     def _existingSelectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         prims = (index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._existing.table.selectedIndexes())
@@ -255,7 +254,6 @@ class TaxonomyEditor(_CreatePrims):
         return self._existing.model._objects
 
     def setStage(self, stage):
-        self._stage = stage
         self._existing.model.stage = stage
         existing_taxa = self._taxon_options
         self._graph_view.graph = graph = networkx.DiGraph(tooltip="Taxonomy Graph")
@@ -294,8 +292,9 @@ class TaxonomyEditor(_CreatePrims):
         # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
         # TODO: make data point to the actual existing prims from the start.
         #   So that we don't need to call GetPRimAtPath.
-        root = self._stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
+        stage = self._existing.model.stage
+        root = stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         for row in range(model.rowCount()):
             taxon_name = model.data(model.index(row, 0))
             if not taxon_name:
@@ -304,4 +303,4 @@ class TaxonomyEditor(_CreatePrims):
                 continue
             reference_names = (model.data(model.index(row, 1)) or '').split("\n")
             references = (root.GetPrimAtPath(ref_name) for ref_name in reference_names if ref_name)
-            cook.define_taxon(self._stage, taxon_name, references=references)
+            cook.define_taxon(stage, taxon_name, references=references)
