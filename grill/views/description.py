@@ -374,6 +374,56 @@ class _GraphViewer(_DotViewer):
         self._graph = graph
 
 
+class _ConnectableAPIViewer(QtWidgets.QDialog):
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
+        self._graph_view = _GraphViewer(parent=self)
+        vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        vertical.addWidget(self._graph_view)
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(vertical)
+        self.setLayout(layout)
+
+    def setPrim(self, prim):
+        if not prim:
+            return
+        from pxr import UsdShade
+        capi = UsdShade.ConnectableAPI(prim)
+        graph = nx.MultiDiGraph()
+        graph.graph['graph'] = {'rankdir': 'LR'}
+
+        prim_edges = dict()  # {(source_int, target_int): {Pcp.ArcType...}}
+        all_nodes = dict()  # {id: {node_attrrs}}
+        node_attrs = dict(style='rounded,filled', shape='record', fillcolor="white", color="darkslategray")
+
+        def _traverse(api):
+            node_id = str(api.GetPrim().GetPath()).replace("/", "_")
+            label = api.GetPrim().GetName()
+            for plug in chain(api.GetInputs(), api.GetOutputs()):
+                name = plug.GetBaseName()
+                assert plug.GetPrim() == api.GetPrim()
+                label += f'|<{name}>{name}'
+                sources, __ = plug.GetConnectedSources()
+                for source in sources:
+                    source_id = str(source.source.GetPrim().GetPath()).replace("/", "_")
+                    prim_edges[source_id, node_id] = (source.sourceName, name)
+                    _traverse(source.source)
+
+            all_nodes[node_id] = collections.ChainMap(dict(label=label), node_attrs)
+
+        _traverse(capi)
+
+        def _iedges(what):
+            for (src, tgt), (src_port, tgt_port) in what.items():
+                ports = {"tailport": src_port, "headport": tgt_port}
+                yield src, tgt, ports
+
+        graph.add_nodes_from(all_nodes.items())
+        graph.add_edges_from(_iedges(prim_edges))
+        self._graph_view.graph = graph
+        self._graph_view.view(all_nodes.keys())
+
+
 # Reminder: Inheriting does not bring QTreeView stylesheet (Stylesheet needs to target this class specifically).
 class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
     def __init__(self, *args, **kwargs):

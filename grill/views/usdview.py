@@ -56,6 +56,18 @@ def prim_composition(usdviewApi):
     return widget
 
 
+def _connectable_api(usdviewApi):
+    widget = _description._ConnectableAPIViewer(parent=usdviewApi.qMainWindow)
+    def primChanged(new_paths, __):
+        new_path = next(iter(new_paths), None)
+        widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path) if new_path else None)
+
+    usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
+    if usdviewApi.prim:
+        widget.setPrim(usdviewApi.prim)
+    return widget
+
+
 def save_changes(usdviewApi):
     def show():
         if QtWidgets.QMessageBox.question(
@@ -186,6 +198,7 @@ class GrillPlugin(plugin.PluginContainer):
                 ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
                 ("Prim Composition", prim_composition),
+                ("Connection Viewer", _connectable_api),
             )),
             {"LayerStack Composition": [
                 _menu_item("From Current Stage", _stage_on_widget(_description.LayerStackComposition)),
