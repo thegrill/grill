@@ -13,11 +13,11 @@ import collections
 from pathlib import Path
 from itertools import chain
 from collections import defaultdict
-from functools import lru_cache, partial
+from functools import cache, partial
 from types import MappingProxyType
 
 import networkx as nx
-from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
+from pxr import UsdUtils, UsdShade, Usd, Ar, Pcp, Sdf, Tf
 from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from .. import usd as _usd
@@ -84,12 +84,12 @@ def _run(args: list):
         return error, result.stdout.decode()
 
 
-@lru_cache(maxsize=None)
+@cache
 def _edge_color(edge_arcs):
     return dict(color=":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs))
 
 
-@lru_cache(maxsize=None)
+@cache
 def _dot_2_svg(sourcepath):
     print(f"Creating svg for: {sourcepath}")
     targetpath = f"{sourcepath}.svg"
@@ -116,7 +116,7 @@ def _layer_label(layer):
     return layer.GetDisplayName() or layer.identifier
 
 
-@lru_cache(maxsize=None)
+@cache
 def _highlight_syntax_format(key, value):
     text_fmt = QtGui.QTextCharFormat()
     if key == "arc":
@@ -139,11 +139,11 @@ def _highlight_syntax_format(key, value):
 def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     """Compute layer stack graph info for the provided prims"""
 
-    @lru_cache(maxsize=None)
+    @cache
     def _cached_layer_label(layer):
         return _layer_label(layer)
 
-    @lru_cache(maxsize=None)
+    @cache
     def _sublayers(layer_stack):  # {Sdf.Layer: int}
         return MappingProxyType({v: i for i, v in enumerate(layer_stack.layers)})
 
@@ -173,7 +173,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
 
-    @lru_cache(maxsize=None)
+    @cache
     def _compute_composition(_prim):
         query = Usd.PrimCompositionQuery(_prim)
         query.filter = query_filter
@@ -223,6 +223,57 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         paths_by_ids=_freeze(paths_by_node_idx),
         ids_by_layers=_freeze(indices_by_sublayers),
     )
+
+
+def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
+    connections_api = UsdShade.ConnectableAPI(prim)
+    graph = nx.MultiDiGraph()
+    graph.graph['graph'] = {'rankdir': 'LR'}
+    graph.graph['node'] = {'colorscheme': 'paired12', 'shape': 'none'}
+    graph.graph['edge'] = {'colorscheme': 'paired12', "color": '6'}
+
+    all_nodes = dict()  # {node_id: {graphviz_attr: value}}
+    edges = list()  # [(source_node_id, target_node_id, {source_plug_name, target_plug_name, graphviz_attrs})]
+
+    @cache
+    def _get_node_id(api):
+        return str(api.GetPrim().GetPath())
+
+    @cache
+    def _add_edges(src_node, src_name, tgt_node, tgt_name):
+        tooltip = f"{src_node}.{src_name} -> {tgt_node}.{tgt_name}"
+        edges.append((src_node, tgt_node, {"tailport": src_name, "headport": tgt_name, "tooltip": tooltip}))
+
+    plug_colors = {
+        UsdShade.Input: "1",  # blue
+        UsdShade.Output: "5",  # pink
+    }
+    table_row = '<tr><td port="{port}" border="0" bgcolor="{color}" style="ROUNDED">{text}</td></tr>'
+    outline_color = '2'
+
+    def traverse(api: UsdShade.ConnectableAPI):
+        node_id = _get_node_id(api.GetPrim())
+        label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="white" color="{outline_color}">'
+        label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
+        for plug in chain(api.GetInputs(), api.GetOutputs()):
+            plug_name = plug.GetBaseName()
+            sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
+            color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else 'azure'
+            label += table_row.format(port=plug_name, color=color, text=plug_name)
+            for source in sources:
+                _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
+                traverse(source.source)
+        label += '</table>>'
+        all_nodes[node_id] = dict(label=label)
+
+    traverse(connections_api)
+
+    graph.add_nodes_from(all_nodes.items())
+    graph.add_edges_from(edges)
+    from pprint import pp
+    pp(f"{_get_node_id.cache_info()=}")
+    pp(f"{_add_edges.cache_info()=}")
+    return graph
 
 
 def _launch_content_browser(layers, parent, context, paths=tuple()):
@@ -338,7 +389,7 @@ class _GraphViewer(_DotViewer):
                 raise ValueError(f"Expected suffix of node URL ID to be a digit. Got instead '{index}' of type: {type(index)}.")
             self.view([int(index)])
 
-    @lru_cache(maxsize=None)
+    @cache
     def _subgraph_dot_path(self, node_indices: tuple):
         graph = self.graph
         successors = chain.from_iterable(graph.successors(index) for index in node_indices)
@@ -387,41 +438,8 @@ class _ConnectableAPIViewer(QtWidgets.QDialog):
     def setPrim(self, prim):
         if not prim:
             return
-        from pxr import UsdShade
-        capi = UsdShade.ConnectableAPI(prim)
-        graph = nx.MultiDiGraph()
-        graph.graph['graph'] = {'rankdir': 'LR'}
-
-        prim_edges = dict()  # {(source_int, target_int): {Pcp.ArcType...}}
-        all_nodes = dict()  # {id: {node_attrrs}}
-        node_attrs = dict(style='rounded,filled', shape='record', fillcolor="white", color="darkslategray")
-
-        def _traverse(api):
-            node_id = str(api.GetPrim().GetPath()).replace("/", "_")
-            label = api.GetPrim().GetName()
-            for plug in chain(api.GetInputs(), api.GetOutputs()):
-                name = plug.GetBaseName()
-                assert plug.GetPrim() == api.GetPrim()
-                label += f'|<{name}>{name}'
-                sources, __ = plug.GetConnectedSources()
-                for source in sources:
-                    source_id = str(source.source.GetPrim().GetPath()).replace("/", "_")
-                    prim_edges[source_id, node_id] = (source.sourceName, name)
-                    _traverse(source.source)
-
-            all_nodes[node_id] = collections.ChainMap(dict(label=label), node_attrs)
-
-        _traverse(capi)
-
-        def _iedges(what):
-            for (src, tgt), (src_port, tgt_port) in what.items():
-                ports = {"tailport": src_port, "headport": tgt_port}
-                yield src, tgt, ports
-
-        graph.add_nodes_from(all_nodes.items())
-        graph.add_edges_from(_iedges(prim_edges))
-        self._graph_view.graph = graph
-        self._graph_view.view(all_nodes.keys())
+        self._graph_view.graph = graph = _graph_from_connections(prim)
+        self._graph_view.view(graph.nodes.keys())
 
 
 # Reminder: Inheriting does not bring QTreeView stylesheet (Stylesheet needs to target this class specifically).
