@@ -111,6 +111,21 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
             _description._launch_content_browser([layer], usdview_api.qMainWindow, context, paths=paths)
 
 
+class HierarchyTextMenuItem(primContextMenuItems.PrimContextMenuItem):
+    def GetText(self):
+        return f"Copy Prim{'s' if len(self._selectionDataModel.getPrims())>1 else ''} Hierarchy"
+
+    def RunCommand(self):
+        from printree import ptree
+        from collections import abc
+        # another duck
+        Usd.Prim.__iter__ = lambda prim: iter(prim.GetChildren())
+        Usd.Prim.items = lambda prim: iter((p.GetName(), p) for p in prim.GetChildren())
+        abc.Mapping.register(Usd.Prim)
+        for prim in self._selectionDataModel.getPrims():
+            ptree(prim)
+
+
 class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):
     def GetText(self):
         return f"Inspect Prim{'s' if len(self._selectionDataModel.getPrims())>1 else ''} Composition"
@@ -229,13 +244,14 @@ class GrillPlugin(plugin.PluginContainer):
 
 
 def _extend_menu(_extender, original, *args):
-    return [_extender(*args)] + original(*args)  # if it looks like a duck
+    return [extension(*args) for extension in _extender] + original(*args)  # if it looks like a duck
 
 
 for module, member_name, extender in (
-        (primContextMenuItems, "_GetContextMenuItems", GrillPrimCompositionMenuItem),
-        (layerStackContextMenu, "_GetContextMenuItems", GrillContentBrowserLayerMenuItem),
-        (attributeViewContextMenu, "_GetContextMenuItems", lambda *args: GrillAttributeEditorMenuItem(*reversed(args)))  # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
+        (primContextMenuItems, "_GetContextMenuItems", [GrillPrimCompositionMenuItem, HierarchyTextMenuItem]),
+        (layerStackContextMenu, "_GetContextMenuItems", [GrillContentBrowserLayerMenuItem]),
+        # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
+        (attributeViewContextMenu, "_GetContextMenuItems", [lambda *args: GrillAttributeEditorMenuItem(*reversed(args))])
 ):
     setattr(module, member_name, partial(_extend_menu, extender, getattr(module, member_name)))
 

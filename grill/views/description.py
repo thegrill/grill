@@ -862,6 +862,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         self.setCurrentWidget(focus_widget)
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
+        anchor = anchor.__repr__.__self__
         with Ar.ResolverContextBinder(self._resolver_context):
             try:
                 if not (layer := Sdf.Layer.FindOrOpen(identifier)):
