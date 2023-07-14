@@ -244,7 +244,8 @@ def _(prim: Usd.Prim, /, query_filter, arc_predicate):
     query.filter = query_filter
     for arc in query.GetCompositionArcs():
         if arc_predicate(arc):
-            target = Usd.EditTarget(arc.GetTargetLayer(), arc.GetTargetNode())
+            node = arc.GetTargetNode()
+            target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
             return Usd.EditContext(prim.GetStage(), target)
     raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {arc_predicate}")
 
@@ -292,7 +293,8 @@ def _(variant_set: Usd.VariantSet, /, layer):
     logger.debug(f"Searching target for {prim} with variant {name}, {selection} on {layer}")
 
     def is_target(arc):
-        return arc.GetTargetPrimPath().GetVariantSelection() == (name, selection) and layer == arc.GetTargetLayer()
+        node = arc.GetTargetNode()
+        return node.path.GetVariantSelection() == (name, selection) and layer == node.layerStack.identifier.rootLayer
 
     query_filter = Usd.PrimCompositionQuery.Filter()
     query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Variant
@@ -311,7 +313,9 @@ def _edit_context_by_arc(prim, arc_type, path, layer):
     query_filter.arcTypeFilter = arc_filter[arc_type]
 
     def is_target(arc):
-        return arc.GetTargetPrimPath() == path and arc.GetTargetLayer() == layer
+        node = arc.GetTargetNode()
+        # USD-23.02 can do arc.GetTargetPrimPath() == path and arc.GetTargetLayer() == layer
+        return node.path == path and node.layerStack.identifier.rootLayer == layer
 
     return edit_context(prim, query_filter, is_target)
 

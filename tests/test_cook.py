@@ -159,7 +159,7 @@ class TestCook(unittest.TestCase):
 
         layer = Sdf.Layer.CreateAnonymous()
         with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda arc: arc.GetTargetLayer() == layer)
+            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer == layer)
 
         # break the unit model API
         Usd.ModelAPI(emil).SetAssetIdentifier("")

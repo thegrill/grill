@@ -343,8 +343,9 @@ def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
     layer = unit_asset(prim)
 
-    def target_predicate(arc):
-        return arc.GetTargetPrimPath() == _UNIT_ORIGIN_PATH and arc.GetTargetLayer() == layer
+    def target_predicate(arc: Usd.CompositionArc):
+        node = arc.GetTargetNode()
+        return node.path == _UNIT_ORIGIN_PATH and node.layerStack.identifier.rootLayer == layer
 
     return _usd.edit_context(prim, _ASSET_UNIT_QUERY_FILTER, target_predicate)
 
