@@ -7,8 +7,10 @@ import functools
 import contextlib
 
 from itertools import chain
+from collections import abc
 
 from pxr import Usd, UsdGeom, Sdf, Plug, Ar, Tf
+from printree import TreePrinter
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +314,51 @@ def _edit_context_by_arc(prim, arc_type, path, layer):
         return arc.GetTargetPrimPath() == path and arc.GetTargetLayer() == layer
 
     return edit_context(prim, query_filter, is_target)
+
+
+@contextlib.contextmanager
+def _prim_tree_printer(prims_to_consider: typing.Container = frozenset()):
+    # another duck
+    Usd.Prim.__iter__ = lambda prim: (p for p in prim.GetChildren() if not prims_to_consider or p in prims_to_consider)
+    Usd.Prim.items = lambda prim: ((p.GetName(), p) for p in prim.GetChildren() if not prims_to_consider or p in prims_to_consider)
+    current = type(abc.Mapping).__instancecheck__  # can't unregister abc.Mapping.register, so use __instancecheck__
+
+    def _prim_is_mapping(cls, instance, *args, **kwargs):
+        if type(instance) == Usd.Prim and cls == abc.Mapping:
+            return True
+        return current(cls, instance, *args, **kwargs)
+
+    class PrimTreePrinter(TreePrinter):
+        @property
+        def ROOT(self):
+            return f"{super().ROOT}{self.prim.GetName()}"
+
+        def ftree(self, prim: Usd.Prim):
+            self.prim = prim
+            result = super().ftree(prim)
+            self.prim = None
+            return result
+
+    type(abc.Mapping).__instancecheck__ = _prim_is_mapping
+    try:
+        yield PrimTreePrinter()
+    finally:
+        type(abc.Mapping).__instancecheck__ = current
+        del Usd.Prim.__iter__
+        del Usd.Prim.items
+
+
+def _format_prim_hierarchy(prims, include_descendants=True):
+    for prim in prims:
+        if prim.IsPseudoRoot():
+            prims_to_tree = {prim}
+            break
+    else:
+        root_paths = dict.fromkeys(common_paths((prim.GetPath() for prim in prims)))
+        prims_to_tree = (prim for prim in prims if prim.GetPath() in root_paths)
+
+    with _prim_tree_printer(set(prims) if not include_descendants else set()) as printer:
+        return "\n".join(printer.ftree(prim) for prim in prims_to_tree)
 
 
 class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
