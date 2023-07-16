@@ -517,7 +517,6 @@ def _inherit_or_specialize_unit(method, context_unit):
 import networkx
 
 def taxonomy_graph(prims, url_id_prefix):
-    # self._graph_view.graph, self._ids_by_taxa, self._graph_view.url_id_prefix
     graph = networkx.DiGraph(tooltip="Taxonomy Graph")
     graph.graph['graph'] = {'rankdir': 'LR'}
     _ids_by_taxa = dict()  # {"taxon1": 42}
@@ -543,10 +542,5 @@ def taxonomy_graph(prims, url_id_prefix):
         taxa.pop(taxon_name)
         for ref_taxon in taxa:
             graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon_name])
-
-        # for rel in taxon.GetRelationships():
-        #     if value:=rel.GetAssetInfoByKey("grill:target_taxon"):
-        #         print(f"--------- !!!!!!!!!!!!!! {value}")
-        #         graph.add_edge(_ids_by_taxa[value], _ids_by_taxa[taxon_name])
 
     return graph, _ids_by_taxa
