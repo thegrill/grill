@@ -512,3 +512,41 @@ def _inherit_or_specialize_unit(method, context_unit):
     target_path = _broadcast_unit_path(broadcast_method)
 
     return _usd.edit_context(method, target_path, target_layer)
+
+
+import networkx
+
+def taxonomy_graph(prims, url_id_prefix):
+    # self._graph_view.graph, self._ids_by_taxa, self._graph_view.url_id_prefix
+    graph = networkx.DiGraph(tooltip="Taxonomy Graph")
+    graph.graph['graph'] = {'rankdir': 'LR'}
+    _ids_by_taxa = dict()  # {"taxon1": 42}
+    for index, taxon in enumerate(prims):
+        # TODO: ensure to guarantee taxa will be unique (no duplicated short names)
+        taxon_name = taxon.GetName()
+        graph.add_node(
+            index,
+            label=taxon_name,
+            tooltip=taxon_name,
+            href=f"{url_id_prefix}{index}",
+            shape="box",
+            fillcolor="lightskyblue1",
+            color="dodgerblue4",
+            style='"filled,rounded"',
+        )
+        _ids_by_taxa[taxon_name] = index
+
+    # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
+    for taxon in prims:
+        taxa = taxon.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY)
+        taxon_name = taxon.GetName()
+        taxa.pop(taxon_name)
+        for ref_taxon in taxa:
+            graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon_name])
+
+        # for rel in taxon.GetRelationships():
+        #     if value:=rel.GetAssetInfoByKey("grill:target_taxon"):
+        #         print(f"--------- !!!!!!!!!!!!!! {value}")
+        #         graph.add_edge(_ids_by_taxa[value], _ids_by_taxa[taxon_name])
+
+    return graph, _ids_by_taxa

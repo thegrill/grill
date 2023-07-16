@@ -256,31 +256,7 @@ class TaxonomyEditor(_CreatePrims):
     def setStage(self, stage):
         self._existing.model.stage = stage
         existing_taxa = self._taxon_options
-        self._graph_view.graph = graph = networkx.DiGraph(tooltip="Taxonomy Graph")
-        graph.graph['graph'] = {'rankdir': 'LR'}
-        self._ids_by_taxa = _ids_by_taxa = dict()  # {"taxon1": 42}
-        for index, taxon in enumerate(existing_taxa):
-            # TODO: ensure to guarantee taxa will be unique (no duplicated short names)
-            taxon_name = taxon.GetName()
-            graph.add_node(
-                index,
-                label=taxon_name,
-                tooltip=taxon_name,
-                href=f"{self._graph_view.url_id_prefix}{index}",
-                shape="box",
-                fillcolor="lightskyblue1",
-                color="dodgerblue4",
-                style='"filled,rounded"',
-            )
-            _ids_by_taxa[taxon_name] = index
-
-        # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
-        for taxon in existing_taxa:
-            taxa = taxon.GetAssetInfoByKey(cook._ASSETINFO_TAXA_KEY)
-            taxon_name = taxon.GetName()
-            taxa.pop(taxon_name)
-            for ref_taxon in taxa:
-                graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon_name])
+        self._graph_view.graph, self._ids_by_taxa = cook.taxonomy_graph(existing_taxa, self._graph_view.url_id_prefix)
 
     @_core.wait()
     def _create(self):
