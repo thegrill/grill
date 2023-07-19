@@ -334,6 +334,7 @@ class _DotViewer(QtWidgets.QFrame):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
+        # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
         self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
         self._error_view = QtWidgets.QTextBrowser(parent=self)
         layout.addWidget(self._graph_view)
@@ -926,7 +927,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         _core._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
     )
 
-    def __init__(self, stage=None, parent=None, **kwargs):
+    def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         options = _core._ColumnOptions.SEARCH
         layers_model = LayerTableModel(columns=self._LAYERS_COLUMNS)
@@ -974,7 +975,6 @@ class LayerStackComposition(QtWidgets.QDialog):
         selectionModel = self._layers.table.selectionModel()
         selectionModel.selectionChanged.connect(self._selectionChanged)
         self._prim_paths_to_compute = set()
-        self.setStage(stage or Usd.Stage.CreateInMemory())
         self.setWindowTitle("Layer Stack Composition")
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
@@ -1004,11 +1004,9 @@ class LayerStackComposition(QtWidgets.QDialog):
         graph_info = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._prims.setStage(stage)
         self._update_graph_from_graph_info(graph_info)
-        self._selectionChanged(None, None)
 
     def setPrimPaths(self, value):
         self._prim_paths_to_compute = {p if isinstance(p, Sdf.Path) else Sdf.Path(p) for p in value}
-        print(self._prim_paths_to_compute)
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
         self._computed_graph_info = graph_info
