@@ -321,10 +321,11 @@ def _edit_context_by_arc(prim, arc_type, path, layer):
 
 
 @contextlib.contextmanager
-def _prim_tree_printer(prims_to_consider: typing.Container = frozenset()):
+def _prim_tree_printer(prims_to_include: typing.Container = frozenset()):
+    predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
     # another duck
-    Usd.Prim.__iter__ = lambda prim: (p for p in prim.GetChildren() if not prims_to_consider or p in prims_to_consider)
-    Usd.Prim.items = lambda prim: ((p.GetName(), p) for p in prim.GetChildren() if not prims_to_consider or p in prims_to_consider)
+    Usd.Prim.__iter__ = lambda prim: (p for p in prim.GetFilteredChildren(predicate) if not prims_to_include or p in prims_to_include)
+    Usd.Prim.items = lambda prim: ((p.GetName(), p) for p in prim)
     current = type(abc.Mapping).__instancecheck__  # can't unregister abc.Mapping.register, so use __instancecheck__
 
     def _prim_is_mapping(cls, instance, *args, **kwargs):
@@ -333,6 +334,7 @@ def _prim_tree_printer(prims_to_consider: typing.Container = frozenset()):
         return current(cls, instance, *args, **kwargs)
 
     class PrimTreePrinter(TreePrinter):
+        """For everything else, use usdtree from the vanilla USD toolset"""
         @property
         def ROOT(self):
             return f"{super().ROOT}{self.prim.GetName()}"
