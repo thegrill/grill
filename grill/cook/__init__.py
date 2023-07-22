@@ -34,6 +34,7 @@ import contextvars
 from pathlib import Path
 from pprint import pformat
 
+import networkx as nx
 from pxr import UsdGeom, Usd, Sdf, Kind, Ar
 
 from grill.tokens import ids
@@ -514,33 +515,13 @@ def _inherit_or_specialize_unit(method, context_unit):
     return _usd.edit_context(method, target_path, target_layer)
 
 
-import networkx
-
 def taxonomy_graph(prims, url_id_prefix):
-    graph = networkx.DiGraph(tooltip="Taxonomy Graph")
+    graph = nx.DiGraph(tooltip="Taxonomy Graph")
     graph.graph['graph'] = {'rankdir': 'LR'}
-    _ids_by_taxa = dict()  # {"taxon1": 42}
-    for index, taxon in enumerate(prims):
-        # TODO: ensure to guarantee taxa will be unique (no duplicated short names)
-        taxon_name = taxon.GetName()
-        graph.add_node(
-            index,
-            label=taxon_name,
-            tooltip=taxon_name,
-            href=f"{url_id_prefix}{index}",
-            shape="box",
-            fillcolor="lightskyblue1",
-            color="dodgerblue4",
-            style='"filled,rounded"',
-        )
-        _ids_by_taxa[taxon_name] = index
+    graph.graph['node'] = {'shape': 'box', 'fillcolor': "lightskyblue1", 'color':"dodgerblue4", 'style':'filled,rounded'}
 
-    # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
+    # TODO: Guarantee taxa will be unique (no duplicated short names), raise here?
     for taxon in prims:
-        taxa = taxon.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY)
-        taxon_name = taxon.GetName()
-        taxa.pop(taxon_name)
-        for ref_taxon in taxa:
-            graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon_name])
-
-    return graph, _ids_by_taxa
+        graph.add_node(taxon_name:=taxon.GetName(), tooltip=taxon.GetPath(), href=f"{url_id_prefix}{taxon_name}",)
+        graph.add_edges_from(itertools.zip_longest(set(taxon.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY)) - {taxon_name}, (), fillvalue=taxon_name))
+    return graph

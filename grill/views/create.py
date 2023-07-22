@@ -229,7 +229,6 @@ class TaxonomyEditor(_CreatePrims):
 
         selectionModel = existing.table.selectionModel()
         selectionModel.selectionChanged.connect(self._existingSelectionChanged)
-        self._ids_by_taxa = dict()
 
         self._splitter.insertWidget(0, existing_splitter)
         self._splitter.setStretchFactor(0, 2)
@@ -246,8 +245,7 @@ class TaxonomyEditor(_CreatePrims):
 
     def _existingSelectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         prims = (index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._existing.table.selectedIndexes())
-        node_ids = [self._ids_by_taxa[prim.GetName()] for prim in prims]
-        self._graph_view.view(node_ids)
+        self._graph_view.view([prim.GetName() for prim in prims])
 
     @property
     def _taxon_options(self):
@@ -256,7 +254,7 @@ class TaxonomyEditor(_CreatePrims):
     def setStage(self, stage):
         self._existing.model.stage = stage
         existing_taxa = self._taxon_options
-        self._graph_view.graph, self._ids_by_taxa = cook.taxonomy_graph(existing_taxa, self._graph_view.url_id_prefix)
+        self._graph_view.graph = cook.taxonomy_graph(existing_taxa, self._graph_view.url_id_prefix)
 
     @_core.wait()
     def _create(self):

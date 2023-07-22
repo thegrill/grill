@@ -386,9 +386,7 @@ class _GraphViewer(_DotViewer):
         node_uri_stem = node_uri.split("/")[-1]
         if node_uri_stem.startswith(self.url_id_prefix):
             index = node_uri_stem.split(self.url_id_prefix)[-1]
-            if not index.isdigit():
-                raise ValueError(f"Expected suffix of node URL ID to be a digit. Got instead '{index}' of type: {type(index)}.")
-            self.view([int(index)])
+            self.view([int(index)] if index.isdigit() else [index])
 
     @cache
     def _subgraph_dot_path(self, node_indices: tuple):
