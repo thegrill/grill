@@ -391,6 +391,8 @@ class _GraphViewer(_DotViewer):
     @cache
     def _subgraph_dot_path(self, node_indices: tuple):
         graph = self.graph
+        if not graph:
+            raise RuntimeError(f"'graph' attribute not set yet on {self}. Can't view nodes {node_indices}")
         successors = chain.from_iterable(graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(graph.predecessors(index) for index in node_indices)
         nodes_of_interest = chain(self.sticky_nodes, node_indices, successors, predecessors)

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from pxr import Usd, UsdGeom, Sdf
+from pxr import Usd, UsdGeom, Sdf, UsdShade
 
 from grill import cook, usd, names
 from grill.views import description, sheets, create, _attributes, stats, _core
@@ -113,6 +113,15 @@ class TestViews(unittest.TestCase):
         print(pformat(len(Sdf.Layer.GetLoadedLayers())))
         shutil.rmtree(self._tmpf)
 
+    def test_connection_view(self):
+        # https://openusd.org/release/tut_simple_shading.html
+        stage = Usd.Stage.CreateInMemory()
+        material = UsdShade.Material.Define(stage, '/TexModel/boardMat')
+        pbrShader = UsdShade.Shader.Define(stage, '/TexModel/boardMat/PBRShader')
+        pbrShader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.4)
+        material.CreateSurfaceOutput().ConnectToSource(pbrShader.ConnectableAPI(), "surface")
+        description._graph_from_connections(material)
+
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
         widget.setStage(self.world)
@@ -216,7 +225,7 @@ class TestViews(unittest.TestCase):
         existing = [cook.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
 
         widget = create.TaxonomyEditor()
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(RuntimeError, "'graph' attribute not set yet"):
             invalid_uril = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}not_a_digit")
             widget._graph_view._graph_url_changed(invalid_uril)
         widget.setStage(stage)
@@ -260,7 +269,7 @@ class TestViews(unittest.TestCase):
         widget._existing.table.selectAll()
         selected_items = widget._existing.table.selectedIndexes()
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
-        valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{len(existing)}")
+        valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{existing[-1].GetName()}")
         widget._graph_view._graph_url_changed(valid_url)
         # Nitpick, wait for dot 2 svg conversions to finish
         # This does not crash the program but an exception is logged when race
