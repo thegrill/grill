@@ -66,6 +66,7 @@ _CATALOGUE_FIELDS = types.MappingProxyType({_CATALOGUE_ID.name: _CATALOGUE_NAME}
 
 _INHERITED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild('Inherited')
 _SPECIALIZED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild('Specialized')
+_BROADCAST_METHOD_RELPATHS = {Usd.Inherits: _INHERITED_ROOT_PATH, Usd.Specializes: _SPECIALIZED_ROOT_PATH}
 
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 _UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
@@ -201,6 +202,11 @@ def _catalogue_path(taxon: Usd.Prim) -> Sdf.Path:
     return _CATALOGUE_ROOT_PATH.AppendPath(relpath)
 
 
+def _broadcast_root_path(taxon, broadcast_method, scope_path=None):
+    scope_path = scope_path or _catalogue_path(taxon)  # TODO: this feels strange, avoid the or later.
+    return scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _BROADCAST_METHOD_RELPATHS[broadcast_method])
+
+
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
@@ -214,8 +220,8 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     taxon_path = taxon.GetPath()
     taxon_fields = _get_id_fields(taxon)
     scope_path = _catalogue_path(taxon)
-    specialized_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _SPECIALIZED_ROOT_PATH)
-    inherited_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _INHERITED_ROOT_PATH)
+    specialized_path = _broadcast_root_path(taxon, Usd.Specializes, scope_path=scope_path)
+    inherited_path = _broadcast_root_path(taxon, Usd.Inherits, scope_path=scope_path)
 
     current_asset_name, root_layer = _root_asset(stage)
     new_asset_name = UsdAsset(current_asset_name.get(**taxon_fields))
@@ -495,24 +501,16 @@ def _inherit_or_specialize_unit(method, context_unit):
     """This is on cook since it relies on some pipeline knowledge to find proper target. Could request the target
     path as well at the expense of the caller if need arises or enough value is perceived."""
     target_prim = method.GetPrim()
+    # TODO: fail if prim is not a valid unit in the catalogue
+    if not (unit_name:=Usd.ModelAPI(target_prim).GetAssetName()):
+        raise ValueError(f"{target_prim} is not a valid unit in the catalogue.")
     context_unit = context_unit or target_prim
-    assert target_prim.GetPath().HasPrefix(context_unit.GetPath())
-    target_layer = unit_asset(context_unit)
-    broadcast_method = type(method)
-    broadcast_methods = {
-        Usd.Inherits: _INHERITED_ROOT_PATH,
-        Usd.Specializes: _SPECIALIZED_ROOT_PATH,
-    }
+    if not target_prim.GetPath().HasPrefix(context_unit.GetPath()):
+        raise ValueError(f"Can not check for {type(method)} on {context_unit} since {target_prim} is not a descendant of it.")
 
-    def _broadcast_unit_path(method):  #TODO: this needs to be a shared function above
-        scope_path = _catalogue_path(target_prim)
-        target_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, broadcast_methods[method])
-        # TODO: fail if prim is not a valid unit in the catalogue
-        return target_path.AppendPath(Usd.ModelAPI(target_prim).GetAssetName())
+    target_path = _broadcast_root_path(target_prim, type(method)).AppendPath(unit_name)
 
-    target_path = _broadcast_unit_path(broadcast_method)
-
-    return _usd.edit_context(method, target_path, target_layer)
+    return _usd.edit_context(method, target_path, unit_asset(context_unit))
 
 
 def taxonomy_graph(prims, url_id_prefix):
