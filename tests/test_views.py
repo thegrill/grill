@@ -121,6 +121,8 @@ class TestViews(unittest.TestCase):
         pbrShader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.4)
         material.CreateSurfaceOutput().ConnectToSource(pbrShader.ConnectableAPI(), "surface")
         description._graph_from_connections(material)
+        viewer = description._ConnectableAPIViewer()
+        viewer.setPrim(material)
 
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
@@ -166,15 +168,18 @@ class TestViews(unittest.TestCase):
         widget.deleteLater()
 
     def test_prim_composition(self):
+        temp = Usd.Stage.CreateInMemory()
+        temp.GetRootLayer().subLayerPaths = [self.nested.GetStage().GetRootLayer().identifier]
+        prim = temp.GetPrimAtPath(self.nested.GetPath())
         widget = description.PrimComposition()
-        widget.setPrim(self.nested)
+        widget.setPrim(prim)
 
         # cheap. prim is affected by 2 layers
         # single child for this prim.
         self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
 
         widget._complete_target_layerstack.setChecked(True)
-
+        widget.setPrim(prim)
         self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
 
         with mock.patch("grill.views.description.QtWidgets.QApplication.keyboardModifiers") as patch:
