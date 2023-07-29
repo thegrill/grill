@@ -292,6 +292,8 @@ class _Header(QtWidgets.QHeaderView):
     def _updateVisualSections(self, start_index):
         """Updates all of the sections starting at the given index."""
         for index in range(start_index, self.count()):
+            if self.isSectionHidden(index):
+                continue
             self._updateOptionsGeometry(self.logicalIndex(index))
 
     def showEvent(self, event:QtGui.QShowEvent):
@@ -317,8 +319,9 @@ class _Header(QtWidgets.QHeaderView):
         """Without this, when a section is clicked (e.g. when sorting),
         we'd have a mismatch on the proxy geometry label.
         """
-        self._handleSectionResized(0)
-        self._updateVisualSections(0)
+        # With big stages (teste with ~51k prims) calling directly self._updateVisualSections does not adjust sizes.
+        # I've only found a way to guarantee the update by delaying execution with a QTimer.
+        QtCore.QTimer.singleShot(1, lambda: self._updateVisualSections(0))
 
     def _geometryForWidget(self, index):
         """Main geometry for the widget to show at the given index"""
@@ -451,6 +454,7 @@ class _ColumnHeaderMixin:
 
     def _setColumnVisibility(self, index: int, visible: bool):
         self.setColumnHidden(index, not visible)
+        self._fixPositions()
 
     def _setColumnLocked(self, column_index, value):
         method = set.add if value else set.discard
