@@ -353,7 +353,7 @@ class _DotViewer(QtWidgets.QFrame):
             self._dot2svg.signals.error.disconnect()
             self._dot2svg.signals.result.disconnect()
 
-        self._dot2svg = dot2svg = _Dot2Svg(path, parent=self)
+        self._dot2svg = dot2svg = _Dot2Svg(path)
         dot2svg.signals.error.connect(self._on_dot_error)
         dot2svg.signals.result.connect(self._on_dot_result)
         self._threadpool.start(dot2svg)
