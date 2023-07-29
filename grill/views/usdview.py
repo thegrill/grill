@@ -140,6 +140,31 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
 
 class _GrillPrimContextMenuItem(primContextMenuItems.PrimContextMenuItem):
     """A prim context menu item class that allows special Grill behavior like being added to submenus."""
+    _items = []
+
+    def __init_subclass__(cls, **kwargs):
+        _GrillPrimContextMenuItem._items.append(cls)
+
+
+class GrillPrimCompositionMenuItem(_GrillPrimContextMenuItem):
+    _widget = _description.PrimComposition
+    _subtitle = "Composition"
+
+    def GetText(self):
+        return f"Inspect|{self._subtitle}"
+
+    def RunCommand(self):
+        usdview_api = _usdview_api.get()
+        # The "double pop up" upon showing widgets does not happen on PySide2, only on PySide6
+        for prim in self._selectionDataModel.getPrims():
+            widget = self._widget(parent=usdview_api.qMainWindow)
+            widget.setPrim(prim)
+            widget.show()
+
+
+class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
+    _widget = _description._ConnectableAPIViewer
+    _subtitle = "Connections"
 
 
 class AllHierarchyTextMenuItem(_GrillPrimContextMenuItem):
@@ -147,7 +172,7 @@ class AllHierarchyTextMenuItem(_GrillPrimContextMenuItem):
     _subtitle = "All Descendants"
 
     def GetText(self):
-        return f"Copy Prim{'s' if len(self._selectionDataModel.getPrims())>1 else ''} Hierarchy|{self._subtitle}"
+        return f"Copy Hierarchy|{self._subtitle}"
 
     def RunCommand(self):
         text = gusd._format_prim_hierarchy(self._selectionDataModel.getPrims(), self._include_descendants)
@@ -159,19 +184,6 @@ class AllHierarchyTextMenuItem(_GrillPrimContextMenuItem):
 class SelectedHierarchyTextMenuItem(AllHierarchyTextMenuItem):
     _include_descendants = False
     _subtitle = "Selection Only"
-
-
-class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):
-    def GetText(self):
-        return f"Inspect Prim{'s' if len(self._selectionDataModel.getPrims())>1 else ''} Composition"
-
-    def RunCommand(self):
-        usdview_api = _usdview_api.get()
-        # The "double pop up" upon showing widgets does not happen on PySide2, only on PySide6
-        for prim in self._selectionDataModel.getPrims():
-            widget = _description.PrimComposition(parent=usdview_api.qMainWindow)
-            widget.setPrim(prim)
-            widget.show()
 
 
 class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
@@ -283,10 +295,10 @@ def _extend_menu(_extender, original, *args):
 
 
 for module, member_name, extender in (
-        (primContextMenuItems, "_GetContextMenuItems", [GrillPrimCompositionMenuItem, AllHierarchyTextMenuItem, SelectedHierarchyTextMenuItem]),
-        (layerStackContextMenu, "_GetContextMenuItems", [GrillContentBrowserLayerMenuItem]),
+        (primContextMenuItems, "_GetContextMenuItems", _GrillPrimContextMenuItem._items),
+        (layerStackContextMenu, "_GetContextMenuItems", (GrillContentBrowserLayerMenuItem,)),
         # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
-        (attributeViewContextMenu, "_GetContextMenuItems", [lambda *args: GrillAttributeEditorMenuItem(*reversed(args))])
+        (attributeViewContextMenu, "_GetContextMenuItems", (lambda *args: GrillAttributeEditorMenuItem(*reversed(args)),))
 ):
     setattr(module, member_name, partial(_extend_menu, extender, getattr(module, member_name)))
 
