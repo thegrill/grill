@@ -120,6 +120,7 @@ class TestViews(unittest.TestCase):
         description._graph_from_connections(material)
         viewer = description._ConnectableAPIViewer()
         viewer.setPrim(material)
+        viewer.setPrim(None)
 
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
