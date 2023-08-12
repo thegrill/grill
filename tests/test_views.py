@@ -98,22 +98,20 @@ class TestViews(unittest.TestCase):
         cook.Repository.reset(self._token)
         from pprint import pformat
         print(f'--------------- tearing down starting for {self.id()}---------------')
-        print('>>>>>>>>>>>>>>> Current layers: <<<<<<<<<<<<<<<<<<<<<')
+        print(f'>>>>>>>>>>>>>>> Current layers ({len(Sdf.Layer.GetLoadedLayers())}): <<<<<<<<<<<<<<<<<<<<<')
         print(pformat(Sdf.Layer.GetLoadedLayers()))
-        print(pformat(len(Sdf.Layer.GetLoadedLayers())))
-        self.generic_agent = None
-        self.agent = None
-        self.person = None
-        self.grill_world = None
-        self.capsule = None
-        self.sphere = None
-        self.merge = None
-        self.world = None
-        self.nested = None
-        self.sibling = None
-        print('>>>>>>>>>>> After test members cleared: <<<<<<<<<<<<<')
+        # self.generic_agent = None
+        # self.agent = None
+        # self.person = None
+        # self.grill_world = None
+        # self.capsule = None
+        # self.sphere = None
+        # self.merge = None
+        # self.world = None
+        # self.nested = None
+        # self.sibling = None
+        print(f'>>>>>>>>>>> After test members cleared ({len(Sdf.Layer.GetLoadedLayers())}): <<<<<<<<<<<<<')
         print(pformat(Sdf.Layer.GetLoadedLayers()))
-        print(pformat(len(Sdf.Layer.GetLoadedLayers())))
         print('--------------- tearing down finished ---------------')
         shutil.rmtree(self._tmpf)
 
