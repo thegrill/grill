@@ -489,11 +489,11 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
     raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
 
 
-def specialize_unit(prim, context_unit=None):
+def specialized_context(prim, context_unit=None):
     return _inherit_or_specialize_unit(prim.GetSpecializes(), context_unit)
 
 
-def inherit_unit(prim, context_unit=None):
+def inherited_context(prim, context_unit=None):
     return _inherit_or_specialize_unit(prim.GetInherits(), context_unit)
 
 
@@ -504,13 +504,24 @@ def _inherit_or_specialize_unit(method, context_unit):
     # TODO: fail if prim is not a valid unit in the catalogue
     if not (unit_name:=Usd.ModelAPI(target_prim).GetAssetName()):
         raise ValueError(f"{target_prim} is not a valid unit in the catalogue.")
+
     context_unit = context_unit or target_prim
+    if not Usd.ModelAPI(context_unit).GetAssetName():
+        raise ValueError(f"{context_unit=} needs to be a valid unit in the catalogue.")
+
+    broadcast_method = type(method)
     if not target_prim.GetPath().HasPrefix(context_unit.GetPath()):
-        raise ValueError(f"Can not check for {type(method)} on {context_unit} since {target_prim} is not a descendant of it.")
+        raise ValueError(f"Can not check for {broadcast_method} on {context_unit} since {target_prim} is not a descendant of it.")
 
-    target_path = _broadcast_root_path(target_prim, type(method)).AppendPath(unit_name)
+    target_path = _broadcast_root_path(target_prim, broadcast_method).AppendPath(unit_name)
 
-    return _usd.edit_context(method, target_path, unit_asset(context_unit))
+    try:
+        return _usd.edit_context(method, target_path, (context_asset:=unit_asset(context_unit)))
+    except ValueError as exc:
+        raise ValueError(
+            f"Could not find an appropriate edit target node for a {broadcast_method.__name__}'s arc targeting {target_path} for {target_prim}. "
+            f"""Is there a composition arc bringing "{target_prim.GetName()}"'s unit into "{context_unit.GetName()}"'s layer stack at {context_asset}?"""
+        ) from exc
 
 
 def taxonomy_graph(prims, url_id_prefix):

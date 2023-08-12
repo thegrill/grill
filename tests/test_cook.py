@@ -223,28 +223,35 @@ class TestCook(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Could not extract identifier from"):
             cook.spawn_many(parent, child, ["b"])
 
-    def test_inherit_and_specialize_unit(self):
+    def test_inherited_and_specialized_contexts(self):
         stage = cook.fetch_stage(self.root_asset)
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
         taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
         parent, via_s, via_i, invalid = cook.create_many(taxon, ['parent', 'via_s', 'via_i', 'invalid'])
 
+        not_a_unit = stage.DefinePrim("/vanilla_prim")
+        with self.assertRaisesRegex(ValueError, "is not a valid unit"):
+            cook.specialized_context(not_a_unit)
+
+        with self.assertRaisesRegex(ValueError, "needs to be a valid unit"):
+            cook.specialized_context(via_s, via_s.GetParent())
+
         with self.assertRaisesRegex(ValueError, "is not a descendant"):
-            cook.specialize_unit(parent, via_s)
+            cook.specialized_context(parent, via_s)
 
         spawned_invalid = cook.spawn_unit(parent, invalid)
-        with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
+        with self.assertRaisesRegex(ValueError, "Is there a composition arc bringing"):
             # TODO: find a more meaningful message (higher level) than the edit target context one.
-            cook.specialize_unit(spawned_invalid, parent)
+            cook.specialized_context(spawned_invalid, parent)
 
         with cook.unit_context(parent):
             via_s_spawned = cook.spawn_unit(parent, via_s)
             via_i_spawned = cook.spawn_unit(parent, via_i)
 
-        with cook.specialize_unit(via_s_spawned, parent):
+        with cook.specialized_context(via_s_spawned, parent):
             UsdGeom.Gprim(via_s_spawned).MakeInvisible()
 
-        with cook.inherit_unit(via_i_spawned):
+        with cook.inherited_context(via_i_spawned):
             UsdGeom.Gprim(via_i_spawned).MakeInvisible()
 
         inherited_prefix = cook._broadcast_root_path(via_i_spawned, Usd.Inherits)
