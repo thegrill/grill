@@ -97,6 +97,8 @@ class TestViews(unittest.TestCase):
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
         from pprint import pformat
+        print(f'--------------- tearing down starting for {self.id()}---------------')
+        print('>>>>>>>>>>>>>>> Current layers: <<<<<<<<<<<<<<<<<<<<<')
         print(pformat(Sdf.Layer.GetLoadedLayers()))
         print(pformat(len(Sdf.Layer.GetLoadedLayers())))
         self.generic_agent = None
@@ -109,8 +111,10 @@ class TestViews(unittest.TestCase):
         self.world = None
         self.nested = None
         self.sibling = None
+        print('>>>>>>>>>>> After test members cleared: <<<<<<<<<<<<<')
         print(pformat(Sdf.Layer.GetLoadedLayers()))
         print(pformat(len(Sdf.Layer.GetLoadedLayers())))
+        print('--------------- tearing down finished ---------------')
         shutil.rmtree(self._tmpf)
 
     def test_connection_view(self):
