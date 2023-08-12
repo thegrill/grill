@@ -100,16 +100,16 @@ class TestViews(unittest.TestCase):
         print(f'--------------- tearing down starting for {self.id()}---------------')
         print(f'>>>>>>>>>>>>>>> Current layers ({len(Sdf.Layer.GetLoadedLayers())}): <<<<<<<<<<<<<<<<<<<<<')
         print(pformat(Sdf.Layer.GetLoadedLayers()))
-        # self.generic_agent = None
-        # self.agent = None
-        # self.person = None
-        # self.grill_world = None
-        # self.capsule = None
-        # self.sphere = None
-        # self.merge = None
-        # self.world = None
-        # self.nested = None
-        # self.sibling = None
+        self.generic_agent = None
+        self.agent = None
+        self.person = None
+        self.grill_world = None
+        self.capsule = None
+        self.sphere = None
+        self.merge = None
+        self.world = None
+        self.nested = None
+        self.sibling = None
         print(f'>>>>>>>>>>> After test members cleared ({len(Sdf.Layer.GetLoadedLayers())}): <<<<<<<<<<<<<')
         print(pformat(Sdf.Layer.GetLoadedLayers()))
         print('--------------- tearing down finished ---------------')
