@@ -227,7 +227,16 @@ class TestCook(unittest.TestCase):
         stage = cook.fetch_stage(self.root_asset)
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
         taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-        parent, via_s, via_i = cook.create_many(taxon, ['parent', 'via_s', 'via_i'])
+        parent, via_s, via_i, invalid = cook.create_many(taxon, ['parent', 'via_s', 'via_i', 'invalid'])
+
+        with self.assertRaisesRegex(ValueError, "is not a descendant"):
+            cook.specialize_unit(parent, via_s)
+
+        spawned_invalid = cook.spawn_unit(parent, invalid)
+        with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
+            # TODO: find a more meaningful message (higher level) than the edit target context one.
+            cook.specialize_unit(spawned_invalid, parent)
+
         with cook.unit_context(parent):
             via_s_spawned = cook.spawn_unit(parent, via_s)
             via_i_spawned = cook.spawn_unit(parent, via_i)
