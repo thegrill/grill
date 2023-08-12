@@ -5,7 +5,7 @@ import tempfile
 
 from pathlib import Path
 
-from pxr import Usd, Sdf, Ar, UsdUtils
+from pxr import Usd, UsdGeom, Sdf, Ar, UsdUtils
 
 from grill import cook, names, usd as gusd, tokens
 
@@ -20,7 +20,6 @@ class TestCook(unittest.TestCase):
         self.token = cook.Repository.set(Path(tempdir) / "repo")
 
     def tearDown(self) -> None:
-        ...
         cook.Repository.reset(self.token)
 
     def test_fetch_stage(self):
@@ -223,3 +222,31 @@ class TestCook(unittest.TestCase):
         child = stage.DefinePrim("/b")  # child needs to be a grill unit
         with self.assertRaisesRegex(ValueError, "Could not extract identifier from"):
             cook.spawn_many(parent, child, ["b"])
+
+    def test_inherit_and_specialize_unit(self):
+        stage = cook.fetch_stage(self.root_asset)
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, via_s, via_i = cook.create_many(taxon, ['parent', 'via_s', 'via_i'])
+        with cook.unit_context(parent):
+            via_s_spawned = cook.spawn_unit(parent, via_s)
+            via_i_spawned = cook.spawn_unit(parent, via_i)
+
+        with cook.specialize_unit(via_s_spawned, parent):
+            UsdGeom.Gprim(via_s_spawned).MakeInvisible()
+
+        with cook.inherit_unit(via_i_spawned):
+            UsdGeom.Gprim(via_i_spawned).MakeInvisible()
+
+        inherited_prefix = cook._broadcast_root_path(via_i_spawned, Usd.Inherits)
+
+        inherited_stage = Usd.Stage.Open(cook.unit_asset(via_i_spawned))
+        inherited_authored = UsdGeom.Gprim(inherited_stage.GetPrimAtPath(inherited_prefix.AppendChild('via_i'))).GetVisibilityAttr().Get()
+
+        self.assertEqual(inherited_authored, 'invisible')
+
+        specialized_prefix = cook._broadcast_root_path(via_s_spawned, Usd.Specializes)
+        specialized_stage = Usd.Stage.Open(cook.unit_asset(parent))
+        specialized_authored = UsdGeom.Gprim(specialized_stage.GetPrimAtPath(specialized_prefix.AppendChild('via_s'))).GetVisibilityAttr().Get()
+
+        self.assertEqual(specialized_authored, 'invisible')
