@@ -227,7 +227,7 @@ class TestCook(unittest.TestCase):
         stage = cook.fetch_stage(self.root_asset)
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
         taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-        parent, via_s, via_i, invalid = cook.create_many(taxon, ['parent', 'via_s', 'via_i', 'invalid'])
+        parent, via_s, via_i, not_under_context = cook.create_many(taxon, ['parent', 'via_s', 'via_i', 'not_under_context'])
 
         not_a_unit = stage.DefinePrim("/vanilla_prim")
         with self.assertRaisesRegex(ValueError, "is not a valid unit"):
@@ -239,7 +239,7 @@ class TestCook(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "is not a descendant"):
             cook.specialized_context(parent, via_s)
 
-        spawned_invalid = cook.spawn_unit(parent, invalid)
+        spawned_invalid = cook.spawn_unit(parent, not_under_context)
         with self.assertRaisesRegex(ValueError, "Is there a composition arc bringing"):
             # TODO: find a more meaningful message (higher level) than the edit target context one.
             cook.specialized_context(spawned_invalid, parent)
@@ -248,21 +248,25 @@ class TestCook(unittest.TestCase):
             via_s_spawned = cook.spawn_unit(parent, via_s)
             via_i_spawned = cook.spawn_unit(parent, via_i)
 
+        with cook.inherited_context(not_under_context):
+            UsdGeom.Gprim(not_under_context).MakeInvisible()
+
         with cook.specialized_context(via_s_spawned, parent):
             UsdGeom.Gprim(via_s_spawned).MakeInvisible()
 
         with cook.inherited_context(via_i_spawned):
             UsdGeom.Gprim(via_i_spawned).MakeInvisible()
 
-        inherited_prefix = cook._broadcast_root_path(via_i_spawned, Usd.Inherits)
+        def _check_broadcasted_invisibility(asset, prim, method):
+            target_stage = Usd.Stage.Open(asset)
+            target_prefix = cook._broadcast_root_path(prim, method)
+            authored = UsdGeom.Gprim(target_stage.GetPrimAtPath(target_prefix.AppendChild(Usd.ModelAPI(prim).GetAssetName()))).GetVisibilityAttr().Get()
+            self.assertEqual(authored, 'invisible')
 
-        inherited_stage = Usd.Stage.Open(cook.unit_asset(via_i_spawned))
-        inherited_authored = UsdGeom.Gprim(inherited_stage.GetPrimAtPath(inherited_prefix.AppendChild('via_i'))).GetVisibilityAttr().Get()
-
-        self.assertEqual(inherited_authored, 'invisible')
-
-        specialized_prefix = cook._broadcast_root_path(via_s_spawned, Usd.Specializes)
-        specialized_stage = Usd.Stage.Open(cook.unit_asset(parent))
-        specialized_authored = UsdGeom.Gprim(specialized_stage.GetPrimAtPath(specialized_prefix.AppendChild('via_s'))).GetVisibilityAttr().Get()
-
-        self.assertEqual(specialized_authored, 'invisible')
+        for target_asset, target_prim, broadcast_type in (
+                (not_under_context, not_under_context, Usd.Inherits),  # non-referenced, no context, asset unit is the target
+                (via_i_spawned, via_i_spawned, Usd.Inherits),  # referenced asset unit, no context, asset unit is the target
+                (parent, via_s_spawned, Usd.Specializes),  # referenced, context unit is the target
+        ):
+            with self.subTest(target_asset=str(target_asset), target_prim=str(target_prim), broadcast_type=str(broadcast_type)):
+                _check_broadcasted_invisibility(cook.unit_asset(target_asset), target_prim, broadcast_type)

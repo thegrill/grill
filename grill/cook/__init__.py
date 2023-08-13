@@ -289,7 +289,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             for prim, (name, label, *__, layer, reference) in prims_info.items():
                 prim.GetReferences().AddReference(reference)
                 with _usd.edit_context(reference, prim):
-                    if hasattr(prim, "SetDisplayName"):  # USD-23.02+
+                    if hasattr(prim, "SetDisplayNames"):  # USD-23.02+
                         prim.SetDisplayName(label)
                     UsdGeom.ModelAPI.Apply(prim)
                     modelAPI = Usd.ModelAPI(prim)
@@ -501,7 +501,6 @@ def _inherit_or_specialize_unit(method, context_unit):
     """This is on cook since it relies on some pipeline knowledge to find proper target. Could request the target
     path as well at the expense of the caller if need arises or enough value is perceived."""
     target_prim = method.GetPrim()
-    # TODO: fail if prim is not a valid unit in the catalogue
     if not (unit_name:=Usd.ModelAPI(target_prim).GetAssetName()):
         raise ValueError(f"{target_prim} is not a valid unit in the catalogue.")
 
@@ -529,7 +528,9 @@ def taxonomy_graph(prims, url_id_prefix):
     graph.graph['graph'] = {'rankdir': 'LR'}
     graph.graph['node'] = {'shape': 'box', 'fillcolor': "lightskyblue1", 'color':"dodgerblue4", 'style':'filled,rounded'}
 
-    # TODO: Guarantee taxa will be unique (no duplicated short names), raise here?
+    # TODO:
+    #  - Guarantee taxa will be unique (no duplicated short names), raise here?
+    #  - Fail with clear error message when provided prims are not taxa
     for taxon in prims:
         graph.add_node(taxon_name:=taxon.GetName(), tooltip=taxon.GetPath(), href=f"{url_id_prefix}{taxon_name}",)
         graph.add_edges_from(itertools.zip_longest(set(taxon.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY)) - {taxon_name}, (), fillvalue=taxon_name))
