@@ -368,8 +368,8 @@ def _format_prim_hierarchy(prims, include_descendants=True):
 
 
 class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
-    # One element for the entire Gprim; no interpolation.
-    CONSTANT = UsdGeom.Tokens.constant, {UsdGeom.Gprim: 1}
+    # One element for the entire Imageable prim; no interpolation.
+    CONSTANT = UsdGeom.Tokens.constant, {UsdGeom.Imageable: 1}
     # One element for each face of the mesh; elements are typically not interpolated
     # but are inherited by other faces derived from a given face (via subdivision, tessellation, etc.).
     UNIFORM = UsdGeom.Tokens.uniform, {
