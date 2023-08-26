@@ -92,9 +92,13 @@ def _edge_color(edge_arcs):
 @cache
 def _dot_2_svg(sourcepath):
     print(f"Creating svg for: {sourcepath}")
+    import datetime
+    now = datetime.datetime.now()
     targetpath = f"{sourcepath}.svg"
     args = [_which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
     error, __ = _run(args)
+    total = datetime.datetime.now() - now
+    print(f"{total=}")
     return error, targetpath
 
 
@@ -228,7 +232,9 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
 def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     connections_api = UsdShade.ConnectableAPI(prim)
     graph = nx.MultiDiGraph()
-    graph.graph['graph'] = {'rankdir': 'LR'}
+    outline_color = 'steelblue'
+    background_color = 'azure'
+    graph.graph['graph'] = {'rankdir': 'LR', 'table_color': outline_color, 'background_color': background_color}  # table_color internal to grill views
     graph.graph['node'] = {'colorscheme': 'paired12', 'shape': 'none'}
     graph.graph['edge'] = {'colorscheme': 'paired12', "color": '6'}
 
@@ -245,11 +251,10 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         edges.append((src_node, tgt_node, {"tailport": src_name, "headport": tgt_name, "tooltip": tooltip}))
 
     plug_colors = {
-        UsdShade.Input: "1",  # blue
-        UsdShade.Output: "5",  # pink
+        UsdShade.Input: outline_color,  # blue
+        UsdShade.Output: "lightcoral",  # pink
     }
     table_row = '<tr><td port="{port}" border="0" bgcolor="{color}" style="ROUNDED">{text}</td></tr>'
-    outline_color = '2'
 
     def traverse(api: UsdShade.ConnectableAPI):
         node_id = _get_node_id(api.GetPrim())
@@ -258,7 +263,7 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         for plug in chain(api.GetInputs(), api.GetOutputs()):
             plug_name = plug.GetBaseName()
             sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
-            color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else 'azure'
+            color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else background_color
             label += table_row.format(port=plug_name, color=color, text=plug_name)
             for source in sources:
                 _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
@@ -1035,3 +1040,7 @@ class LayerStackComposition(QtWidgets.QDialog):
                     ports = {"tailport": src_port, "headport":None} if precise_ports else {}
                     color = _edge_color(tuple(visible_arcs))
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
+
+
+# from . import _graph
+# _GraphViewer = _graph.GraphView
