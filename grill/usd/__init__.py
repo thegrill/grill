@@ -322,30 +322,20 @@ def _edit_context_by_arc(prim, arc_type, path, layer):
 
 @contextlib.contextmanager
 def _prim_tree_printer(prims_to_include: typing.Container = frozenset()):
+    class PrimTreePrinter(TreePrinter):
+        """For everything else, use usdtree from the vanilla USD toolset"""
+
+        def ftree(self, prim: Usd.Prim):
+            self.ROOT = f"{super().ROOT}{prim.GetName()}"
+            return super().ftree(prim)
+
     predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
     # another duck
     Usd.Prim.__iter__ = lambda prim: (p for p in prim.GetFilteredChildren(predicate) if not prims_to_include or p in prims_to_include)
     Usd.Prim.items = lambda prim: ((p.GetName(), p) for p in prim)
     current = type(abc.Mapping).__instancecheck__  # can't unregister abc.Mapping.register, so use __instancecheck__
 
-    def _prim_is_mapping(cls, instance, *args, **kwargs):
-        if type(instance) == Usd.Prim and cls == abc.Mapping:
-            return True
-        return current(cls, instance, *args, **kwargs)
-
-    class PrimTreePrinter(TreePrinter):
-        """For everything else, use usdtree from the vanilla USD toolset"""
-        @property
-        def ROOT(self):
-            return f"{super().ROOT}{self.prim.GetName()}"
-
-        def ftree(self, prim: Usd.Prim):
-            self.prim = prim
-            result = super().ftree(prim)
-            self.prim = None
-            return result
-
-    type(abc.Mapping).__instancecheck__ = _prim_is_mapping
+    type(abc.Mapping).__instancecheck__ = lambda cls, inst: (cls == abc.Mapping and type(inst) == Usd.Prim) or current(cls, inst)
     try:
         yield PrimTreePrinter()
     finally:
