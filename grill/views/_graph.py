@@ -324,23 +324,6 @@ class _Edge(QtWidgets.QGraphicsItem):
         arrow_head.append(arrow_p2)
         painter.drawPolygon(arrow_head)
 
-    def _arrow_target(self, pcnt) -> QtCore.QPointF:
-        """Calculate the position of the arrow taking into account the size of the destination node
-
-        Returns:
-            QtCore.QPointF
-        """
-        target = self._line.p1()
-        center = self._line.p2()
-        vector = target - center
-        length = math.sqrt(vector.x() ** 2 + vector.y() ** 2)
-        radius = length - (length * pcnt)
-        if length == 0:
-            return target
-        normal = vector / length
-        target = QtCore.QPointF(center.x() + (normal.x() * radius), center.y() + (normal.y() * radius))
-        return target
-
     def paint(self, painter: QtGui.QPainter, option: QtWidgets.QStyleOptionGraphicsItem, widget=None):
         """Override from QtWidgets.QGraphicsItem
 
@@ -362,15 +345,14 @@ class _Edge(QtWidgets.QGraphicsItem):
             painter.drawLine(self._line)
             for index, color in total_colors:
                 shift = int((index+1)/2) * 1.5 * 3
-                side = shift if index %2 == 0 else -shift
+                side = shift if index % 2 == 0 else -shift
                 self._pen.setColor(QtGui.QColor(color))
                 painter.setPen(self._pen)
-                line = _parallel_line(self._line, side, head_offset=11)
-                painter.drawLine(line)
+                painter.drawLine(_parallel_line(self._line, side, head_offset=11))
             self._pen.setColor(self._color)
             painter.setPen(self._pen)
 
-            self._draw_arrow(painter, self._line.p1(), self._arrow_target(1))
+            self._draw_arrow(painter, self._line.p1(), self._line.p2())
 
             if self._label_text:
                 source_point = self._line.p1()
@@ -381,23 +363,27 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     def _draw_rounded_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
         # painter.drawRect(self.boundingRect())  # for debugging purposes
-        center = source_pos
+        center_x, center_y = source_pos.toTuple()
 
         for index, color in enumerate(self._colors):
             self._pen.setColor(QtGui.QColor(color))
             painter.setPen(self._pen)
-            offset = 1.5*index
-            radius = 20 - (index * 1.5)
+            arc_offset = index * 1.5
+            box_y = center_y + (1.5 * index)
+            radius = 20 - arc_offset
+            box_size = radius * 2
+            start_angle = 135 - (5 * index)
+            finish_angle = -270 + arc_offset
             arrow_path = QtGui.QPainterPath()
-            arrow_path.arcMoveTo(center.x(), center.y() + offset, radius * 2, radius * 2, 135 - (5 * index))
-            arrow_path.arcTo(center.x(), center.y() + offset, radius * 2, radius * 2, 135 - (5 * index), -270 + (1.5*index))
+            arrow_path.arcMoveTo(center_x, box_y, box_size, box_size, start_angle)
+            arrow_path.arcTo(center_x, box_y, box_size, box_size, start_angle, finish_angle)
             painter.drawPath(arrow_path)
 
         self._pen.setColor(self._color)
         painter.setPen(self._pen)
 
-        start = QtCore.QPointF(center.x()+7, center.y()+6)
-        end = QtCore.QPointF(center.x()+4, center.y()+9)
+        start = QtCore.QPointF(center_x+7, center_y+6)
+        end = QtCore.QPointF(center_x+4, center_y+9)
         self._draw_arrow(painter, start, end)
 
 
@@ -529,7 +515,6 @@ class GraphView(QtWidgets.QGraphicsView):
         print("LOADING GRAPH")
         self.scene().clear()
         self._nodes_map.clear()
-        # direction = self._graph.graph['graph'].get("rankdir", "") or "TB"
         table_color = graph.graph['graph'].get("table_color", "")
         background_color = graph.graph['graph'].get("background_color", "")
         edge_color = graph.graph.get('edge', {}).get("color", "")
