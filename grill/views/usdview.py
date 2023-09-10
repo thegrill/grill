@@ -148,7 +148,7 @@ class _GrillPrimContextMenuItem(primContextMenuItems.PrimContextMenuItem):
 
 class GrillPrimCompositionMenuItem(_GrillPrimContextMenuItem):
     _widget = _description.PrimComposition
-    _subtitle = "Composition"
+    _subtitle = "Prim Composition"
 
     def GetText(self):
         return f"Inspect|{self._subtitle}"
@@ -163,6 +163,20 @@ class GrillPrimCompositionMenuItem(_GrillPrimContextMenuItem):
 
 
 class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
+    _widget = _description.LayerStackComposition
+    _subtitle = "Scene Graph Composition"
+
+    def RunCommand(self):
+        usdview_api = _usdview_api.get()
+        stage = usdview_api.stage
+        prims = self._selectionDataModel.getPrims()
+        widget = self._widget(parent=usdview_api.qMainWindow)
+        widget.setPrimPaths(prim.GetPath() for prim in prims)
+        widget.setStage(stage)
+        widget.show()
+
+
+class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
     _widget = _description._ConnectableAPIViewer
     _subtitle = "Connections"
 
@@ -170,15 +184,21 @@ class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
 class AllHierarchyTextMenuItem(_GrillPrimContextMenuItem):
     _include_descendants = True
     _subtitle = "All Descendants"
+    _predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
 
     def GetText(self):
         return f"Copy Hierarchy|{self._subtitle}"
 
     def RunCommand(self):
-        text = gusd._format_prim_hierarchy(self._selectionDataModel.getPrims(), self._include_descendants)
+        text = gusd._format_prim_hierarchy(self._selectionDataModel.getPrims(), self._include_descendants, self._predicate)
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.setText(text, QtGui.QClipboard.Selection)
         clipboard.setText(text, QtGui.QClipboard.Clipboard)
+
+
+class ModelHierarchyTextMenuItem(AllHierarchyTextMenuItem):
+    _subtitle = "Model Hierarchy"
+    _predicate = Usd.PrimIsModel
 
 
 class SelectedHierarchyTextMenuItem(AllHierarchyTextMenuItem):
