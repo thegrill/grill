@@ -122,6 +122,8 @@ class TestViews(unittest.TestCase):
         viewer.setPrim(material)
         viewer.setPrim(None)
 
+    def test_graph_view(self):
+        stage = ...
     def test_layer_composition(self):
         widget = description.LayerStackComposition()
         widget.setStage(self.world)
@@ -452,7 +454,7 @@ class TestViews(unittest.TestCase):
         editor._update_value()
         editor._random.click()
 
-        xform = UsdGeom.Xform.Define(stage, "/x")
+        xform = stage.DefinePrim("/x")
         primvar = UsdGeom.Gprim(xform.GetPrim()).CreateDisplayColorPrimvar()
         editor = _attributes._DisplayColorEditor(primvar)
         with self.assertRaises(TypeError):  # atm some gprim types are not supported
