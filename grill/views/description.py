@@ -199,6 +199,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             affected_by.add(target_idx)
             source_layer = arc.GetIntroducingLayer()
             if source_layer:
+                # Note: arc.GetIntroducingNode() is not guaranteed to be the same as
+                # arc.GetTargetNode().origin nor arc.GetTargetNode().GetOriginRootNode()
                 source_idx, source_layers = _add_node(arc.GetIntroducingNode())
                 source_port = source_layers[source_layer]
                 all_nodes[source_idx]['active_plugs'].add(source_port)  # all connections, for GUI
@@ -245,10 +247,14 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
 def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     connections_api = UsdShade.ConnectableAPI(prim)
     graph = nx.MultiDiGraph()
-    outline_color = 'steelblue'
-    background_color = 'azure'
-    graph.graph['graph'] = {'rankdir': 'LR', 'table_color': outline_color, 'background_color': background_color}  # table_color internal to grill views
-    graph.graph['node'] = {'colorscheme': 'paired12', 'shape': 'none'}
+    outline_color = "#4682B4"  # 'steelblue'
+    background_color = "#F0FFFF"  # 'azure'
+    # graph.graph['graph'] = {'rankdir': 'LR', 'table_color': outline_color, 'background_color': background_color}  # table_color internal to grill views
+    graph.graph['graph'] = {'rankdir': 'LR'}
+    # graph.graph['graph'] = {'rankdir': 'LR', 'table_color': outline_color}  # table_color internal to grill views
+
+    # graph.graph['node'] = {'colorscheme': 'paired12', 'shape': 'none'}
+    graph.graph['node'] = {'colorscheme': 'paired12', 'shape': 'none', 'table_color': outline_color, 'background_color': background_color}  # table_color internal to grill views}
     graph.graph['edge'] = {"color": 'crimson'}
 
     all_nodes = dict()  # {node_id: {graphviz_attr: value}}
@@ -265,13 +271,14 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
 
     plug_colors = {
         UsdShade.Input: outline_color,  # blue
-        UsdShade.Output: "lightcoral",  # pink
+        UsdShade.Output: "#F08080"  # "lightcoral",  # pink
     }
     table_row = '<tr><td port="{port}" border="0" bgcolor="{color}" style="ROUNDED">{text}</td></tr>'
 
     def traverse(api: UsdShade.ConnectableAPI):
         node_id = _get_node_id(api.GetPrim())
-        label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="white" color="{outline_color}">'
+        # label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="white" color="{outline_color}">'
+        label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
         label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
         plugs = {"": 0}  # {graphviz port name: port index order}
         active_plugs = set()
@@ -376,6 +383,7 @@ class _DotViewer(QtWidgets.QFrame):
         layout = QtWidgets.QVBoxLayout()
         # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
         self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
+
         self._error_view = QtWidgets.QTextBrowser(parent=self)
         layout.addWidget(self._graph_view)
         layout.addWidget(self._error_view)
@@ -1148,10 +1156,10 @@ class LayerStackComposition(QtWidgets.QDialog):
                 if visible_arcs:
                     # Composition arcs target layer stacks, so we don't specify port on our target nodes
                     # since it does not change and visually helps for network layout.
-                    ports = {"tailport": src_port, "headport":None} if precise_ports else {}
+                    ports = {"tailport": src_port} if precise_ports and src_port is not None else {}
                     color = _edge_color(tuple(visible_arcs))
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
 
 
-# from . import _graph
-# _GraphViewer = _graph.GraphView
+from . import _graph
+_GraphViewer = _graph.GraphView
