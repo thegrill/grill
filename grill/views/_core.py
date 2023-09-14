@@ -44,6 +44,14 @@ QPushButton:disabled {
     background-color: QLinearGradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 rgb(66, 66, 66), stop: 1 rgb(56, 56, 56));
 }
 
+QCheckBox::indicator:indeterminate:hover {
+    border: 1px solid rgb(163, 135, 78);
+}
+/* Partially checked state (indeterminate) */
+QCheckBox::indicator:indeterminate {
+    background-color: rgb(135, 206, 250); /* lightskyblue */
+}
+
 """
 
 # Taken from QTreeWidget style and adapted for _Tree:
