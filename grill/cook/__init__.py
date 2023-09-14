@@ -289,7 +289,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
             for prim, (name, label, *__, layer, reference) in prims_info.items():
                 prim.GetReferences().AddReference(reference)
                 with _usd.edit_context(reference, prim):
-                    if hasattr(prim, "SetDisplayNames"):  # USD-23.02+
+                    if hasattr(prim, "SetDisplayName"):  # USD-23.02+
                         prim.SetDisplayName(label)
                     UsdGeom.ModelAPI.Apply(prim)
                     modelAPI = Usd.ModelAPI(prim)
@@ -526,7 +526,8 @@ def _inherit_or_specialize_unit(method, context_unit):
 def taxonomy_graph(prims, url_id_prefix):
     graph = nx.DiGraph(tooltip="Taxonomy Graph")
     graph.graph['graph'] = {'rankdir': 'LR'}
-    graph.graph['node'] = {'shape': 'box', 'fillcolor': "lightskyblue1", 'color':"dodgerblue4", 'style':'filled,rounded'}
+    #                                                   lightskyblue1,     dodgerblue4
+    graph.graph['node'] = {'shape': 'box', 'fillcolor': "#afd7ff", 'color':"#1E90FF", 'style':'filled,rounded'}
 
     # TODO:
     #  - Guarantee taxa will be unique (no duplicated short names), raise here?
