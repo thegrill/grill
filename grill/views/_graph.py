@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import math
-import itertools
 import networkx as nx
+from itertools import chain
 
 from networkx import drawing
 
@@ -16,11 +16,12 @@ _core._ensure_dot()
 #   - Check why sometimes there are messages like "Warning: node 438, port None unrecognized"
 #   - Context menu items
 #   - Dark mode to respect arcs color
+#   - USDView missing tri-state style
 #   - Graph filtering sometimes errors with KeyError or NaN failures
-#   - Graph filtering sometimes leaves traces of non-refreshed GUI
 #   - Ability to move further in canvas after Nodes don't exist
 #   - Grab global graph parameters for node and edges
-#   - URL-like navigation
+#   - Focus with F
+#   - Taxonomy graph is LR and should go from center to center (edges)
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
 
@@ -38,7 +39,9 @@ class _Node(QtWidgets.QGraphicsTextItem):
         elif label.startswith("<"):
             # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internall to graphviz
             # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
-            label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED" bgcolor="white"', "table")
+            # label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED" bgcolor="white"', "table")
+            # label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED" bgcolor="#F0FFFF"', "table")
+            label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
         self._style = style
         self._plugs = plugs or {}
 
@@ -61,11 +64,42 @@ class _Node(QtWidgets.QGraphicsTextItem):
         </style>""" + label
         self.setHtml(label)
         if style != "invis":
-            self.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            self.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
             self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable)
             self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
         self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
         self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
+        self._space_pressed = False
+        self.setAcceptHoverEvents(True)
+
+    def _overrideCursor(self, event):
+        if event.modifiers() == QtCore.Qt.ShiftModifier:
+            self.setCursor(QtGui.Qt.PointingHandCursor)
+        elif event.modifiers() == QtCore.Qt.AltModifier:
+            self.setCursor(QtGui.Qt.ClosedHandCursor)
+            self.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        else:
+            self.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            self.setCursor(QtGui.Qt.ArrowCursor)
+
+    def hoverMoveEvent(self, event: QtWidgets.QGraphicsSceneHoverEvent) -> None:
+        self._overrideCursor(event)
+        super().hoverMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.ShiftModifier:
+            self.linkActivated.emit("")
+        else:
+            super().mouseReleaseEvent(event)
+
+    def hoverEnterEvent(self, event):
+        self._overrideCursor(event)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self.setCursor(QtGui.Qt.ArrowCursor)
+        self.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        super().hoverLeaveEvent(event)
 
     def convert_graphviz_to_html_label(self, graphviz_label):
         # Split the label into individual fields
@@ -433,11 +467,73 @@ class GraphView(QtWidgets.QGraphicsView):
         self._viewing = set()
         self.url_id_prefix = ""
 
+        ################
+        self.dragging = False
+        self.last_pan_pos = None
+
+    def wheelEvent(self, event):
+        modifiers = event.modifiers()
+
+        if modifiers == QtCore.Qt.ControlModifier:
+            zoom_factor = 1.2 if event.angleDelta().y() > 0 else 0.8
+            self.scale(zoom_factor, zoom_factor)
+        elif modifiers == QtCore.Qt.AltModifier:
+            self.horizontal_pan(event)
+        else:
+            # Pan vertically when no modifier key is pressed
+            self.vertical_pan(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MiddleButton:
+            self.dragging = True
+            QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.ClosedHandCursor)
+            self.last_pan_pos = event.globalPosition().toPoint()
+            event.accept()
+
+        return super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.MiddleButton:
+            self.dragging = False
+            QtWidgets.QApplication.restoreOverrideCursor()
+            event.accept()
+
+        return super().mouseReleaseEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.dragging and event.buttons() == QtCore.Qt.MiddleButton:
+            # Pan the scene when middle mouse button is held down
+            delta = event.globalPosition().toPoint() - self.last_pan_pos
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            self.last_pan_pos = event.globalPosition().toPoint()
+            return
+        return super().mouseMoveEvent(event)
+
+    def horizontal_pan(self, event):
+        delta = event.angleDelta().x()
+        scroll_bar = self.horizontalScrollBar()
+        scroll_bar.setValue(scroll_bar.value() - delta)
+
+    def vertical_pan(self, event):
+        delta = event.angleDelta().y()
+        scroll_bar = self.verticalScrollBar()
+        scroll_bar.setValue(scroll_bar.value() - delta)
+
+    def _graph_url_changed(self, *_, **__):
+        sender = self.sender()
+        key = next((k for k, v in self._nodes_map.items() if v==sender), None)
+        if key is None:
+            raise LookupError(f"Could not find sender {sender} in nodes map")
+
+        self.view((key,))
+
     def set_nx_layout(self, graph):
         if not graph:
             return
 
         positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+        # positions = drawing.nx_agraph.graphviz_layout(graph)
         # SVG and dot seem to have inverted coordinates, let's flip Y
         max_y = max(pos[1] for pos in positions.values())
         adjusted_positions = {node: (x, max_y - y) for node, (x, y) in positions.items()}
@@ -451,9 +547,7 @@ class GraphView(QtWidgets.QGraphicsView):
 
     def view(self, node_indices: tuple):
         self._viewing = frozenset(node_indices)
-
         graph = self._graph
-        from itertools import chain
         successors = chain.from_iterable(graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(graph.predecessors(index) for index in node_indices)
         nodes_of_interest = chain(self.sticky_nodes, node_indices, successors, predecessors)
@@ -470,17 +564,6 @@ class GraphView(QtWidgets.QGraphicsView):
             subgraph = nx.subgraph_view(subgraph, **filters)
 
         self._load_graph(subgraph)
-        # for node, item in self._nodes_map.items():
-        #     if node in subgraph.nodes:
-        #         item.setVisible(True)
-        #     else:
-        #         item.setVisible(False)
-        #
-        # for node, item in self._nodes_map.items():
-        #     if node in subgraph.nodes:
-        #         item.setVisible(True)
-        #     else:
-        #         item.setVisible(False)
 
     @property
     def graph(self):
@@ -503,8 +586,6 @@ class GraphView(QtWidgets.QGraphicsView):
 
     @graph.setter
     def graph(self, graph):
-        # self._subgraph_dot_path.cache_clear()
-        # self.sticky_nodes.clear()
         self._graph = graph
         self._load_graph(graph)
 
@@ -514,25 +595,27 @@ class GraphView(QtWidgets.QGraphicsView):
             return
         print("LOADING GRAPH")
         self.scene().clear()
+        self.viewport().update()
         self._nodes_map.clear()
-        table_color = graph.graph['graph'].get("table_color", "")
-        background_color = graph.graph['graph'].get("background_color", "")
+        table_color = graph.graph.get('node', {}).get("table_color", "")
+        background_color = graph.graph.get('node', {}).get("background_color", "")
+        node_color = graph.graph.get('node', {}).get("fillcolor", background_color)
+        node_outline_color = graph.graph.get('node', {}).get("color", "")
         edge_color = graph.graph.get('edge', {}).get("color", "")
-        # Add nodes
 
         def _add_node(nx_node):
-            # print(f"ADDING {nx_node}")
             node_data = graph.nodes[nx_node]
             item = _Node(
                 label=node_data.get('label', str(nx_node)),
-                table_color=table_color,
-                background_color=background_color,
+                table_color=node_outline_color or table_color,
+                background_color=node_color,
                 plugs=node_data.get('plugs', {}),
                 style=node_data.get('style', ""),
-                active_plugs=node_data.get('active_plugs', set())
+                active_plugs=node_data.get('active_plugs', set()),
             )
+            item.linkActivated.connect(self._graph_url_changed)
             self.scene().addItem(item)
-            for each_plug in itertools.chain.from_iterable(item._plug_items.values()):
+            for each_plug in chain.from_iterable(item._plug_items.values()):
                 self.scene().addItem(each_plug)
             return item
 
@@ -546,6 +629,8 @@ class GraphView(QtWidgets.QGraphicsView):
                 source = self._nodes_map[a]
                 dest = self._nodes_map[b]
                 edge_data = graph.edges[(a, b, port)]
+                if port is None:
+                    raise ValueError(f"{source=}\n{dest=}")
                 color = edge_data.get('color', edge_color)
                 label = edge_data.get('label', '')
                 if source._plugs == {} and dest._plugs == {}:
@@ -565,27 +650,6 @@ class GraphView(QtWidgets.QGraphicsView):
                 edge = _Edge(source, dest, color=color, label=label)
                 self.scene().addItem(edge)
         self.set_nx_layout(graph)
-
-    def wheelEvent(self, event):
-        if event.angleDelta().y() > 0:
-            factor = 1.25
-            # self._zoom += 1
-        else:
-            factor = 0.8
-            # self._zoom -= 1
-        self.scale(factor, factor)
-        # if self._zoom > 0:
-        #     self.scale(factor, factor)
-        # elif self._zoom == 0:
-        #     self.fitInView()
-        # else:
-        #     self._zoom = 0
-    #
-    # def toggleDragMode(self):
-    #     if self.dragMode() == QtWidgets.QGraphicsView.DragMode.ScrollHandDrag:
-    #         self.setDragMode(QtWidgets.QGraphicsView.DragMode.NoDrag)
-    #     elif not self._photo.pixmap().isNull():
-    #         self.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
 
 
 def main():
