@@ -12,6 +12,7 @@ from ._qt import QtCore, QtGui, QtWidgets
 _core._ensure_dot()
 
 # TODO:
+#   - TOO SLOW!! (lab workbench)
 #   - Cleanup Edge adjust and paint logic
 #   - Check why sometimes there are messages like "Warning: node 438, port None unrecognized"
 #   - Context menu items

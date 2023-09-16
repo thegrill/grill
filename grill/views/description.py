@@ -183,6 +183,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     @cache
     def _compute_composition(_prim):
         query = Usd.PrimCompositionQuery(_prim)
+        # query.filter = query_filter
         affected_by = set()  # {int}  indices of nodes affecting this prim
         arc_attrs_to_check = (
             Usd.CompositionArc.HasSpecs,
@@ -207,12 +208,15 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
                 arc_attributes = {
                     func.__name__: is_fun for func in arc_attrs_to_check if (is_fun := func(arc))
                 }
+                # print(arc_attributes)
                 prim_edges[source_idx, target_idx][source_port, None][arc.GetArcType()].update(arc_attributes)
         return affected_by, prim_edges
 
     def _freeze(dct):
         return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
 
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     all_nodes = dict()  # {int: dict}
 
     all_edges = defaultdict(lambda: defaultdict(dict))  # {(int, int, int, int): {Pcp.ArcType: {}, ..., }}
@@ -1044,17 +1048,17 @@ class LayerStackComposition(QtWidgets.QDialog):
         filters_layout = QtWidgets.QHBoxLayout()
         _graph_controls_layout.addLayout(filters_layout)
         # Arcs filters
-        def _arc_filter(title):
+        def _arc_filter(title, state=QtCore.Qt.CheckState.PartiallyChecked):
             widget = QtWidgets.QCheckBox(title)
             widget.setTristate(True)
-            widget.setCheckState(QtCore.Qt.CheckState.PartiallyChecked)
+            widget.setCheckState(state)
             widget.stateChanged.connect(self._edge_filter_changed)
             # widget.toggled
             filters_layout.addWidget(widget)
             return widget
 
         _graph_arcs_layout.addStretch(0)
-        self._has_specs = _arc_filter("Has Specs")
+        self._has_specs = _arc_filter("Has Specs", QtCore.Qt.CheckState.Checked)
         self._is_ancestral = _arc_filter("Is Ancestral")
         self._is_implicit = _arc_filter("Is Implicit")
         self._from_root_prim_spec = _arc_filter("From Root Layer Prim Spec")
@@ -1127,6 +1131,7 @@ class LayerStackComposition(QtWidgets.QDialog):
 
         graph_info = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._prims.setStage(stage)
+        # self._edge_filter_changed()
         self._update_graph_from_graph_info(graph_info)
 
     def setPrimPaths(self, value):
@@ -1144,7 +1149,11 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._layers.model.setLayers(graph_info.ids_by_layers)
         # view intersection as we might be seeing nodes that no longer exist
         # self._graph_view.view(self._graph_view._viewing)  # TODO: check if this is better <- and reset _viewing somewhere else
-        self._graph_view.view(self._graph_view._viewing.intersection(graph_info.nodes))
+        ## NEW
+        self._graph_view._viewing = self._graph_view._viewing.intersection(graph_info.nodes)
+        self._edge_filter_changed()
+        ## NEW END
+        # self._graph_view.view(self._graph_view._viewing.intersection(graph_info.nodes))
 
     def _iedges(self, graph_info: _GraphInfo):
         checked_arcs = {arc for arc, control in self._graph_edge_include.items() if control.isChecked()}
