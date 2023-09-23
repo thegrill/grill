@@ -11,6 +11,8 @@ from . import _core
 from ._qt import QtCore, QtGui, QtWidgets
 _core._ensure_dot()
 
+_IS_QT5 = QtCore.qVersion().startswith("5")
+
 # TODO:
 #   - TOO SLOW!! (lab workbench)
 #   - Cleanup Edge adjust and paint logic
@@ -64,8 +66,12 @@ class _Node(QtWidgets.QGraphicsTextItem):
         th, td {text-align: center;padding: 3px}
         </style>""" + label
         self.setHtml(label)
+        # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
+        # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
+        # https://bugreports.qt.io/browse/QTBUG-89563
+        self._default_text_interaction = QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction
         if style != "invis":
-            self.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            self.setTextInteractionFlags(self._default_text_interaction)
             self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable)
             self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
         self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
@@ -80,7 +86,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
             self.setCursor(QtGui.Qt.ClosedHandCursor)
             self.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
         else:
-            self.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            self.setTextInteractionFlags(self._default_text_interaction)
             self.setCursor(QtGui.Qt.ArrowCursor)
 
     def hoverMoveEvent(self, event: QtWidgets.QGraphicsSceneHoverEvent) -> None:
@@ -99,7 +105,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
     def hoverLeaveEvent(self, event):
         self.setCursor(QtGui.Qt.ArrowCursor)
-        self.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        self.setTextInteractionFlags(self._default_text_interaction)
         super().hoverLeaveEvent(event)
 
     def convert_graphviz_to_html_label(self, graphviz_label):
@@ -153,7 +159,6 @@ class _Node(QtWidgets.QGraphicsTextItem):
 class _Edge(QtWidgets.QGraphicsItem):
     def __init__(self, source: _Node, dest: _Node, parent: QtWidgets.QGraphicsItem = None, color="#2BB53C", label="", source_plug=None, target_plug=None):
         super().__init__(parent)
-        # self._direction = direction
         self._source = source
         self._dest = dest
         self._is_cycle = source == dest
@@ -173,6 +178,9 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         self._pen = QtGui.QPen(QtGui.QColor(self._color), self._tickness, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._brush = QtGui.QBrush(self._color)
+        if _IS_QT5:
+            self._brush.setStyle(QtGui.Qt.SolidPattern)
+            self._brush.setColor(self._color)
 
         if label:
             self._label_text = QtWidgets.QGraphicsTextItem(label, self)
@@ -295,9 +303,15 @@ class _Edge(QtWidgets.QGraphicsItem):
                 LINE = line
 
             order = (bottom, right, top, left)  # TODO: this can be more efficient depending on dest coords
+            if _IS_QT5:
+                intersect_method = LINE.intersect
+                bounded_intersection = QtCore.QLineF.IntersectType.BoundedIntersection
+            else:
+                intersect_method = LINE.intersects
+                bounded_intersection = QtCore.QLineF.IntersectionType.BoundedIntersection
             for each in order:
-                intersection, intersection_point = LINE.intersects(each)
-                if intersection == QtCore.QLineF.IntersectionType.BoundedIntersection:
+                intersection, intersection_point = intersect_method(each)
+                if intersection == bounded_intersection:
                     self._line = QtCore.QLineF(source_port_position, intersection_point)
                     break
             else:
@@ -717,4 +731,4 @@ if __name__ == "__main__":
     end = datetime.datetime.now()
     print(f"Total time: {end - start}")
 
-    sys.exit(app.exec())
+    sys.exit(app.exec_())
