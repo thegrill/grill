@@ -68,6 +68,16 @@ _TREE_PATTERN = re.compile(  # draft as well output of usdtree
     rf'^(?P<identifier_prim_path>([/`|\s:]+-+)(\w+)?)(\((?P<metadata>\w+)\)|(?P<prop_name>\.[\w:]+)|( \[(?P<specifier>def|over|class)( (?P<prim_type>\w+))?])( \((?P<custom_meta>[\w\s=]+)\))?)'
 )
 
+_USD_COMPOSITION_ARC_QUERY_METHODS = (
+    Usd.CompositionArc.HasSpecs,
+    Usd.CompositionArc.IsAncestral,
+    Usd.CompositionArc.IsImplicit,
+    Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
+    Usd.CompositionArc.IsIntroducedInRootLayerStack,
+)
+_USD_COMPOSITION_ARC_QUERY_KEYS = tuple(func.__name__ for func in _USD_COMPOSITION_ARC_QUERY_METHODS)
+_USD_COMPOSITION_ARC_QUERY_DEFAULTS = lambda: dict.fromkeys(_USD_COMPOSITION_ARC_QUERY_KEYS, False)
+
 
 def _run(args: list):
     if not args or not args[0]:
@@ -144,10 +154,6 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     """Compute layer stack graph info for the provided prims"""
 
     @cache
-    def _cached_layer_label(layer):
-        return _layer_label(layer)
-
-    @cache
     def _sublayers(layer_stack):  # {Sdf.Layer: int}
         return MappingProxyType({v: i for i, v in enumerate(layer_stack.layers)})
 
@@ -173,7 +179,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # For Windows path sep: https://stackoverflow.com/questions/15094591/how-to-escape-forwardslash-character-in-html-but-have-it-passed-correctly-to-jav
             tooltip += f"&#10;{layer_index}: {(layer.realPath or layer.identifier)}".replace('\\', '&#47;')
             plugs[layer_index] = layer_index
-            label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_cached_layer_label(layer)}"
+            label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_layer_label(layer)}"
         label += '}'
         attrs['plugs'] = plugs
         attrs['active_plugs'] = set()  # all active connections, for GUI
@@ -183,11 +189,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     @cache
     def _compute_composition(_prim):
         query = Usd.PrimCompositionQuery(_prim)
-        # query.filter = query_filter
         affected_by = set()  # {int}  indices of nodes affecting this prim
-
-        # prim_edges = defaultdict(lambda: defaultdict(lambda: defaultdict(arc_attrs)))  # {(source_int, target_int): {Pcp.ArcType...}}
-        prim_edges = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))  # {(source_int, target_int): {Pcp.ArcType...}}
         for arc in query.GetCompositionArcs():
             target_idx, __ = _add_node(arc.GetTargetNode())
             affected_by.add(target_idx)
@@ -198,178 +200,45 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
                 source_idx, source_layers = _add_node(arc.GetIntroducingNode())
                 source_port = source_layers[source_layer]
                 all_nodes[source_idx]['active_plugs'].add(source_port)  # all connections, for GUI
-                arc_attributes = {
-                    func.__name__: is_fun for func in arc_attrs_to_check if (is_fun := func(arc))
-                }
-                prim_edges[source_idx, target_idx][source_port, None][arc.GetArcType()].update(arc_attributes)
-        return affected_by, prim_edges
+                all_edges[source_idx, target_idx][source_port][arc.GetArcType()].update(
+                    {func.__name__:  is_fun for func in _USD_COMPOSITION_ARC_QUERY_METHODS if (is_fun := func(arc))}
+                )
 
-    def _freeze(dct):
-        return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
+        return affected_by
 
-    query_filter = Usd.PrimCompositionQuery.Filter()
-    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     all_nodes = dict()  # {int: dict}
+    all_edges = defaultdict(                            #   { (source_node: int, target_node: int):
+        lambda: defaultdict(                            #       { source_port: int:
+            lambda: defaultdict(                        #           { Pcp.ArcType:
+                _USD_COMPOSITION_ARC_QUERY_DEFAULTS     #               { HasArcs: bool, IsImplicit: bool, ... }
+            )                                           #           }
+        )                                               #       }
+    )                                                   #   }
 
-    # all_edges = defaultdict(lambda: defaultdict(dict))  # {(int, int, int, int): {Pcp.ArcType: {}, ..., }}
-    all_edges = defaultdict(lambda: defaultdict(lambda: defaultdict(arc_attrs)))  # {(int, int, int, int): {Pcp.ArcType: {}, ..., }}
-    # {
-    #   (source_node: int, target_node: int): {
-    #       (source_port: int, target_port: int): {
-    #           Pcp.ArcType: {
-    #                   HasArcs: bool,
-    #                   IsImplicit: bool,
-    #                   ...
-    #           },
-    #       }
-    #   }
-    # }
-    # all_edges = defaultdict(lambda: defaultdict(lambda: defaultdict(arc_attrs)))
     for arc_type, attributes in _ARCS_LEGEND.items():
         arc_label_node_ids = (len(all_nodes), len(all_nodes) + 1)
         all_nodes.update(dict.fromkeys(arc_label_node_ids, dict(style='invis')))
-        all_edges[arc_label_node_ids][None, None][arc_type] = dict(label=f" {arc_type.displayName}", **attributes)
+        all_edges[arc_label_node_ids][None][arc_type] = dict(label=f" {arc_type.displayName}", **attributes)
 
     legend_node_ids = tuple(all_nodes)
     ids_by_root_layer = dict()
     indices_by_sublayers = defaultdict(set)  # {Sdf.Layer: {int,} }
     paths_by_node_idx = defaultdict(set)
-    # # prim_queries = ...
-    # import concurrent.futures
-    # # def _collect_prim_queries(obj_list):
-    # def _collect_prim_queries(source_prims):
-    #     master_by_path = dict()  # {Sdf.Path: Prototype}
-    #     prim_mapping = defaultdict(list)  # {"/source/prim": ["instanced/proxy/path"]}
-    #
-    #     for prim in source_prims:
-    #         prim_path = prim.GetPath()
-    #         forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-    #         prim_mapping[forwarded_prim].append(prim_path)
-    #         forwarded_path = forwarded_prim.GetPath()
-    #         if forwarded_path not in master_by_path:
-    #             master_by_path[forwarded_path] = forwarded_prim
-    #
-    #
-    #     prim_queries = dict()  # source_prim: query
-    #     # objects_info = {}
-    #     # Define the worker function
-    #
-    #
-    #     # Use a ThreadPoolExecutor for parallel execution
-    #     with concurrent.futures.ThreadPoolExecutor() as executor:
-    #         # Submit the worker function for each object
-    #         # futures = [executor.submit(worker, obj) for obj in prim_mapping]
-    #         futures = [executor.submit(workerz, obj) for obj in master_by_path.values()]
-    #
-    #         # Wait for all tasks to complete
-    #         concurrent.futures.wait(futures)
-    #
-    #     return prim_queries, prim_mapping
-    #
-    # pq, pm = _collect_prim_queries(prims)
-    # for primy, affectedby in pq.items():
-    #     for affected_by_idx in affectedby:
-    #         paths_by_node_idx[affected_by_idx].update(pm[primy])
+
     for prim in prims:
         # use a forwarded prim in case of instanceability to avoid computing same stack more than once
         prim_path = prim.GetPath()
-        forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-        affected_by_indices, edges = _compute_composition(forwarded_prim)
-        # affected_by_indices = _compute_composition(forwarded_prim)
-        # for edge_data, edge_arcs in edges.items():
-        # for edge_data, (edge_ports, edge_arcs) in edges.items():
-        for edge_nodes, edge_data in edges.items():
-            for edge_plugs, edge_arcs in edge_data.items():
-                for arc_typez, arc_attributesss in edge_arcs.items():
-                    all_edges[edge_nodes][edge_plugs][arc_typez].update(arc_attributesss)
-        for affected_by_idx in affected_by_indices:
+        for affected_by_idx in _compute_composition(UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)):
             paths_by_node_idx[affected_by_idx].add(prim_path)
-    ######### BLOCKSSS
-    # for prim in prims:
-    #     # use a forwarded prim in case of instanceability to avoid computing same stack more than once
-    #     prim_path = prim.GetPath()
-    #     forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-    #     # affected_by_indices, edges = _compute_composition(forwarded_prim)
-    #     affected_by_indices = _compute_composition(forwarded_prim)
-    #     # for edge_data, edge_arcs in edges.items():
-    #     # for edge_data, (edge_ports, edge_arcs) in edges.items():
-    #     # for edge_nodes, edge_data in edges.items():
-    #     #     for edge_plugs, edge_arcs in edge_data.items():
-    #     #         for arc_typez, arc_attributesss in edge_arcs.items():
-    #     #             all_edges[edge_nodes][edge_plugs][arc_typez].update(arc_attributesss)
-    #     for affected_by_idx in affected_by_indices:
-    #         paths_by_node_idx[affected_by_idx].add(prim_path)
-    ############## END BLOCKS
-    # print("!!!!!!!!!!!!!!!!!!!!!!!! ------------------")
-    # pprint(all_edges)
-    # for item in graph_info:
-    #     # pprint(item)
-    #     pprint(sorted(item.items() if hasattr(item, "items") else item))
-    # raise ValueError
+
     return _GraphInfo(
         edges=MappingProxyType(all_edges),
         nodes=MappingProxyType(all_nodes),
         sticky_nodes=legend_node_ids,
-        paths_by_ids=_freeze(paths_by_node_idx),
-        ids_by_layers=_freeze(indices_by_sublayers),
+        paths_by_ids=paths_by_node_idx,
+        ids_by_layers=indices_by_sublayers,
     )
 
-
-arc_attrs_to_check = (
-    Usd.CompositionArc.HasSpecs,
-    Usd.CompositionArc.IsAncestral,
-    Usd.CompositionArc.IsImplicit,
-    Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
-    Usd.CompositionArc.IsIntroducedInRootLayerStack,
-)
-arc_keys = tuple(func.__name__ for func in arc_attrs_to_check)
-arc_attrs = lambda: dict.fromkeys(arc_keys, False)
-def _get_arc_attrs(arc):
-    return {
-                func.__name__: is_fun for func in arc_attrs_to_check if (is_fun := func(arc))
-            }
-
-# def workerz(source_prim):
-#     query = Usd.PrimCompositionQuery(source_prim)
-#     # obj_details = expensive_inspection_function(obj)
-#
-#     affected_by = set()  # {int}  indices of nodes affecting this prim
-#
-#     # prim_edges = defaultdict(lambda: defaultdict(lambda: defaultdict(arc_attrs)))  # {(source_int, target_int): {Pcp.ArcType...}}
-#     # prim_edges = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))  # {(source_int, target_int): {Pcp.ArcType...}}
-#     # for arc in query.GetCompositionArcs():
-#     # for arc in _get_composition_arcs(query):
-#     for arc in query.GetCompositionArcs():
-#         # continue
-#         # target_idx, __ = _add_node(arc.GetTargetNode())
-#         target_node = arc.GetTargetNode()
-#         # target_idx, __ = _add_node(_get_target_node(arc))
-#
-#         # affected_by.add(target_idx)
-#         # continue
-#         source_layer = arc.GetIntroducingLayer()
-#         # source_layer = _get_intro_layer(arc)
-#         if source_layer:
-#             # Note: arc.GetIntroducingNode() is not guaranteed to be the same as
-#             # arc.GetTargetNode().origin nor arc.GetTargetNode().GetOriginRootNode()
-#             source_node = arc.GetIntroducingNode()
-#             # source_idx, source_layers = _add_node(arc.GetIntroducingNode())
-#             # source_idx, source_layers = _add_node(_get_intro_node(arc))
-#             # source_port = source_layers[source_layer]
-#             # all_nodes[source_idx]['active_plugs'].add(source_port)  # all connections, for GUI
-#             arc_attributes = _get_arc_attrs(arc)
-#             # print(arc_attributes)
-#             # if (source_idx, target_idx) == (10, 11) and arc.GetArcType() == Pcp.ArcTypeReference:
-#             #     print(f"================================== found for {_prim}")
-#             #     pprint(locals())
-#             # prim_edges[source_idx, target_idx][source_port, None][arc.GetArcType()].update(arc_attributes)
-#             # all_edges[source_idx, target_idx][source_port, None][_get_arc_type(arc)].update(arc_attributes)
-#             # if (source_idx, target_idx) == (10, 11):
-#             #     print(">>>>>>>>>>>>> 10 11 !!! ")
-#             #     pprint(prim_edges[source_idx, target_idx][source_port, None][arc.GetArcType()])
-#     # return affected_by, prim_edges
-#     # return affected_by
-#     # prim_queries[source_prim] = affected_by
 
 def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     connections_api = UsdShade.ConnectableAPI(prim)
@@ -1288,12 +1157,11 @@ class LayerStackComposition(QtWidgets.QDialog):
         checked_arcs = {arc for arc, control in self._graph_edge_include.items() if control.isChecked()}
         precise_ports = self._graph_precise_source_ports.isChecked()
         for (src, tgt), edge_info in graph_info.edges.items():
-            arc_ports = edge_info if precise_ports else {(None, None): collections.ChainMap(*edge_info.values())}
-            for (src_port, tgt_port), arcs in arc_ports.items():
+            arc_ports = edge_info if precise_ports else {None: collections.ChainMap(*edge_info.values())}
+            for src_port, arcs in arc_ports.items():
                 visible_arcs = {arc: attrs for arc, attrs in arcs.items() if (arc in checked_arcs or {src, tgt}.issubset(graph_info.sticky_nodes))}
                 if visible_arcs:
                     # Composition arcs target layer stacks, so we don't specify port on our target nodes
-                    # since it does not change and visually helps for network layout.
                     ports = {"tailport": src_port} if precise_ports and src_port is not None else {}
                     color = _edge_color(tuple(visible_arcs))
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
