@@ -336,7 +336,7 @@ def _prim_tree_printer(predicate, prims_to_include: typing.Container = frozenset
     Usd.Prim.items = lambda prim: ((prim_entry(p), p) for p in prim)
     current = type(abc.Mapping).__instancecheck__  # can't unregister abc.Mapping.register, so use __instancecheck__
 
-    type(abc.Mapping).__instancecheck__ = lambda cls, inst: (cls == abc.Mapping and type(inst) == Usd.Prim) or current(cls, inst)
+    type(abc.Mapping).__instancecheck__ = lambda cls, inst: current(cls, inst) or (cls == abc.Mapping and type(inst) == Usd.Prim)
     try:
         yield PrimTreePrinter()
     finally:
