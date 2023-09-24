@@ -12,13 +12,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.9", "3.11"]
         include:
           - python-version: "3.9"
-            install-arguments: '".[test]" PySide2 usd-core==22.5 PyOpenGL'
+            install-arguments: "PySide2 usd-core==22.5 PyOpenGL ."
           - python-version: "3.11"
-            install-arguments: ".[full,test]"
+            install-arguments: ".[full]"
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python ${{ matrix.python-version }}
