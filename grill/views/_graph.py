@@ -14,73 +14,72 @@ _core._ensure_dot()
 _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
-#   - TOO SLOW!! (lab workbench)
 #   - Cleanup Edge adjust and paint logic
-#   - Check why sometimes there are messages like "Warning: node 438, port None unrecognized"
 #   - Context menu items
 #   - Dark mode to respect arcs color
 #   - USDView missing tri-state style
-#   - Graph filtering sometimes errors with KeyError or NaN failures
 #   - Ability to move further in canvas after Nodes don't exist
-#   - Grab global graph parameters for node and edges
 #   - Focus with F
 #   - Taxonomy graph is LR and should go from center to center (edges)
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
 
 
+def _convert_graphviz_to_html_label(label):
+    # TODO: these checks below rely on internals from the grill (layer stack composition uses record shapes, connection viewer uses html)
+    if label.startswith("{"):  # We're a record. Split the label into individual fields
+        fields = label.strip("{}").split("|")
+        label = '<table>'
+        for index, field in enumerate(fields):
+            port, text = field.strip("<>").split(">", 1)
+            bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
+            label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
+        label += "</table>"
+    elif label.startswith("<"):
+        # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internal to graphviz
+        # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
+        label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
+    return label
+
+
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    def __init__(self, parent=None, label="", table_color="", background_color="", plugs=None, style="", active_plugs: set = frozenset()):
+    def __init__(self, parent=None, label="", color="", fillcolor="", plugs=None, visible=True, active_plugs: set = frozenset()):
         super().__init__(parent)
         self._edges = []
-        # TODO: these checks below rely on internals from the grill (layer stack composition uses record shapes, connection viewer uses html)
-        self._table_color = table_color
-        if label.startswith("{"):
-            self._table_color = self._table_color or "black"
-            label = self.convert_graphviz_to_html_label(label)
-        elif label.startswith("<"):
-            # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internall to graphviz
-            # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
-            # label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED" bgcolor="white"', "table")
-            # label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED" bgcolor="#F0FFFF"', "table")
-            label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
-        self._style = style
         self._plugs = plugs or {}
 
         plug_items = {}
         radius = 4
+        def _plug_item():
+            item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
+            item.setPen(_NO_PEN)
+            return item
         self._active_plugs = active_plugs
         self._active_plugs_by_side = dict()
         for plug_index in active_plugs:
-            left_item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
-            left_item.setPen(_NO_PEN)
-            right_item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
-            right_item.setPen(_NO_PEN)
-            plug_items[plugs[plug_index]] = (right_item, left_item)
+            plug_items[plugs[plug_index]] = (_plug_item(), _plug_item())
             self._active_plugs_by_side[plugs[plug_index]] = {0: dict(), 1: dict()}
         self._plug_items = plug_items
-        self._pen = QtGui.QPen(QtGui.QColor(table_color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
-        self._background_color = background_color or "white"
-        label = """<style>
-        th, td {text-align: center;padding: 3px}
-        </style>""" + label
-        self.setHtml(label)
+        self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
+        self._fillcolor = QtGui.QColor(fillcolor)
+        self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + _convert_graphviz_to_html_label(label))
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
         # https://bugreports.qt.io/browse/QTBUG-89563
         self._default_text_interaction = QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction
-        if style != "invis":
+        if visible:
             self.setTextInteractionFlags(self._default_text_interaction)
             self.setFlag(QtWidgets.QGraphicsItem.ItemIsMovable)
             self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
+            self.setAcceptHoverEvents(True)
+        else:
+            self.setVisible(False)
         self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
         self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
-        self._space_pressed = False
-        self.setAcceptHoverEvents(True)
 
     def _overrideCursor(self, event):
-        if event.modifiers() == QtCore.Qt.ShiftModifier:
+        if event.modifiers() == QtCore.Qt.ControlModifier:
             self.setCursor(QtGui.Qt.PointingHandCursor)
         elif event.modifiers() == QtCore.Qt.AltModifier:
             self.setCursor(QtGui.Qt.ClosedHandCursor)
@@ -94,7 +93,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
         super().hoverMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.ShiftModifier:
+        if event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.ControlModifier:
             self.linkActivated.emit("")
         else:
             super().mouseReleaseEvent(event)
@@ -108,28 +107,14 @@ class _Node(QtWidgets.QGraphicsTextItem):
         self.setTextInteractionFlags(self._default_text_interaction)
         super().hoverLeaveEvent(event)
 
-    def convert_graphviz_to_html_label(self, graphviz_label):
-        # Split the label into individual fields
-        fields = graphviz_label.strip("{}").split("|")
-        # Create an HTML table structure
-        html_label = f'<table color="{self._table_color}">'
-        for index, field in enumerate(fields):
-            port, text = field.strip("<>").split(">", 1)
-            bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
-            html_label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
-        html_label += "</table>"
-        return html_label
-
     def paint(self, painter: QtGui.QPainter, option: QtWidgets.QStyleOptionGraphicsItem, widget: QtWidgets.QWidget) -> None:
-        if self._style == "invis":
-            return
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         painter.setPen(self._pen)
         rect_path = QtGui.QPainterPath()
         roundness = 6
-        rect_path.addRoundedRect(self.boundingRect().adjusted(1,1,-1,-1), roundness, roundness)
-        painter.fillPath(rect_path, QtGui.QColor(self._background_color))
-        painter.drawRoundedRect(self.boundingRect().adjusted(1,1,-1,-1), roundness, roundness)
+        rect_path.addRoundedRect(self.boundingRect().adjusted(1, 1, -1, -1), roundness, roundness)
+        painter.fillPath(rect_path, self._fillcolor)
+        painter.drawRoundedRect(self.boundingRect().adjusted(1, 1, -1, -1), roundness, roundness)
         return super().paint(painter, option, widget)
 
     def add_edge(self, edge: _Edge):
@@ -612,20 +597,16 @@ class GraphView(QtWidgets.QGraphicsView):
         self.scene().clear()
         self.viewport().update()
         self._nodes_map.clear()
-        table_color = graph.graph.get('node', {}).get("table_color", "")
-        background_color = graph.graph.get('node', {}).get("background_color", "")
-        node_color = graph.graph.get('node', {}).get("fillcolor", background_color)
-        node_outline_color = graph.graph.get('node', {}).get("color", "")
         edge_color = graph.graph.get('edge', {}).get("color", "")
 
         def _add_node(nx_node):
             node_data = graph.nodes[nx_node]
             item = _Node(
                 label=node_data.get('label', str(nx_node)),
-                table_color=node_outline_color or table_color,
-                background_color=node_color,
+                color=graph.graph.get('node', {}).get("color", ""),
+                fillcolor=graph.graph.get('node', {}).get("fillcolor", "white"),
                 plugs=node_data.get('plugs', {}),
-                style=node_data.get('style', ""),
+                visible=node_data.get('style', "") != "invis",
                 active_plugs=node_data.get('active_plugs', set()),
             )
             item.linkActivated.connect(self._graph_url_changed)
@@ -673,6 +654,10 @@ def main():
     old_comp._graph_precise_source_ports.setChecked(True)
     old_comp.setStage(stage)
 
+    from . import create
+    old_tax = create.TaxonomyEditor()
+    old_tax.setStage(stage)
+
     comp_graph = old_comp._graph_view.graph
     main_widget = QtWidgets.QWidget()
     main_layout = QtWidgets.QVBoxLayout()
@@ -681,6 +666,8 @@ def main():
 
     conn_stack = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
+    tax_stack = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+
     con_stage = Usd.Stage.Open(r"R:\al\alab-v2.0.1\entity\book_encyclopedia01\book_encyclopedia01.usda")
     con_prim = con_stage.GetPrimAtPath("/root/MATERIAL/usd_proxy")
     con_prim = con_stage.GetPrimAtPath("/root/MATERIAL/usd_full")
@@ -688,18 +675,22 @@ def main():
     con_old = description._ConnectableAPIViewer()
     con_old.setPrim(con_prim)
     conn_stack.addWidget(con_old)
+    tax_stack.addWidget(old_tax)
     description._GraphViewer = GraphView
     new_comp = description.LayerStackComposition()
     new_comp._graph_precise_source_ports.setChecked(True)
     new_comp.setStage(stage)
+    new_tax = create.TaxonomyEditor()
+    new_tax.setStage(stage)
     con_new = description._ConnectableAPIViewer()
     con_new.setPrim(con_prim)
     conn_stack.addWidget(con_new)
-
+    tax_stack.addWidget(new_tax)
     v_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
     comp_stack.addWidget(new_comp)
     v_split.addWidget(comp_stack)
     v_split.addWidget(conn_stack)
+    v_split.addWidget(tax_stack)
     main_layout.addWidget(v_split)
     main_widget.setLayout(main_layout)
     return main_widget, comp_graph, con_graph

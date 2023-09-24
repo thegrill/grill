@@ -245,12 +245,9 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     graph = nx.MultiDiGraph()
     outline_color = "#4682B4"  # 'steelblue'
     background_color = "#F0FFFF"  # 'azure'
-    # graph.graph['graph'] = {'rankdir': 'LR', 'table_color': outline_color, 'background_color': background_color}  # table_color internal to grill views
     graph.graph['graph'] = {'rankdir': 'LR'}
-    # graph.graph['graph'] = {'rankdir': 'LR', 'table_color': outline_color}  # table_color internal to grill views
 
-    # graph.graph['node'] = {'colorscheme': 'paired12', 'shape': 'none'}
-    graph.graph['node'] = {'colorscheme': 'paired12', 'shape': 'none', 'table_color': outline_color, 'background_color': background_color}  # table_color internal to grill views}
+    graph.graph['node'] = {'shape': 'none', 'color': outline_color, 'fillcolor': background_color}  # color and fillcolor used for HTML view
     graph.graph['edge'] = {"color": 'crimson'}
 
     all_nodes = dict()  # {node_id: {graphviz_attr: value}}
@@ -411,9 +408,6 @@ class _DotViewer(QtWidgets.QFrame):
         self._error_view.setVisible(False)
         self._graph_view.setVisible(True)
         self._graph_view.load(QtCore.QUrl.fromLocalFile(filepath))
-
-
-_GraphViewer = _graph.GraphView
 
 
 class _GraphSVGViewer(_DotViewer):
@@ -991,6 +985,7 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
 
 class LayerStackComposition(QtWidgets.QDialog):
     # TODO: display total amount of layer stacks, and sites
+    #       TOO SLOW!! (ALab workbench environment takes 7 seconds for the complete stage.)
     _LAYERS_COLUMNS = (
         _core._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
         _core._Column("🚧 Dirty", operator.attrgetter('dirty')),
@@ -1135,10 +1130,6 @@ class LayerStackComposition(QtWidgets.QDialog):
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
         print("~~~~~~~~~~~~~~~~~~~~~~")
-        # from pprint import pprint
-        # for item in graph_info:
-        #     # pprint(item)
-        #     pprint(sorted(item.items() if hasattr(item, "items") else item))
         self._computed_graph_info = graph_info
         # https://stackoverflow.com/questions/33262913/networkx-move-edges-in-nx-multidigraph-plot
         graph = nx.MultiDiGraph()
@@ -1169,3 +1160,6 @@ class LayerStackComposition(QtWidgets.QDialog):
                     color = _edge_color(tuple(visible_arcs))
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
 
+
+# _GraphViewer = _graph.GraphView
+_GraphViewer = _GraphSVGViewer
