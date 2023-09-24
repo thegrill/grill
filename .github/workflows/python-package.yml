@@ -29,10 +29,9 @@ jobs:
       - name: Set up Graphviz
         uses: ts-graphviz/setup-graphviz@v1
       - name: Install Required Libraries
+        # Needed for PySide6 CI only: https://stackoverflow.com/questions/75907862/pyside6-wsl2-importerror-libegl-so-1
         if: "matrix.python-version == '3.10'"
         run: |
-          echo "This step runs only when python-version is 3.10"
-          sudo apt-get update
           sudo apt-get install -y libegl1
       - name: Install
         run: |
