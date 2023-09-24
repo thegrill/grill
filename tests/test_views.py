@@ -9,7 +9,7 @@ from unittest import mock
 from pxr import Usd, UsdGeom, Sdf, UsdShade
 
 from grill import cook, usd, names
-from grill.views import description, sheets, create, _attributes, stats, _core
+from grill.views import description, sheets, create, _attributes, stats, _core, _graph
 from grill.views._qt import QtWidgets, QtCore
 
 
@@ -228,11 +228,15 @@ class TestViews(unittest.TestCase):
         stage = cook.fetch_stage(str(self.rootf.get_anonymous()))
 
         existing = [cook.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
-
         widget = create.TaxonomyEditor()
-        with self.assertRaisesRegex(RuntimeError, "'graph' attribute not set yet"):
-            invalid_uril = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}not_a_digit")
-            widget._graph_view._graph_url_changed(invalid_uril)
+        if isinstance(widget._graph_view, _graph.GraphView):
+            with self.assertRaisesRegex(LookupError, "Could not find sender"):
+                invalid_uril = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}not_a_digit")
+                widget._graph_view._graph_url_changed(invalid_uril)
+        else:
+            with self.assertRaisesRegex(RuntimeError, "'graph' attribute not set yet"):
+                invalid_uril = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}not_a_digit")
+                widget._graph_view._graph_url_changed(invalid_uril)
         widget.setStage(stage)
 
         widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
@@ -274,15 +278,20 @@ class TestViews(unittest.TestCase):
         widget._existing.table.selectAll()
         selected_items = widget._existing.table.selectedIndexes()
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
-        valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{existing[-1].GetName()}")
-        widget._graph_view._graph_url_changed(valid_url)
-        # Nitpick, wait for dot 2 svg conversions to finish
-        # This does not crash the program but an exception is logged when race
-        # conditions apply (e.g. the object is deleted before the runnable completes).
-        # This logged exception comes in the form of:
-        # RuntimeError: Internal C++ object (_Dot2SvgSignals) already deleted.
-        # Solution seems to be to block and wait for all runnables to complete.
-        widget._graph_view._threadpool.waitForDone(10_000)
+
+        if isinstance(widget._graph_view, _graph.GraphView):
+            sender = next(iter(widget._graph_view._nodes_map.values()))
+            sender.linkActivated.emit("")
+        else:
+            valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{existing[-1].GetName()}")
+            widget._graph_view._graph_url_changed(valid_url)
+            # Nitpick, wait for dot 2 svg conversions to finish
+            # This does not crash the program but an exception is logged when race
+            # conditions apply (e.g. the object is deleted before the runnable completes).
+            # This logged exception comes in the form of:
+            # RuntimeError: Internal C++ object (_Dot2SvgSignals) already deleted.
+            # Solution seems to be to block and wait for all runnables to complete.
+            widget._graph_view._threadpool.waitForDone(10_000)
 
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
