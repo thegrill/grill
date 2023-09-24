@@ -124,7 +124,14 @@ class TestViews(unittest.TestCase):
 
     def test_graph_view(self):
         stage = ...
-    def test_layer_composition(self):
+
+    def test_scenegraph_composition(self):
+        for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
+            with self.subTest(graph_viewer=graph_viewer):
+                description._GraphViewer = graph_viewer
+                self._sub_test_scenegraph_composition()
+
+    def _sub_test_scenegraph_composition(self):
         widget = description.LayerStackComposition()
         widget.setStage(self.world)
 
@@ -225,6 +232,12 @@ class TestViews(unittest.TestCase):
         widget._apply()
 
     def test_taxonomy_editor(self):
+        for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
+            with self.subTest(graph_viewer=graph_viewer):
+                description._GraphViewer = graph_viewer
+                self._sub_test_taxonomy_editor()
+
+    def _sub_test_taxonomy_editor(self):
         stage = cook.fetch_stage(str(self.rootf.get_anonymous()))
 
         existing = [cook.define_taxon(stage, f"Option{each}") for each in range(1, 6)]

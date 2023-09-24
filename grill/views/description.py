@@ -21,7 +21,7 @@ from pxr import UsdUtils, UsdShade, Usd, Ar, Pcp, Sdf, Tf
 from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
 
 from .. import usd as _usd
-from . import sheets as _sheets, _core
+from . import sheets as _sheets, _core, _graph
 from ._core import _which
 
 
@@ -413,7 +413,10 @@ class _DotViewer(QtWidgets.QFrame):
         self._graph_view.load(QtCore.QUrl.fromLocalFile(filepath))
 
 
-class _GraphViewer(_DotViewer):
+_GraphViewer = _graph.GraphView
+
+
+class _GraphSVGViewer(_DotViewer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.urlChanged.connect(self._graph_url_changed)
@@ -1166,6 +1169,3 @@ class LayerStackComposition(QtWidgets.QDialog):
                     color = _edge_color(tuple(visible_arcs))
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
 
-
-from . import _graph
-_GraphViewer = _graph.GraphView
