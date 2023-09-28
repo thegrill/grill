@@ -131,24 +131,26 @@ class _Node(QtWidgets.QGraphicsTextItem):
     def _activatePlug(self, edge, plug_index, side):
         plugs_by_side = self._active_plugs_by_side[plug_index]
         plugs_by_side[side][edge] = True
-        inactive_plugs = plugs_by_side[bool(not side)]
+        other_side = bool(not side)
+        inactive_plugs = plugs_by_side[other_side]
         inactive_plugs.pop(edge, None)
         plug_items = self._plug_items[plug_index]
         if not inactive_plugs:
-            plug_items[bool(not side)].setVisible(False)
+            plug_items[other_side].setVisible(False)
         this_item = plug_items[side]
         this_item.setVisible(True)
         this_item.setBrush(edge._brush)
 
 
 class _Edge(QtWidgets.QGraphicsItem):
-    def __init__(self, source: _Node, dest: _Node, parent: QtWidgets.QGraphicsItem = None, color="#2BB53C", label="", source_plug=None, target_plug=None):
+    def __init__(self, source: _Node, dest: _Node, parent: QtWidgets.QGraphicsItem = None, color="#2BB53C", label="", source_plug=None, target_plug=None, is_bidirectional=False):
         super().__init__(parent)
         self._source = source
         self._dest = dest
         self._is_cycle = source == dest
         self._source_plug = source_plug
         self._target_plug = target_plug
+        self._bidirectional_shift = 20 if is_bidirectional else 0
 
         self._tickness = 1.5
         self._colors = color.split(":")
@@ -221,96 +223,65 @@ class _Edge(QtWidgets.QGraphicsItem):
         source_bounds = self._source.boundingRect()
         active_source_plug_index = 1  # right, by default
         active_target_plug_index = 0  # left, by default
-        # if self._direction == "LR":
-        if self._source_plug and self._target_plug:
+
+        # where is our source position?
+        if self._source_plug is not None:
             source_before = source_bounds.center().x() + source_pos.x() < self._dest.boundingRect().center().x() + dest_pos.x()
+            source_x = source_pos.x() + source_bounds.right()
             source_y = source_pos.y() + (source_bounds.y()) + (((self._source_plug or 0) * source_port_size) + source_shift)
-            if source_before:
-                active_source_plug_index = 1  # right
-                active_target_plug_index = 0  # left
-                source_x = source_pos.x() + source_bounds.right()
-                dest_x = self._dest.boundingRect().x()
-            else:
+            if self._is_cycle:
+                active_target_plug_index = 1  # right
+            elif not source_before:
                 active_source_plug_index = 0  # left
                 active_target_plug_index = 1  # right
                 source_x = source_pos.x()
-                dest_x = self._dest.boundingRect().x() + self._dest.boundingRect().right()
-            source_center_bottom = QtCore.QPointF(source_x, source_y)
-            dest_y = self._dest.boundingRect().y() + ((self._target_plug * dest_port_size) + dest_shift)
-            LINE = QtCore.QLineF(
-                source_center_bottom,
-                self._dest.pos() + QtCore.QPointF(dest_x, dest_y),
-            )
-            if not self._source_plug and not self._target_plug:
-                # offset in case of bidirectional connections
-                self._line = _parallel_line(LINE, distance=20, head_offset=0)
-            else:
-                self._line = LINE
+            source_point_position = QtCore.QPointF(source_x, source_y)
         else:
-            if self._source_plug is not None:
-                if self._is_cycle:
-                    active_source_plug_index = 1  # right
-                    active_target_plug_index = 1  # right
-                    source_x = source_pos.x() + source_bounds.right()
-                    source_y = source_pos.y() + (source_bounds.y()) + ((self._source_plug * source_port_size) + source_shift)
-                    source_port_position = QtCore.QPointF(source_x, source_y)
-                else:
-                    source_before = source_bounds.center().x() + source_pos.x() < self._dest.boundingRect().center().x() + dest_pos.x()
-                    source_y = source_pos.y() + (source_bounds.y()) + (
-                                (self._source_plug * source_port_size) + source_shift)
-                    if source_before:
-                        active_source_plug_index = 1  # right
-                        active_target_plug_index = 0  # left
-                        source_x = source_pos.x() + source_bounds.right()
-                    else:
-                        active_source_plug_index = 0  # left
-                        active_target_plug_index = 1  # right
-                        source_x = source_pos.x()
-                    source_port_position = QtCore.QPointF(source_x, source_y)
-            else:
-                source_port_position = source_pos + source_bounds.center()
+            source_point_position = source_pos + source_bounds.center()
 
-            dest_port_position = self._dest.pos() + self._dest.boundingRect().center()
-            line = QtCore.QLineF(source_port_position, dest_port_position)
-
-            dest_rect = self._dest.boundingRect()
+        # where is our target position?
+        if self._target_plug is not None:  # Connection viewer
+            dest_x = self._dest.boundingRect().x() if source_before else self._dest.boundingRect().x() + self._dest.boundingRect().right()
+            dest_y = self._dest.boundingRect().y() + ((self._target_plug * dest_port_size) + dest_shift)
+            target_point_position = self._dest.pos() + QtCore.QPointF(dest_x, dest_y)
+        else:
+            line = QtCore.QLineF(source_point_position, self._dest.pos() + self._dest.boundingRect().center())
+            if self._bidirectional_shift:  # offset in case of bidirectional connections
+                line = _parallel_line(line, distance=self._bidirectional_shift, head_offset=0)
 
             # Check if there is an intersection
-            top = QtCore.QLineF(dest_rect.topLeft() + self._dest.pos(), dest_rect.topRight() + self._dest.pos())
-            left = QtCore.QLineF(dest_rect.topLeft() + self._dest.pos(), dest_rect.bottomLeft() + self._dest.pos())
-            bottom = QtCore.QLineF(dest_rect.bottomLeft() + self._dest.pos(), dest_rect.bottomRight() + self._dest.pos())
-            right = QtCore.QLineF(dest_rect.bottomRight() + self._dest.pos(), dest_rect.topRight() + self._dest.pos())
-
-            if not self._source_plug and not self._target_plug:
-                # offset in case of bidirectional connections
-                LINE = _parallel_line(line, distance=20, head_offset=0)
-            else:
-                LINE = line
-
-            order = (bottom, right, top, left)  # TODO: this can be more efficient depending on dest coords
             if _IS_QT5:
-                intersect_method = LINE.intersect
+                intersect_method = line.intersect
                 bounded_intersection = QtCore.QLineF.IntersectType.BoundedIntersection
             else:
-                intersect_method = LINE.intersects
+                intersect_method = line.intersects
                 bounded_intersection = QtCore.QLineF.IntersectionType.BoundedIntersection
-            for each in order:
+
+            dest_rect = self._dest.boundingRect()
+            topLeft, topRight, bottomLeft, bottomRight = dest_rect.topLeft(), dest_rect.topRight(), dest_rect.bottomLeft(), dest_rect.bottomRight()
+            dest_pos = self._dest.pos()
+            for each in (
+                    QtCore.QLineF(topLeft + dest_pos, topRight + dest_pos),  # top
+                    QtCore.QLineF(topLeft + dest_pos, bottomLeft + dest_pos),  # left
+                    QtCore.QLineF(bottomLeft + dest_pos, bottomRight + dest_pos),  # bottom
+                    QtCore.QLineF(bottomRight + dest_pos, topRight + dest_pos),  # right
+            ):  # TODO: how to make this more efficient?
                 intersection, intersection_point = intersect_method(each)
                 if intersection == bounded_intersection:
-                    self._line = QtCore.QLineF(source_port_position, intersection_point)
+                    target_point_position = intersection_point
                     break
             else:
-                self._line = LINE
+                target_point_position = line.p2()
 
-        line = self._line
+        self._line = QtCore.QLineF(source_point_position, target_point_position)
         self._active_source_plug_index = active_source_plug_index
         self._active_target_plug_index = active_target_plug_index
         if self._source_plug is not None:
             self._source._activatePlug(self, self._source_plug, active_source_plug_index)
-            self._source._plug_items[self._source_plug][active_source_plug_index].setPos(line.p1())
+            self._source._plug_items[self._source_plug][active_source_plug_index].setPos(source_point_position)
         if self._target_plug is not None:
             self._dest._activatePlug(self, self._target_plug, active_target_plug_index)
-            self._dest._plug_items[self._target_plug][active_target_plug_index].setPos(line.p2())
+            self._dest._plug_items[self._target_plug][active_target_plug_index].setPos(target_point_position)
 
         if self._label_text:
             # Calculate the position for the label (average of horizontal and vertical positions)
@@ -624,6 +595,7 @@ class GraphView(QtWidgets.QGraphicsView):
             for a, b, port in graph.edges:
                 source = self._nodes_map[a]
                 dest = self._nodes_map[b]
+                is_bidirectional = graph.has_edge(b, a)
                 edge_data = graph.edges[(a, b, port)]
                 if port is None:
                     raise ValueError(f"{source=}\n{dest=}")
@@ -634,7 +606,7 @@ class GraphView(QtWidgets.QGraphicsView):
                 else:
                     kwargs['target_plug'] = dest._plugs[edge_data['headport']] if edge_data.get('headport') is not None else None
                     kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
-                edge = _Edge(source, dest, color=color, label=label, **kwargs)
+                edge = _Edge(source, dest, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
                 self.scene().addItem(edge)
 
         else:
@@ -651,7 +623,7 @@ class GraphView(QtWidgets.QGraphicsView):
 def main():
     from . import description
     old_comp = description.LayerStackComposition()
-    old_comp._graph_precise_source_ports.setChecked(True)
+    # old_comp._graph_precise_source_ports.setChecked(True)
     old_comp.setStage(stage)
 
     from . import create
@@ -678,7 +650,7 @@ def main():
     tax_stack.addWidget(old_tax)
     description._GraphViewer = GraphView
     new_comp = description.LayerStackComposition()
-    new_comp._graph_precise_source_ports.setChecked(True)
+    # new_comp._graph_precise_source_ports.setChecked(True)
     new_comp.setStage(stage)
     new_tax = create.TaxonomyEditor()
     new_tax.setStage(stage)
