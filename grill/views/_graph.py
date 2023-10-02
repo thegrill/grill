@@ -111,10 +111,10 @@ class _Node(QtWidgets.QGraphicsTextItem):
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         painter.setPen(self._pen)
         rect_path = QtGui.QPainterPath()
-        roundness = 6
-        rect_path.addRoundedRect(self.boundingRect().adjusted(1, 1, -1, -1), roundness, roundness)
+        round_args = self.boundingRect().adjusted(1, 1, -1, -1), 6, 6
+        rect_path.addRoundedRect(*round_args)
         painter.fillPath(rect_path, self._fillcolor)
-        painter.drawRoundedRect(self.boundingRect().adjusted(1, 1, -1, -1), roundness, roundness)
+        painter.drawRoundedRect(*round_args)
         return super().paint(painter, option, widget)
 
     def add_edge(self, edge: _Edge):
@@ -128,7 +128,9 @@ class _Node(QtWidgets.QGraphicsTextItem):
             ...
         return super().itemChange(change, value)
 
-    def _activatePlug(self, edge, plug_index, side):
+    def _activatePlug(self, edge, plug_index, side, position):
+        if plug_index is None:
+            return  # we're at the center, nothing to draw nor activate
         plugs_by_side = self._active_plugs_by_side[plug_index]
         plugs_by_side[side][edge] = True
         other_side = bool(not side)
@@ -140,41 +142,52 @@ class _Node(QtWidgets.QGraphicsTextItem):
         this_item = plug_items[side]
         this_item.setVisible(True)
         this_item.setBrush(edge._brush)
+        self._plug_items[plug_index][side].setPos(position)
 
 
 class _Edge(QtWidgets.QGraphicsItem):
     def __init__(self, source: _Node, target: _Node, parent: QtWidgets.QGraphicsItem = None, color="#2BB53C", label="", source_plug=None, target_plug=None, is_bidirectional=False):
         super().__init__(parent)
+        source.add_edge(self)
+        target.add_edge(self)
         self._source = source
         self._target = target
-        self._is_cycle = source == target
         self._source_plug = source_plug
         self._target_plug = target_plug
-        self._bidirectional_shift = 20 if is_bidirectional else 0
+        self._is_cycle = is_cycle = source == target
 
-        self._tickness = 1.5
-        self._colors = color.split(":")
-        self._color = self._colors[0]
+        self._plug_positions = plug_positions = {}
+        for node, plug in (source, source_plug), (target, target_plug):
+            bounds = node.boundingRect()
+            if plug is None:
+                plug_positions[node, plug] = {None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()}
+                continue
+            port_size = bounds.height() / len(node._plugs) if node._plugs else 0
+            y_pos = plug * port_size + port_size / 2
+            plug_positions[node, plug] = {
+                0: QtCore.QPointF(0, y_pos),  # left
+                1: QtCore.QPointF(bounds.right(), y_pos),  # right
+            }
+
+        self._width = 1.5
         self._arrow_size = 15
-
-        self._source.add_edge(self)
-        self._target.add_edge(self)
-
+        self._bidirectional_shift = 20 if is_bidirectional else 0
         self._line = QtCore.QLineF()
         self.setZValue(-1)
 
-        self._pen = QtGui.QPen(QtGui.QColor(self._color), self._tickness, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
-        self._brush = QtGui.QBrush(self._color)
-        if _IS_QT5:
-            self._brush.setStyle(QtGui.Qt.SolidPattern)
-            self._brush.setColor(self._color)
-
+        self._colors = colors = color.split(":")
+        main_color = QtGui.QColor(colors[0])
         if label:
             self._label_text = QtWidgets.QGraphicsTextItem(label, self)
-            self._label_text.setDefaultTextColor(self._color)
+            self._label_text.setDefaultTextColor(main_color)
             self._label_text.setHtml(f"<b>{label}</b>")
         else:
             self._label_text = None
+        self._pen = QtGui.QPen(main_color, self._width, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
+        self._brush = QtGui.QBrush(main_color)
+        if _IS_QT5:
+            self._brush.setStyle(QtGui.Qt.SolidPattern)
+            self._brush.setColor(main_color)
 
         self.adjust()
 
@@ -190,21 +203,14 @@ class _Edge(QtWidgets.QGraphicsItem):
         else:
             top_left, bottom_right = self._line.p1(), self._line.p2()
 
-        return QtCore.QRectF(top_left, bottom_right).normalized().adjusted(
-            -self._tickness - self._arrow_size,
-            -self._tickness - self._arrow_size,
-            self._tickness + self._arrow_size,
-            self._tickness + self._arrow_size,
-        )
+        width, arrow_size = self._width, self._arrow_size
+        top_shift, bottom_shift = -width - arrow_size, width + arrow_size
+        return QtCore.QRectF(top_left, bottom_right).normalized().adjusted(top_shift, top_shift, bottom_shift, bottom_shift)
 
     @property
     def _cycle_start_position(self):
         if self._source_plug is None:
-            source = self._source
-            source_bounds = source.boundingRect()
-            shift_x = source_bounds.right() - 5
-            shift_y = source_bounds.height() / 2 - 20
-            return source.pos() + QtCore.QPointF(shift_x, shift_y)
+            return self._source.pos() + self._plug_positions[self._source, self._source_plug][None]
 
         return self._line.p1() + QtCore.QPointF(-3, -31)
 
@@ -216,40 +222,21 @@ class _Edge(QtWidgets.QGraphicsItem):
         self.prepareGeometryChange()
         source_pos = self._source.pos()
         target_pos = self._target.pos()
-        target_port_size = self._target.boundingRect().height() / (len(self._target._plugs)) if self._target._plugs else 0
-        target_shift = target_port_size/2
-        source_port_size = self._source.boundingRect().height() / (len(self._source._plugs)) if self._source._plugs else 0
-        source_shift = source_port_size / 2
-        source_bounds = self._source.boundingRect()
-        active_source_plug_index = 1  # right, by default
-        active_target_plug_index = 0  # left, by default
+        target_bounds = self._target.boundingRect()
 
-        # where is our source position?
-        if self._source_plug is not None:
-            source_before = source_bounds.center().x() + source_pos.x() < self._target.boundingRect().center().x() + target_pos.x()
-            source_x = source_pos.x() + source_bounds.right()
-            source_y = source_pos.y() + (source_bounds.y()) + (((self._source_plug or 0) * source_port_size) + source_shift)
-            if self._is_cycle:
-                active_target_plug_index = 1  # right
-            elif not source_before:
-                active_source_plug_index = 0  # left
-                active_target_plug_index = 1  # right
-                source_x = source_pos.x()
-            source_point_position = QtCore.QPointF(source_x, source_y)
-        else:
-            source_point_position = source_pos + source_bounds.center()
+        source_before = self._is_cycle or (self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x())
 
-        # where is our target position?
-        if self._target_plug is not None:  # Connection viewer
-            target_x = self._target.boundingRect().x() if source_before else self._target.boundingRect().x() + self._target.boundingRect().right()
-            target_y = self._target.boundingRect().y() + ((self._target_plug * target_port_size) + target_shift)
-            target_point_position = self._target.pos() + QtCore.QPointF(target_x, target_y)
-        else:
-            line = QtCore.QLineF(source_point_position, self._target.pos() + self._target.boundingRect().center())
-            if self._bidirectional_shift:  # offset in case of bidirectional connections
+        source_side = None if self._source_plug is None else source_before
+        target_side = None if self._target_plug is None else not source_side
+        source_point = source_pos + self._plug_positions[self._source, self._source_plug][source_side]
+        target_point = target_pos + self._plug_positions[self._target, self._target_plug][target_side]
+
+        if self._target_plug is None:
+            line = QtCore.QLineF(source_point, target_point)
+            if self._bidirectional_shift and source_point != target_point:  # offset in case of bidirectional connections
                 line = _parallel_line(line, distance=self._bidirectional_shift, head_offset=0)
 
-            # Check if there is an intersection
+            # Check if there is an intersection on the target node to know where to draw the arrow
             if _IS_QT5:
                 intersect_method = line.intersect
                 bounded_intersection = QtCore.QLineF.IntersectType.BoundedIntersection
@@ -257,39 +244,24 @@ class _Edge(QtWidgets.QGraphicsItem):
                 intersect_method = line.intersects
                 bounded_intersection = QtCore.QLineF.IntersectionType.BoundedIntersection
 
-            target_rect = self._target.boundingRect()
-            topLeft, topRight, bottomLeft, bottomRight = target_rect.topLeft(), target_rect.topRight(), target_rect.bottomLeft(), target_rect.bottomRight()
-            target_pos = self._target.pos()
             for each in (
-                    QtCore.QLineF(topLeft + target_pos, topRight + target_pos),  # top
-                    QtCore.QLineF(topLeft + target_pos, bottomLeft + target_pos),  # left
-                    QtCore.QLineF(bottomLeft + target_pos, bottomRight + target_pos),  # bottom
+                    QtCore.QLineF((topLeft:=target_bounds.topLeft()) + target_pos, (topRight:=target_bounds.topRight()) + target_pos),  # top
+                    QtCore.QLineF(topLeft + target_pos, (bottomLeft:=target_bounds.bottomLeft()) + target_pos),  # left
+                    QtCore.QLineF(bottomLeft + target_pos, (bottomRight:=target_bounds.bottomRight()) + target_pos),  # bottom
                     QtCore.QLineF(bottomRight + target_pos, topRight + target_pos),  # right
             ):  # TODO: how to make this more efficient?
                 intersection, intersection_point = intersect_method(each)
                 if intersection == bounded_intersection:
-                    target_point_position = intersection_point
+                    target_point = intersection_point
                     break
             else:
-                target_point_position = line.p2()
+                target_point = line.p2()
 
-        self._line = QtCore.QLineF(source_point_position, target_point_position)
-        self._active_source_plug_index = active_source_plug_index
-        self._active_target_plug_index = active_target_plug_index
-        if self._source_plug is not None:
-            self._source._activatePlug(self, self._source_plug, active_source_plug_index)
-            self._source._plug_items[self._source_plug][active_source_plug_index].setPos(source_point_position)
-        if self._target_plug is not None:
-            self._target._activatePlug(self, self._target_plug, active_target_plug_index)
-            self._target._plug_items[self._target_plug][active_target_plug_index].setPos(target_point_position)
-
+        self._line = QtCore.QLineF(source_point, target_point)
+        self._source._activatePlug(self, self._source_plug, source_side, source_point)
+        self._target._activatePlug(self, self._target_plug, target_side, target_point)
         if self._label_text:
-            # Calculate the position for the label (average of horizontal and vertical positions)
-            source = self._line.p1()
-            target = self._line.p2()
-            avg_x = (source.x() + target.x()) / 2
-            avg_y = (source.y() + target.y()) / 2
-            self._label_text.setPos(avg_x, avg_y)
+            self._label_text.setPos((source_point + target_point) / 2)
 
     def _draw_arrow(self, painter: QtGui.QPainter, start: QtCore.QPointF, end: QtCore.QPointF):
         """Draw arrow from start point to end point.
@@ -343,10 +315,9 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         if self._is_cycle:
             self._draw_rounded_arrow(painter, self._cycle_start_position)
-
         else:
             total_colors = enumerate(self._colors)
-            next(total_colors)  # draw first without offset and with current color
+            __, main_color = next(total_colors)  # draw first without offset and with current color
             painter.drawLine(self._line)
             for index, color in total_colors:
                 shift = int((index+1)/2) * 1.5 * 3
@@ -354,24 +325,17 @@ class _Edge(QtWidgets.QGraphicsItem):
                 self._pen.setColor(QtGui.QColor(color))
                 painter.setPen(self._pen)
                 painter.drawLine(_parallel_line(self._line, side, head_offset=11))
-            self._pen.setColor(self._color)
+            self._pen.setColor(main_color)
             painter.setPen(self._pen)
 
             self._draw_arrow(painter, self._line.p1(), self._line.p2())
-
-            if self._label_text:
-                source_point = self._line.p1()
-                target_point = self._line.p2()
-                avg_x = (source_point.x() + target_point.x()) / 2
-                avg_y = (source_point.y() + target_point.y()) / 2
-                self._label_text.setPos(avg_x, avg_y)
 
     def _draw_rounded_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
         # painter.drawRect(self.boundingRect())  # for debugging purposes
         center_x, center_y = source_pos.toTuple()
 
         for index, color in enumerate(self._colors):
-            self._pen.setColor(QtGui.QColor(color))
+            self._pen.setColor(color)
             painter.setPen(self._pen)
             arc_offset = index * 1.5
             box_y = center_y + (1.5 * index)
@@ -384,9 +348,8 @@ class _Edge(QtWidgets.QGraphicsItem):
             arrow_path.arcTo(center_x, box_y, box_size, box_size, start_angle, finish_angle)
             painter.drawPath(arrow_path)
 
-        self._pen.setColor(self._color)
+        self._pen.setColor(self._colors[0])
         painter.setPen(self._pen)
-
         start = QtCore.QPointF(center_x+7, center_y+6)
         end = QtCore.QPointF(center_x+4, center_y+9)
         self._draw_arrow(painter, start, end)
@@ -394,10 +357,8 @@ class _Edge(QtWidgets.QGraphicsItem):
 
 def _parallel_line(line, distance, head_offset=0):
     direction = line.unitVector()
-
     # Calculate the perpendicular vector by rotating the direction vector by 90 degrees
     perpendicular = QtCore.QPointF(-direction.dy(), direction.dx())
-
     # Calculate the offset points for the new line
     offset1 = line.p1() + perpendicular * (distance / 2)
     offset2 = line.p2() + perpendicular * (distance / 2)
