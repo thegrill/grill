@@ -215,18 +215,15 @@ class _Edge(QtWidgets.QGraphicsItem):
         return self._line.p1() + QtCore.QPointF(-3, -31)
 
     def adjust(self):
-        """
-        Update edge position from source and target node.
-        This method is called from Node::itemChange
-        """
+        """Update edge position from source and target node following Node::itemChange."""
         self.prepareGeometryChange()
         source_pos = self._source.pos()
         target_pos = self._target.pos()
         target_bounds = self._target.boundingRect()
 
-        source_before = self._is_cycle or (self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x())
+        source_on_left = self._is_cycle or (self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x())
 
-        source_side = None if self._source_plug is None else source_before
+        source_side = None if self._source_plug is None else source_on_left
         target_side = None if self._target_plug is None else not source_side
         source_point = source_pos + self._plug_positions[self._source, self._source_plug][source_side]
         target_point = target_pos + self._plug_positions[self._target, self._target_plug][target_side]
@@ -263,53 +260,8 @@ class _Edge(QtWidgets.QGraphicsItem):
         if self._label_text:
             self._label_text.setPos((source_point + target_point) / 2)
 
-    def _draw_arrow(self, painter: QtGui.QPainter, start: QtCore.QPointF, end: QtCore.QPointF):
-        """Draw arrow from start point to end point.
-
-        Args:
-            painter (QtGui.QPainter)
-            start (QtCore.QPointF): start position
-            end (QtCore.QPointF): end position
-        """
-        def point_in_direction(start: QtCore.QPointF, end: QtCore.QPointF, distance: float) -> QtCore.QPointF:
-            direction = QtGui.QVector2D(end - start)
-            direction.normalize()
-            new_point = start + direction.toPointF() * distance
-            return new_point
-
-        brush = self._brush
-        painter.setBrush(brush)
-
-        line = QtCore.QLineF(end, start)
-
-        _arrow_head_tilt = 3
-        angle = math.atan2(-line.dy(), line.dx())
-        arrow_p1 = line.p1() + QtCore.QPointF(
-            math.sin(angle + math.pi / _arrow_head_tilt) * self._arrow_size,
-            math.cos(angle + math.pi / _arrow_head_tilt) * self._arrow_size,
-        )
-        arrow_p2 = line.p1() + QtCore.QPointF(
-            math.sin(angle + math.pi - math.pi / _arrow_head_tilt) * self._arrow_size,
-            math.cos(angle + math.pi - math.pi / _arrow_head_tilt) * self._arrow_size,
-        )
-
-        arrow_head = QtGui.QPolygonF()
-        arrow_head.clear()
-        arrow_head.append(line.p1())
-        arrow_head.append(arrow_p1)
-        arrow_head.append(point_in_direction(end, start, 10))
-        arrow_head.append(arrow_p2)
-        painter.drawPolygon(arrow_head)
-
     def paint(self, painter: QtGui.QPainter, option: QtWidgets.QStyleOptionGraphicsItem, widget=None):
-        """Override from QtWidgets.QGraphicsItem
-
-        Draw Edge. This method is called from Edge.adjust()
-
-        Args:
-            painter (QtGui.QPainter)
-            option (QtWidgets.QStyleOptionGraphicsItem)
-        """
+        """Draw Edge following ``Edge.adjust(...)``"""
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         painter.setPen(self._pen)
 
@@ -321,17 +273,14 @@ class _Edge(QtWidgets.QGraphicsItem):
             painter.drawLine(self._line)
             for index, color in total_colors:
                 shift = int((index+1)/2) * 1.5 * 3
-                side = shift if index % 2 == 0 else -shift
-                self._pen.setColor(QtGui.QColor(color))
+                self._pen.setColor(color)
                 painter.setPen(self._pen)
-                painter.drawLine(_parallel_line(self._line, side, head_offset=11))
+                painter.drawLine(_parallel_line(self._line, shift if index % 2 == 0 else -shift, head_offset=11))
             self._pen.setColor(main_color)
             painter.setPen(self._pen)
-
-            self._draw_arrow(painter, self._line.p1(), self._line.p2())
+            self._draw_arrow_head(painter, self._line.p1(), self._line.p2())
 
     def _draw_rounded_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
-        # painter.drawRect(self.boundingRect())  # for debugging purposes
         center_x, center_y = source_pos.toTuple()
 
         for index, color in enumerate(self._colors):
@@ -339,8 +288,7 @@ class _Edge(QtWidgets.QGraphicsItem):
             painter.setPen(self._pen)
             arc_offset = index * 1.5
             box_y = center_y + (1.5 * index)
-            radius = 20 - arc_offset
-            box_size = radius * 2
+            box_size = (20 - arc_offset) * 2
             start_angle = 135 - (5 * index)
             finish_angle = -270 + arc_offset
             arrow_path = QtGui.QPainterPath()
@@ -352,18 +300,41 @@ class _Edge(QtWidgets.QGraphicsItem):
         painter.setPen(self._pen)
         start = QtCore.QPointF(center_x+7, center_y+6)
         end = QtCore.QPointF(center_x+4, center_y+9)
-        self._draw_arrow(painter, start, end)
+        self._draw_arrow_head(painter, start, end)
+
+    def _draw_arrow_head(self, painter: QtGui.QPainter, start: QtCore.QPointF, end: QtCore.QPointF):
+        """Draw arrow from start point to end point."""
+
+        def point_in_direction(start: QtCore.QPointF, end: QtCore.QPointF, distance: float) -> QtCore.QPointF:
+            direction = QtGui.QVector2D(end - start)
+            direction.normalize()
+            return start + direction.toPointF() * distance
+
+        brush = self._brush
+        painter.setBrush(brush)
+
+        line = QtCore.QLineF(end, start)
+
+        head_tilt = math.pi / 3
+        arrow_size = self._arrow_size
+        angle = math.atan2(-line.dy(), line.dx())
+        left_tilt, right_tilt = angle + head_tilt, angle + math.pi - head_tilt
+        arrow_p1 = line.p1() + QtCore.QPointF(math.sin(left_tilt) * arrow_size, math.cos(left_tilt) * arrow_size)
+        arrow_p2 = line.p1() + QtCore.QPointF(math.sin(right_tilt) * arrow_size, math.cos(right_tilt) * arrow_size)
+
+        arrow_head = QtGui.QPolygonF()
+        arrow_head.append(line.p1())
+        arrow_head.append(arrow_p1)
+        arrow_head.append(point_in_direction(end, start, 10))
+        arrow_head.append(arrow_p2)
+        painter.drawPolygon(arrow_head)
 
 
 def _parallel_line(line, distance, head_offset=0):
     direction = line.unitVector()
-    # Calculate the perpendicular vector by rotating the direction vector by 90 degrees
-    perpendicular = QtCore.QPointF(-direction.dy(), direction.dx())
-    # Calculate the offset points for the new line
-    offset1 = line.p1() + perpendicular * (distance / 2)
-    offset2 = line.p2() + perpendicular * (distance / 2)
-
-    parallel_line = QtCore.QLineF(offset1, offset2)
+    # Calculate the perpendicular vector by rotating the direction vector by 90 degrees, then the offset
+    perpendicular = QtCore.QPointF(-direction.dy(), direction.dx()) * (distance / 2)
+    parallel_line = QtCore.QLineF(line.p1() + perpendicular, line.p2() + perpendicular)
     if head_offset:
         parallel_line.setLength(parallel_line.length() - head_offset)
     return parallel_line
@@ -579,80 +550,3 @@ class GraphView(QtWidgets.QGraphicsView):
                 edge = _Edge(source, target, color=color, label=label)
                 self.scene().addItem(edge)
         self.set_nx_layout(graph)
-
-
-def main():
-    from . import description
-    old_comp = description.LayerStackComposition()
-    # old_comp._graph_precise_source_ports.setChecked(True)
-    old_comp.setStage(stage)
-
-    from . import create
-    old_tax = create.TaxonomyEditor()
-    old_tax.setStage(stage)
-
-    comp_graph = old_comp._graph_view.graph
-    main_widget = QtWidgets.QWidget()
-    main_layout = QtWidgets.QVBoxLayout()
-    comp_stack = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-    comp_stack.addWidget(old_comp)
-
-    conn_stack = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-
-    tax_stack = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-
-    con_stage = Usd.Stage.Open(r"R:\al\alab-v2.0.1\entity\book_encyclopedia01\book_encyclopedia01.usda")
-    con_prim = con_stage.GetPrimAtPath("/root/MATERIAL/usd_proxy")
-    con_prim = con_stage.GetPrimAtPath("/root/MATERIAL/usd_full")
-    con_graph = description._graph_from_connections(con_prim)
-    con_old = description._ConnectableAPIViewer()
-    con_old.setPrim(con_prim)
-    conn_stack.addWidget(con_old)
-    tax_stack.addWidget(old_tax)
-    description._GraphViewer = GraphView
-    new_comp = description.LayerStackComposition()
-    # new_comp._graph_precise_source_ports.setChecked(True)
-    new_comp.setStage(stage)
-    new_tax = create.TaxonomyEditor()
-    new_tax.setStage(stage)
-    con_new = description._ConnectableAPIViewer()
-    con_new.setPrim(con_prim)
-    conn_stack.addWidget(con_new)
-    tax_stack.addWidget(new_tax)
-    v_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-    comp_stack.addWidget(new_comp)
-    v_split.addWidget(comp_stack)
-    v_split.addWidget(conn_stack)
-    v_split.addWidget(tax_stack)
-    main_layout.addWidget(v_split)
-    main_widget.setLayout(main_layout)
-    return main_widget, comp_graph, con_graph
-
-
-if __name__ == "__main__":
-    # stage = Usd.Stage.Open(r"R:\al\ALab\entity\lab_workbench01\lab_workbench01.usda")  # 11 seconds on both
-    # stage = Usd.Stage.Open(r"R:\al\ALab\entry.usda")  # 10 minutes???
-    from pxr import Usd
-    stage = Usd.Stage.Open(r"A:\write\code\git\easy-edgedb\chapter10\test_updates\assets\dracula-3d-abc-Taxonomy-rnd-main-atom-lead-base-whole.1.usda")
-    stage = Usd.Stage.Open(r"A:\write\code\git\easy-edgedb\chapter10\test_updates\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
-    # stage = Usd.Stage.Open(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
-    # stage = Usd.Stage.Open(r"C:\Users\Christian\OneDrive\write\proyectos\self\instances\broadcast_nested_instances\City-Entry-Assembly.1.usda")
-    # stage = Usd.Stage.Open(r"R:\al\ALab\entity\book_encyclopedia01\book_encyclopedia01.usda")
-    # stage = Usd.Stage.Open(r"R:\al\ALab\entity\stoat01\stoat01.usda")
-    # prim = stage.GetPrimAtPath("/root/MATERIAL/usd_full")
-    import datetime
-    import cProfile
-    from pathlib import Path
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    start = datetime.datetime.now()
-    pr = cProfile.Profile()
-    pr.enable()
-    w, g1, g2 = pr.runcall(main)
-    w.show()
-    pr.disable()
-    pr.dump_stats(str(Path(__file__).parent / "stats_no_init_name_another.log"))
-    end = datetime.datetime.now()
-    print(f"Total time: {end - start}")
-
-    sys.exit(app.exec_())
