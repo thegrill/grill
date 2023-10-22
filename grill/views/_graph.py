@@ -20,7 +20,6 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 #   - USDView missing tri-state style
 #   - Ability to move further in canvas after Nodes don't exist
 #   - Focus with F
-#   - Taxonomy graph is LR and should go from center to center (edges)
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
 
@@ -44,7 +43,7 @@ def _convert_graphviz_to_html_label(label):
 
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    def __init__(self, parent=None, label="", color="", fillcolor="", plugs=None, visible=True, active_plugs: set = frozenset()):
+    def __init__(self, parent=None, label="", color="", fillcolor="", plugs=None, active_plugs: set = frozenset(), visible=True):
         super().__init__(parent)
         self._edges = []
         self._plugs = plugs or {}
@@ -146,7 +145,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
 
 class _Edge(QtWidgets.QGraphicsItem):
-    def __init__(self, source: _Node, target: _Node, parent: QtWidgets.QGraphicsItem = None, color="#2BB53C", label="", source_plug=None, target_plug=None, is_bidirectional=False):
+    def __init__(self, source: _Node, target: _Node, *, source_plug=None, target_plug=None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
         super().__init__(parent)
         source.add_edge(self)
         target.add_edge(self)
@@ -203,7 +202,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         else:
             top_left, bottom_right = self._line.p1(), self._line.p2()
 
-        width, arrow_size = self._width, self._arrow_size
+        width, arrow_size = self._width, max(self._arrow_size, 50)
         top_shift, bottom_shift = -width - arrow_size, width + arrow_size
         return QtCore.QRectF(top_left, bottom_right).normalized().adjusted(top_shift, top_shift, bottom_shift, bottom_shift)
 
@@ -264,21 +263,79 @@ class _Edge(QtWidgets.QGraphicsItem):
         """Draw Edge following ``Edge.adjust(...)``"""
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         painter.setPen(self._pen)
-
+        # self._pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
         if self._is_cycle:
             self._draw_rounded_arrow(painter, self._cycle_start_position)
         else:
             total_colors = enumerate(self._colors)
             __, main_color = next(total_colors)  # draw first without offset and with current color
-            painter.drawLine(self._line)
+
+            as_spline = not (self._source_plug is None and self._target_plug is None)
+            if as_spline:
+                source_pos = self._source.pos()
+                target_pos = self._target.pos()
+                target_bounds = self._target.boundingRect()
+
+                source_on_left = self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x()
+                multip = 1 if source_on_left else -1
+                ######### BEZIER START
+                # Calculate control points for the cubic bezier curve
+                length = self._line.length()
+                if length < 100:
+                    falldown = (length / 100) ** 2
+                else:
+                    falldown = 1
+                control_point_shift = multip * 75 * falldown
+                if self._source_plug is not None:
+                    control_point1 = self._line.p1() + QtCore.QPointF(control_point_shift, 0)
+                else:
+                    control_point1 = self._line.p1()
+                if self._target_plug is not None:
+                    control_point2 = self._line.p2() + QtCore.QPointF(-control_point_shift, 0)
+                else:
+                    control_point2 = self._line.p2()
+
+                self._path = QtGui.QPainterPath()
+                self._path.moveTo(self._line.p1())
+                self._path.cubicTo(control_point1, control_point2, self._line.p2())
+
+                # PARALLEL
+                self._parallel_paths = []
+                for i, color in reversed(list(total_colors)):
+                    stroker = QtGui.QPainterPathStroker()
+                    stroker.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+                    stroker.setWidth(i*5)
+                    parallel_path = stroker.createStroke(self._path)
+                    self._parallel_paths.append((color, parallel_path))
+
+                for color, parallel_path in self._parallel_paths:
+                    pen_color = QtGui.QPen(QtGui.QColor(color), self._width)
+                    painter.setPen(pen_color)  # Set the color and thickness
+                    painter.drawPath(parallel_path)
+
+                painter.setPen(self._pen)
+                painter.drawPath(self._path)
+                ######### BEZIER END
+                # painter.drawRect(self.boundingRect())  # for debugging purposes
+
+                # ### ARROW HEADS
+                end_point = self._path.pointAtPercent(1)
+                start_point = self._path.pointAtPercent(.95)
+                painter.setPen(self._pen)
+                self._draw_arrow_head(painter, start_point, end_point)
+            else:
+                painter.drawLine(self._line)
+
             for index, color in total_colors:
+                # continue
                 shift = int((index+1)/2) * 1.5 * 3
                 self._pen.setColor(color)
                 painter.setPen(self._pen)
                 painter.drawLine(_parallel_line(self._line, shift if index % 2 == 0 else -shift, head_offset=11))
             self._pen.setColor(main_color)
             painter.setPen(self._pen)
-            self._draw_arrow_head(painter, self._line.p1(), self._line.p2())
+            if not as_spline:
+                self._draw_arrow_head(painter, self._line.p1(), self._line.p2())
 
     def _draw_rounded_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
         center_x, center_y = source_pos.toTuple()
