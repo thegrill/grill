@@ -14,10 +14,7 @@ _core._ensure_dot()
 _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
-#   - Cleanup Edge adjust and paint logic
 #   - Context menu items
-#   - Dark mode to respect arcs color
-#   - USDView missing tri-state style
 #   - Ability to move further in canvas after Nodes don't exist
 #   - Focus with F
 
@@ -153,6 +150,8 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._target = target
         self._source_plug = source_plug
         self._target_plug = target_plug
+        self._is_source_plugged = source_plug is not None
+        self._is_target_plugged = target_plug is not None
         self._is_cycle = is_cycle = source == target
 
         self._plug_positions = plug_positions = {}
@@ -173,6 +172,8 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._bidirectional_shift = 20 if is_bidirectional else 0
         self._line = QtCore.QLineF()
         self.setZValue(-1)
+
+        self._spline_path = QtGui.QPainterPath() if (self._is_source_plugged or self._is_target_plugged) else None
 
         self._colors = colors = color.split(":")
         main_color = QtGui.QColor(colors[0])
@@ -208,7 +209,7 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     @property
     def _cycle_start_position(self):
-        if self._source_plug is None:
+        if not self._is_source_plugged:
             return self._source.pos() + self._plug_positions[self._source, self._source_plug][None]
 
         return self._line.p1() + QtCore.QPointF(-3, -31)
@@ -222,12 +223,14 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         source_on_left = self._is_cycle or (self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x())
 
-        source_side = None if self._source_plug is None else source_on_left
-        target_side = None if self._target_plug is None else not source_side
+        is_source_plugged = self._is_source_plugged
+        is_target_plugged = self._is_target_plugged
+        source_side = source_on_left if is_source_plugged else None
+        target_side = not source_side if is_target_plugged else None
         source_point = source_pos + self._plug_positions[self._source, self._source_plug][source_side]
         target_point = target_pos + self._plug_positions[self._target, self._target_plug][target_side]
 
-        if self._target_plug is None:
+        if not is_target_plugged:
             line = QtCore.QLineF(source_point, target_point)
             if self._bidirectional_shift and source_point != target_point:  # offset in case of bidirectional connections
                 line = _parallel_line(line, distance=self._bidirectional_shift, head_offset=0)
@@ -253,7 +256,19 @@ class _Edge(QtWidgets.QGraphicsItem):
             else:
                 target_point = line.p2()
 
-        self._line = QtCore.QLineF(source_point, target_point)
+        self._line = line = QtCore.QLineF(source_point, target_point)
+        if self._spline_path:
+            length = line.length()
+            falloff = (length / 100) ** 2 if length < 100 else 1
+            control_point_shift = (1 if source_on_left else -1) * 75 * falloff
+
+            control_point1 = source_point + QtCore.QPointF(control_point_shift, 0) if is_source_plugged else source_point
+            control_point2 = target_point + QtCore.QPointF(-control_point_shift, 0) if is_target_plugged else target_point
+
+            self._spline_path = QtGui.QPainterPath()
+            self._spline_path.moveTo(source_point)
+            self._spline_path.cubicTo(control_point1, control_point2, target_point)
+
         self._source._activatePlug(self, self._source_plug, source_side, source_point)
         self._target._activatePlug(self, self._target_plug, target_side, target_point)
         if self._label_text:
@@ -263,81 +278,43 @@ class _Edge(QtWidgets.QGraphicsItem):
         """Draw Edge following ``Edge.adjust(...)``"""
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         painter.setPen(self._pen)
-        # self._pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
         if self._is_cycle:
-            self._draw_rounded_arrow(painter, self._cycle_start_position)
+            self._paint_cyclic_arrow(painter, self._cycle_start_position)
         else:
             total_colors = enumerate(self._colors)
             __, main_color = next(total_colors)  # draw first without offset and with current color
 
-            as_spline = not (self._source_plug is None and self._target_plug is None)
-            if as_spline:
-                source_pos = self._source.pos()
-                target_pos = self._target.pos()
-                target_bounds = self._target.boundingRect()
-
-                source_on_left = self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x()
-                multip = 1 if source_on_left else -1
-                ######### BEZIER START
-                # Calculate control points for the cubic bezier curve
-                length = self._line.length()
-                if length < 100:
-                    falldown = (length / 100) ** 2
-                else:
-                    falldown = 1
-                control_point_shift = multip * 75 * falldown
-                if self._source_plug is not None:
-                    control_point1 = self._line.p1() + QtCore.QPointF(control_point_shift, 0)
-                else:
-                    control_point1 = self._line.p1()
-                if self._target_plug is not None:
-                    control_point2 = self._line.p2() + QtCore.QPointF(-control_point_shift, 0)
-                else:
-                    control_point2 = self._line.p2()
-
-                self._path = QtGui.QPainterPath()
-                self._path.moveTo(self._line.p1())
-                self._path.cubicTo(control_point1, control_point2, self._line.p2())
-
-                # PARALLEL
-                self._parallel_paths = []
+            if self._spline_path:
+                arrow_head_end_point = self._spline_path.pointAtPercent(1)
+                arrow_head_start_point = self._spline_path.pointAtPercent(.95)
+                parallel_paths = []
                 for i, color in reversed(list(total_colors)):
                     stroker = QtGui.QPainterPathStroker()
                     stroker.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
                     stroker.setWidth(i*5)
-                    parallel_path = stroker.createStroke(self._path)
-                    self._parallel_paths.append((color, parallel_path))
+                    parallel_paths.append((color, stroker.createStroke(self._spline_path)))
 
-                for color, parallel_path in self._parallel_paths:
-                    pen_color = QtGui.QPen(QtGui.QColor(color), self._width)
-                    painter.setPen(pen_color)  # Set the color and thickness
+                painter.drawPath(self._spline_path)
+                for color, parallel_path in parallel_paths:
+                    self._pen.setColor(color)
+                    painter.setPen(self._pen)  # Set the color and thickness
                     painter.drawPath(parallel_path)
-
-                painter.setPen(self._pen)
-                painter.drawPath(self._path)
-                ######### BEZIER END
-                # painter.drawRect(self.boundingRect())  # for debugging purposes
-
-                # ### ARROW HEADS
-                end_point = self._path.pointAtPercent(1)
-                start_point = self._path.pointAtPercent(.95)
-                painter.setPen(self._pen)
-                self._draw_arrow_head(painter, start_point, end_point)
             else:
-                painter.drawLine(self._line)
+                arrow_head_start_point = self._line.p1()
+                arrow_head_end_point = self._line.p2()
 
-            for index, color in total_colors:
-                # continue
-                shift = int((index+1)/2) * 1.5 * 3
-                self._pen.setColor(color)
-                painter.setPen(self._pen)
-                painter.drawLine(_parallel_line(self._line, shift if index % 2 == 0 else -shift, head_offset=11))
+                painter.drawLine(self._line)
+                for index, color in total_colors:
+                    self._pen.setColor(color)
+                    shift = int((index+1)/2) * 1.5 * 3
+                    painter.setPen(self._pen)
+                    painter.drawLine(_parallel_line(self._line, shift if index % 2 == 0 else -shift, head_offset=11))
+
             self._pen.setColor(main_color)
             painter.setPen(self._pen)
-            if not as_spline:
-                self._draw_arrow_head(painter, self._line.p1(), self._line.p2())
+            self._draw_arrow_head(painter, arrow_head_start_point, arrow_head_end_point)
 
-    def _draw_rounded_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
+    def _paint_cyclic_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
         center_x, center_y = source_pos.toTuple()
 
         for index, color in enumerate(self._colors):
@@ -407,20 +384,15 @@ class GraphView(QtWidgets.QGraphicsView):
             graph (nx.DiGraph): a networkx directed graph
         """
         super().__init__()
-        self._filter_nodes = None
         self._filter_edges = None
         self._graph = graph
         self._scene = QtWidgets.QGraphicsScene()
         self.setScene(self._scene)
 
-        # Used to add space between nodes
-        self._graph_scale = 1
-
-        # Map node name to Node object {str=>Node}
-        self._nodes_map = {}
+        self._nodes_map = {}  # {str: Node}
 
         self._load_graph(None)
-        #############
+
         self._zoom = 0
         # ~~~~~~~~~~~~
         self.sticky_nodes = list()
@@ -493,17 +465,10 @@ class GraphView(QtWidgets.QGraphicsView):
             return
 
         positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
-        # positions = drawing.nx_agraph.graphviz_layout(graph)
-        # SVG and dot seem to have inverted coordinates, let's flip Y
         max_y = max(pos[1] for pos in positions.values())
-        adjusted_positions = {node: (x, max_y - y) for node, (x, y) in positions.items()}
-
-        for node, pos in adjusted_positions.items():
-            x, y = pos
-            x *= self._graph_scale
-            y *= self._graph_scale
-            item = self._nodes_map[node]
-            item.setPos(x, y)
+        for node, (x, y) in positions.items():
+            # SVG and dot seem to have inverted coordinates, let's flip Y
+            self._nodes_map[node].setPos(x, max_y - y)
 
     def view(self, node_indices: tuple):
         self._viewing = frozenset(node_indices)
@@ -514,8 +479,6 @@ class GraphView(QtWidgets.QGraphicsView):
         subgraph = graph.subgraph(nodes_of_interest)
 
         filters = {}
-        if self._filter_nodes:
-            filters['filter_node'] = self._filter_nodes
         if self.filter_edges:
             print(f"{self.filter_edges=}")
             print("FILTERRRINNG")
