@@ -30,7 +30,7 @@ _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
     Pcp.ArcTypeVariant: _color_attrs('orange'),
     Pcp.ArcTypeReference: _color_attrs('crimson'),  # ~red
-    Pcp.ArcTypePayload: _color_attrs('darkslateblue'),  # ~purple
+    Pcp.ArcTypePayload: _color_attrs('#9370db'),  # ~purple
     Pcp.ArcTypeSpecialize: _color_attrs('sienna'),  # ~brown
 })
 _BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'

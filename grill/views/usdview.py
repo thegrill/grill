@@ -17,15 +17,6 @@ _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better
 _description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
 
 
-def _usdview_tree_init(self, *args, **kwargs):
-    super(type(self), self).__init__(*args, **kwargs)
-    self.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
-
-# Only when in USDView we want to extend the stylesheet of the _Tree class
-# TODO: is there a better way?
-_description._Tree.__init__ = _usdview_tree_init
-
-
 def _findOrCreateMenu(parent, title):
     return next((child for child in parent.findChildren(QtWidgets.QMenu) if child.title() == title), None) or parent.addMenu(title)
 
@@ -55,14 +46,12 @@ def _stage_on_widget(widget_creator):
     def _launcher(usdviewApi):
         widget = widget_creator(parent=usdviewApi.qMainWindow)
         widget.setStage(usdviewApi.stage)
-        widget.setStyleSheet(_core._USDVIEW_PUSH_BUTTON_STYLE)
         return widget
     return _launcher
 
 
 def _layer_stack_from_prims(usdviewApi):
     widget = _description.LayerStackComposition(parent=usdviewApi.qMainWindow)
-    widget.setStyleSheet(_core._USDVIEW_PUSH_BUTTON_STYLE)
     widget.setPrimPaths(usdviewApi.dataModel.selection.getPrimPaths())
     widget.setStage(usdviewApi.stage)
     return widget
@@ -326,3 +315,18 @@ for module, member_name, extender in (
 # We need to do this since primContextMenu imports the function directly, so re-assign with our recently patched one
 primContextMenu._GetContextMenuItems = primContextMenuItems._GetContextMenuItems
 Tf.Type.Define(GrillPlugin)
+
+
+def _patch_style(cls):  # while a nicer way comes up
+    original = cls.__init__
+
+    def _init_with_usdview_style(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        self.setStyleSheet(_core._USDVIEW_STYLE)
+    cls.__init__ = _init_with_usdview_style
+
+
+for cls in _description._Tree, _description.LayerStackComposition:
+    # Only when in USDView we want to extend the stylesheet of some of the classes tha require them
+    # TODO: find a better way to do this
+    _patch_style(cls)

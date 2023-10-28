@@ -91,6 +91,8 @@ QTableView::item:hover:!pressed:selected {
 }
 """
 
+_USDVIEW_STYLE = _USDVIEW_PUSH_BUTTON_STYLE + _USDVIEW_QTREEVIEW_STYLE
+
 @cache
 def _which(what):
     return shutil.which(what)
