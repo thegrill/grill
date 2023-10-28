@@ -816,7 +816,6 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 outline_valies_check.setEnabled(cls == _SdfOutlineHighlighter)
 
             def update_contents(*_, **__):
-                layer = layer_ref()
                 format_choice = format_combo.currentText()
                 output_args = []
                 if format_choice == "pseudoLayer":
