@@ -299,7 +299,7 @@ class _Edge(QtWidgets.QGraphicsItem):
                     self._pen.setColor(color)
                     painter.setPen(self._pen)  # Set the color and thickness
                     painter.drawPath(parallel_path)
-            else:
+            else:  # painting as a straight line
                 arrow_head_start_point = self._line.p1()
                 arrow_head_end_point = self._line.p2()
 
@@ -376,14 +376,7 @@ def _parallel_line(line, distance, head_offset=0):
 
 class GraphView(QtWidgets.QGraphicsView):
     def __init__(self, graph: nx.DiGraph = None, parent=None):
-        """GraphView constructor
-
-        This widget can display a directed graph
-
-        Args:
-            graph (nx.DiGraph): a networkx directed graph
-        """
-        super().__init__()
+        super().__init__(parent=parent)
         self._filter_edges = None
         self._graph = graph
         self._scene = QtWidgets.QGraphicsScene()
@@ -480,8 +473,6 @@ class GraphView(QtWidgets.QGraphicsView):
 
         filters = {}
         if self.filter_edges:
-            print(f"{self.filter_edges=}")
-            print("FILTERRRINNG")
             filters['filter_edge'] = self.filter_edges
         if filters:
             subgraph = nx.subgraph_view(subgraph, **filters)
@@ -513,7 +504,6 @@ class GraphView(QtWidgets.QGraphicsView):
         self._load_graph(graph)
 
     def _load_graph(self, graph):
-        """Load graph into QtWidgets.QGraphicsScene using Node class and Edge class"""
         if not graph:
             return
         print("LOADING GRAPH")
@@ -541,32 +531,25 @@ class GraphView(QtWidgets.QGraphicsView):
         for nx_node in graph:
             self._nodes_map[nx_node] = _add_node(nx_node)
 
-        # Add edges
-        kwargs = dict()
-        if len(next(iter(graph.edges), [])) == 3:
-            for a, b, port in graph.edges:
-                source = self._nodes_map[a]
-                target = self._nodes_map[b]
-                is_bidirectional = graph.has_edge(b, a)
-                edge_data = graph.edges[(a, b, port)]
-                if port is None:
-                    raise ValueError(f"{source=}\n{target=}")
-                color = edge_data.get('color', edge_color)
-                label = edge_data.get('label', '')
-                if source._plugs == {} and target._plugs == {}:
-                    ...
-                else:
-                    kwargs['target_plug'] = target._plugs[edge_data['headport']] if edge_data.get('headport') is not None else None
-                    kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
-                edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
-                self.scene().addItem(edge)
-
+        if isinstance(graph, nx.MultiDiGraph):
+            edges = graph.edges
+            edge_data_getter = lambda source, target, port: graph.edges[source, target, port]
         else:
-            for a, b in graph.edges:
-                source = self._nodes_map[a]
-                target = self._nodes_map[b]
-                color = graph.edges[(a, b)].get('color', '')
-                label = graph.edges[(a, b)].get('label', '')
-                edge = _Edge(source, target, color=color, label=label)
-                self.scene().addItem(edge)
+            edges = ((source, target, None) for source, target in graph.edges)
+            edge_data_getter = lambda source, target, port: graph.edges[source, target]
+
+        for source_id, target_id, port in edges:
+            source = self._nodes_map[source_id]
+            target = self._nodes_map[target_id]
+            is_bidirectional = graph.has_edge(target_id, source_id)
+            edge_data = edge_data_getter(source_id, target_id, port)
+            color = edge_data.get('color', edge_color)
+            label = edge_data.get('label', '')
+            kwargs = dict()
+            if source._plugs or target._plugs:
+                kwargs['target_plug'] = target._plugs[edge_data['headport']] if edge_data.get('headport') is not None else None
+                kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
+            edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
+            self.scene().addItem(edge)
+
         self.set_nx_layout(graph)
