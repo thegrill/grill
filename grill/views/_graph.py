@@ -374,27 +374,11 @@ def _parallel_line(line, distance, head_offset=0):
     return parallel_line
 
 
-class GraphView(QtWidgets.QGraphicsView):
-    def __init__(self, graph: nx.DiGraph = None, parent=None):
-        super().__init__(parent=parent)
-        self._filter_edges = None
-        self._graph = graph
-        self._scene = QtWidgets.QGraphicsScene()
-        self.setScene(self._scene)
-
-        self._nodes_map = {}  # {str: Node}
-
-        self._load_graph(None)
-
-        self._zoom = 0
-        # ~~~~~~~~~~~~
-        self.sticky_nodes = list()
-        self._viewing = set()
-        self.url_id_prefix = ""
-
-        ################
-        self.dragging = False
-        self.last_pan_pos = None
+class _GraphicsViewport(QtWidgets.QGraphicsView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._dragging = False
+        self._last_pan_pos = None
 
     def wheelEvent(self, event):
         modifiers = event.modifiers()
@@ -410,28 +394,28 @@ class GraphView(QtWidgets.QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MiddleButton:
-            self.dragging = True
+            self._dragging = True
             QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.ClosedHandCursor)
-            self.last_pan_pos = event.globalPosition().toPoint()
+            self._last_pan_pos = event.globalPosition().toPoint()
             event.accept()
 
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == QtCore.Qt.MiddleButton:
-            self.dragging = False
+            self._dragging = False
             QtWidgets.QApplication.restoreOverrideCursor()
             event.accept()
 
         return super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self.dragging and event.buttons() == QtCore.Qt.MiddleButton:
+        if self._dragging and event.buttons() == QtCore.Qt.MiddleButton:
             # Pan the scene when middle mouse button is held down
-            delta = event.globalPosition().toPoint() - self.last_pan_pos
+            delta = event.globalPosition().toPoint() - self._last_pan_pos
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
-            self.last_pan_pos = event.globalPosition().toPoint()
+            self._last_pan_pos = event.globalPosition().toPoint()
             return
         return super().mouseMoveEvent(event)
 
@@ -444,6 +428,23 @@ class GraphView(QtWidgets.QGraphicsView):
         delta = event.angleDelta().y()
         scroll_bar = self.verticalScrollBar()
         scroll_bar.setValue(scroll_bar.value() - delta)
+
+
+class GraphView(_GraphicsViewport):
+    def __init__(self, graph: nx.DiGraph = None, parent=None):
+        super().__init__(parent=parent)
+        self._filter_edges = None
+        self._graph = graph
+        self._scene = QtWidgets.QGraphicsScene()
+        self.setScene(self._scene)
+
+        self._nodes_map = {}  # {str: Node}
+
+        self._load_graph(None)
+        # ~~~~~~~~~~~~
+        self.sticky_nodes = list()
+        self._viewing = set()
+        self.url_id_prefix = ""
 
     def _graph_url_changed(self, *_, **__):
         sender = self.sender()
