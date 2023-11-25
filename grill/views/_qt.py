@@ -1,7 +1,7 @@
 try:  # only while transition from PySide2 to PySide6 happens
-    from PySide6 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets, QtCharts
+    from PySide6 import QtWidgets, QtGui, QtCore, QtCharts, QtSvg
 except ImportError:
-    from PySide2 import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
+    from PySide2 import QtWidgets, QtGui, QtCore, QtSvg
     if not hasattr(QtCore, "__enter__"):
         class SignalBlocker(QtCore.QSignalBlocker):
             def __enter__(self):
