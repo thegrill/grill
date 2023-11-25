@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import os
 import typing
 import weakref
 import operator
@@ -18,13 +19,15 @@ from types import MappingProxyType
 
 import networkx as nx
 from pxr import UsdUtils, UsdShade, Usd, Ar, Pcp, Sdf, Tf
-from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
+from ._qt import QtWidgets, QtGui, QtCore, QtSvg
 
 from .. import usd as _usd
 from . import sheets as _sheets, _core, _graph
 from ._core import _which
 
 
+_USE_WEB_ENGINE = os.getenv("GRILL_GRAPH_VIEW_VIA_WEB_ENGINE")
+# _USE_WEB_ENGINE = True
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
@@ -370,12 +373,41 @@ class _Dot2Svg(QtCore.QRunnable):
         self.signals.error.emit(error) if error else self.signals.result.emit(svg_fp)
 
 
+class _SvgPixmapViewport(_graph._GraphicsViewport):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        scene = QtWidgets.QGraphicsScene(self)
+        self.setScene(scene)
+
+    def load(self, filepath):
+        scene = self.scene()
+        scene.clear()
+
+        renderer = QtSvg.QSvgRenderer(filepath)
+        image = QtGui.QImage(renderer.defaultSize() * 1.5, QtGui.QImage.Format_ARGB32)
+        image.fill(QtCore.Qt.transparent)
+
+        painter = QtGui.QPainter(image)
+        renderer.render(painter)
+        painter.end()
+
+        pixmap = QtGui.QPixmap.fromImage(image)
+        self._svg_item = QtWidgets.QGraphicsPixmapItem(pixmap)
+        scene.addItem(self._svg_item)
+
+
+_SVG_AS_PIXMAP = False
 class _DotViewer(QtWidgets.QFrame):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
         # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
-        self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
+        if not _SVG_AS_PIXMAP:
+            from PySide6 import QtWebEngineWidgets
+            self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
+            self.urlChanged = self._graph_view.urlChanged
+        else:
+            self._graph_view = _SvgPixmapViewport(parent=self)
 
         self._error_view = QtWidgets.QTextBrowser(parent=self)
         layout.addWidget(self._graph_view)
@@ -383,11 +415,11 @@ class _DotViewer(QtWidgets.QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         self._error_view.setVisible(False)
         self.setLayout(layout)
-        self.urlChanged = self._graph_view.urlChanged
         self._dot2svg = None
         self._threadpool = QtCore.QThreadPool()
-        # otherwise it seems invisible
-        self.resize(QtCore.QSize(self.height() + 100, self.width()))
+        if not _SVG_AS_PIXMAP:
+            # otherwise it seems invisible
+            self.setMinimumHeight(100)
 
     def setDotPath(self, path):
         if self._dot2svg:  # forget about previous, unfinished runners
@@ -407,7 +439,9 @@ class _DotViewer(QtWidgets.QFrame):
     def _on_dot_result(self, filepath):
         self._error_view.setVisible(False)
         self._graph_view.setVisible(True)
-        self._graph_view.load(QtCore.QUrl.fromLocalFile(filepath))
+        if not _SVG_AS_PIXMAP:
+            filepath = QtCore.QUrl.fromLocalFile(filepath)
+        self._graph_view.load(filepath)
 
 
 class _GraphSVGViewer(_DotViewer):
@@ -594,6 +628,7 @@ class PrimComposition(QtWidgets.QDialog):
         vertical.addWidget(tree_controls)
         vertical.addWidget(tree)
         vertical.addWidget(self._dot_view)
+        vertical.setStretchFactor(2, 1)
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(vertical)
         horizontal.addWidget(self.index_box)
@@ -1160,5 +1195,7 @@ class LayerStackComposition(QtWidgets.QDialog):
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
 
 
-# _GraphViewer = _graph.GraphView
-_GraphViewer = _GraphSVGViewer
+if _USE_WEB_ENGINE:
+    _GraphViewer = _GraphSVGViewer
+else:
+    _GraphViewer = _graph.GraphView
