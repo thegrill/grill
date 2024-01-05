@@ -203,7 +203,7 @@ def _catalogue_path(taxon: Usd.Prim) -> Sdf.Path:
 
 
 def _broadcast_root_path(taxon, broadcast_method, scope_path=None):
-    scope_path = scope_path or _catalogue_path(taxon)  # TODO: this feels strange, avoid the or later.
+    scope_path = scope_path or _catalogue_path(taxon)  # TODO: this feels strange, avoid the "or" later.
     return scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _BROADCAST_METHOD_RELPATHS[broadcast_method])
 
 
@@ -525,9 +525,15 @@ def _inherit_or_specialize_unit(method, context_unit):
 
 def taxonomy_graph(prims, url_id_prefix):
     graph = nx.DiGraph(tooltip="Taxonomy Graph")
-    graph.graph['graph'] = {'rankdir': 'LR'}
-    #                                                   lightskyblue1,     dodgerblue4
-    graph.graph['node'] = {'shape': 'box', 'fillcolor': "#afd7ff", 'color':"#1E90FF", 'style':'filled,rounded'}
+    graph.graph.update(
+        graph={'rankdir': 'LR'},
+        node={
+            'shape': 'box',
+            'fillcolor': "#afd7ff",  # lightskyblue1
+            'color': "#1E90FF",  # dodgerblue4
+            'style': 'filled,rounded',
+        },
+    )
 
     # TODO:
     #  - Guarantee taxa will be unique (no duplicated short names), raise here?
