@@ -403,7 +403,11 @@ class _DotViewer(QtWidgets.QFrame):
         layout = QtWidgets.QVBoxLayout()
         # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
         if not _SVG_AS_PIXMAP:
-            from PySide6 import QtWebEngineWidgets
+            if QtWidgets.__package__ == "PySide6":
+                # PySide-6.6.0 and 6.6.1 freeze when QtWebEngineWidgets is imported on ._qt, so inlining here until fixed
+                from PySide6 import QtWebEngineWidgets
+            else:
+                from PySide2 import QtWebEngineWidgets
             self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
             self.urlChanged = self._graph_view.urlChanged
         else:
