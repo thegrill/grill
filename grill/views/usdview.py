@@ -71,7 +71,7 @@ def prim_composition(usdviewApi):
     return widget
 
 
-def _connectable_api(usdviewApi):
+def _connection_viewer(usdviewApi):
     widget = _description._ConnectableAPIViewer(parent=usdviewApi.qMainWindow)
 
     def primChanged(new_paths, __):
@@ -151,7 +151,7 @@ class GrillPrimCompositionMenuItem(_GrillPrimContextMenuItem):
             widget.show()
 
 
-class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
+class GrillSceneGraphCompositionMenuItem(GrillPrimCompositionMenuItem):
     _widget = _description.LayerStackComposition
     _subtitle = "Scene Graph Composition"
 
@@ -269,7 +269,7 @@ class GrillPlugin(plugin.PluginContainer):
                 ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
                 ("Prim Composition", prim_composition),
-                ("Connection Viewer", _connectable_api),
+                ("Connection Viewer", _connection_viewer),
             )),
             {"LayerStack Composition": [
                 _menu_item("From Current Stage", _stage_on_widget(_description.LayerStackComposition)),
