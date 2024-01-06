@@ -549,7 +549,8 @@ class _ConnectableAPIViewer(QtWidgets.QDialog):
     def setPrim(self, prim):
         if not prim:
             return
-        type_text = "" if not (type_name:= prim.GetTypeName()) else f" {type_name}"
+        prim = prim.GetPrim()
+        type_text = "" if not (type_name := prim.GetTypeName()) else f" {type_name}"
         self.setWindowTitle(f"Scene Graph Connections From{type_text}: {prim.GetName()} ({prim.GetPath()})")
         self._graph_view.graph = graph = _graph_from_connections(prim)
         self._graph_view.view(graph.nodes.keys())
