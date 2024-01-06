@@ -271,9 +271,13 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     }
     table_row = '<tr><td port="{port}" border="0" bgcolor="{color}" style="ROUNDED">{text}</td></tr>'
 
+    traversed_prims = set()
     def traverse(api: UsdShade.ConnectableAPI):
-        node_id = _get_node_id(api.GetPrim())
-        # label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="white" color="{outline_color}">'
+        current_prim = api.GetPrim()
+        if current_prim in traversed_prims:
+            return
+        traversed_prims.add(current_prim)
+        node_id = _get_node_id(current_prim)
         label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
         label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
         plugs = {"": 0}  # {graphviz port name: port index order}
@@ -545,6 +549,8 @@ class _ConnectableAPIViewer(QtWidgets.QDialog):
     def setPrim(self, prim):
         if not prim:
             return
+        type_text = "" if not (type_name:= prim.GetTypeName()) else f" {type_name}"
+        self.setWindowTitle(f"Scene Graph Connections From{type_text}: {prim.GetName()} ({prim.GetPath()})")
         self._graph_view.graph = graph = _graph_from_connections(prim)
         self._graph_view.view(graph.nodes.keys())
 

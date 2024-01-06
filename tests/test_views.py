@@ -117,6 +117,10 @@ class TestViews(unittest.TestCase):
         pbrShader = UsdShade.Shader.Define(stage, '/TexModel/boardMat/PBRShader')
         pbrShader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.4)
         material.CreateSurfaceOutput().ConnectToSource(pbrShader.ConnectableAPI(), "surface")
+        # Ensure cycles don't cause recursion
+        cycle_input = pbrShader.CreateInput("cycle_in", Sdf.ValueTypeNames.Float)
+        cycle_output = pbrShader.CreateOutput("cycle_out", Sdf.ValueTypeNames.Float)
+        cycle_output.ConnectToSource(cycle_input)
         description._graph_from_connections(material)
         viewer = description._ConnectableAPIViewer()
         viewer.setPrim(material)
