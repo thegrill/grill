@@ -390,7 +390,7 @@ class TestViews(unittest.TestCase):
         gworld.OverridePrim("/non/existing/prim")
         inactive = gworld.DefinePrim("/inactive/prim")
         inactive.SetActive(False)
-        widget.setStage(self.grill_world)
+        widget.stage = self.grill_world
 
     def test_prim_filter_data(self):
         stage = cook.fetch_stage(self.rootf)
