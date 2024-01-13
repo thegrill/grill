@@ -332,11 +332,16 @@ class TestViews(unittest.TestCase):
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
         widget._model_hierarchy.setChecked(False)  # default is True
+        self.world.OverridePrim("/child_orphaned")
+        self.nested.SetInstanceable(True)
+        widget._orphaned.setChecked(True)
+        assert self.nested.IsInstance()
         widget.setStage(self.world)
+        self.assertEqual(self.world, widget.stage)
         widget.table.scrollContentsBy(10, 10)
 
         widget.table.selectAll()
-        expected_rows = {0, 1, 2}  # 3 prims from path: /nested, /nested/child, /nested/sibling
+        expected_rows = {0, 1, 2, 3}  # 3 prims from path: /nested, /nested/child, /nested/sibling, /child_orphaned
         visible_rows = ({i.row() for i in widget.table.selectedIndexes()})
         self.assertEqual(expected_rows, visible_rows)
 
@@ -346,14 +351,17 @@ class TestViews(unittest.TestCase):
         widget.table.resizeColumnToContents(0)
 
         widget.table.selectAll()
-        expected_rows = {0}  # 1 prim from filtered name: /nested/child
+        expected_rows = {0, 1}  # 1 prim from filtered name: /nested/child
         visible_rows = ({i.row() for i in widget.table.selectedIndexes()})
         self.assertEqual(expected_rows, visible_rows)
 
         widget._copySelection()
         clip = QtWidgets.QApplication.instance().clipboard().text()
         data = tuple(csv.reader(io.StringIO(clip), delimiter=csv.excel_tab.delimiter))
-        expected_data = (['/nested/child', 'child', '', '', '', 'False', '', 'False'],)
+        expected_data = (
+            ['/nested/child', 'child', '', '', '', 'True', '', 'False'],
+            ['/child_orphaned', 'child_orphaned', '', '', '', 'False', '', 'False'],
+        )
         self.assertEqual(data, expected_data)
 
         widget.table.clearSelection()
@@ -374,7 +382,9 @@ class TestViews(unittest.TestCase):
         widget._column_options[0]._line_filter.setText("")
         widget._model_hierarchy.click()  # disables model hierarchy, which we don't have any
         widget.table.selectAll()
-        widget._pasteClipboard()
+        _log = lambda *args: print(args)
+        with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
+            widget._pasteClipboard()
 
         widget.model._prune_children = {Sdf.Path("/inactive")}
         gworld = self.grill_world
