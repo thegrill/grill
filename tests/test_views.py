@@ -126,9 +126,6 @@ class TestViews(unittest.TestCase):
         viewer.setPrim(material)
         viewer.setPrim(None)
 
-    def test_graph_view(self):
-        stage = ...
-
     def test_scenegraph_composition(self):
         for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
