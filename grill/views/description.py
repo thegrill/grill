@@ -1181,7 +1181,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         graph.graph['graph'] = dict(tooltip="LayerStack Composition")
         graph.add_nodes_from(self._computed_graph_info.nodes.items())
         graph.add_edges_from(self._iedges(graph_info))
-        self._graph_view.graph = graph
+        self._graph_view._graph = graph
         self._graph_view.sticky_nodes.extend(graph_info.sticky_nodes)
         self._layers.model.setLayers(graph_info.ids_by_layers)
         # view intersection as we might be seeing nodes that no longer exist

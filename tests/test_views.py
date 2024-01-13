@@ -178,6 +178,28 @@ class TestViews(unittest.TestCase):
 
         widget.deleteLater()
 
+    def test_layer_stack_bidirectionality(self):
+        """Confirm that bidirectionality between layer stacks completes.
+
+        Bidirectionality in the composition graph is achieved by:
+            - parent_stage -> child_stage via a reference, payload arcs
+            - child_stage -> parent_stage via a inherits, specializes arcs
+        """
+        parent_stage = Usd.Stage.CreateInMemory()
+        child_stage = Usd.Stage.CreateInMemory()
+        prim = parent_stage.DefinePrim("/a/b")
+        child_prim = child_stage.DefinePrim("/child")
+        child_prim.GetInherits().AddInherit("/foo")
+        child_prim.GetSpecializes().AddSpecialize("/foo")
+        child_stage.SetDefaultPrim(child_prim)
+        child_identifier = child_stage.GetRootLayer().identifier
+        prim.GetReferences().AddReference(child_identifier)
+        prim.GetPayloads().AddPayload(child_identifier)
+
+        widget = description.LayerStackComposition()
+        widget.setStage(parent_stage)
+        widget._layers.table.selectAll()
+
     def test_prim_composition(self):
         temp = Usd.Stage.CreateInMemory()
         temp.GetRootLayer().subLayerPaths = [self.nested.GetStage().GetRootLayer().identifier]

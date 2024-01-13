@@ -86,16 +86,16 @@ class TestCook(unittest.TestCase):
         # Now, test stages fetched from the start via "common" pipeline calls.
         root_stage = cook.fetch_stage(self.root_asset)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "reserved name"):
             cook.define_taxon(root_stage, cook._TAXONOMY_NAME)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "reserved id fields"):
             cook.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={cook._TAXONOMY_UNIQUE_ID: "by_id_value"})
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "reserved id fields"):
             cook.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={cook._TAXONOMY_UNIQUE_ID.name: "by_id_name"})
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "invalid id_field keys"):
             cook.define_taxon(root_stage, "nonexistingfield", id_fields={str(uuid.uuid4()): "by_id_name"})
 
         displayable = cook.define_taxon(root_stage, "DisplayableName")
@@ -107,24 +107,25 @@ class TestCook(unittest.TestCase):
         with cook.taxonomy_context(root_stage):
             displayable.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
+        missing_or_empty_fields_msg = f"Missing or empty '{cook._FIELDS_KEY}'"
         not_taxon = root_stage.DefinePrim("/not/a/taxon")
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {'invalid': 42})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: 42})
-        with self.assertRaises(TypeError):
+        with self.assertRaisesRegex(TypeError, f"Expected mapping on key '{cook._FIELDS_KEY}'"):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: {}})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         emil = cook.create_unit(person, "EmilSinclair", label="Emil Sinclair")
@@ -140,6 +141,26 @@ class TestCook(unittest.TestCase):
         stage_prims = root_stage.Traverse()
         self.assertEqual(expected_people, list(cook.itaxa(stage_prims, person)))
         self.assertEqual(expected_heroes, list(cook.itaxa(stage_prims, hero)))
+
+    def test_create_on_previous_stage(self):
+        """Confirm that creating assets on a previously saved stage works.
+
+        The default behavior from layer identifiers that are relative to the resolver search path is to be absolute
+        when a stage using them is re-opened, so:
+            original_identifier.usda
+                becomes
+            /absolute/path/original_identifier.usda
+        """
+        root_asset = names.UsdAsset.get_anonymous()
+        root_stage = cook.fetch_stage(root_asset)
+        # creates taxonomy.usda and adds it to the stage layer stack
+        cook.define_taxon(root_stage, "FirstTaxon")
+        root_stage.Save()
+        del root_stage
+
+        reopened_stage = cook.fetch_stage(root_asset)
+        # the taxonomy.usda now has as identifier /absolute/path/taxonomy.usda, so confirm we can use it still
+        cook.create_many(cook.define_taxon(reopened_stage, "SecondTaxon"), ["A", "B"])
 
     def test_asset_unit(self):
         stage = cook.fetch_stage(self.root_asset)

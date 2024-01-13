@@ -120,8 +120,6 @@ class _Node(QtWidgets.QGraphicsTextItem):
         if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for edge in self._edges:
                 edge.adjust()
-        elif change == QtWidgets.QGraphicsItem.ItemSelectedChange:
-            ...
         return super().itemChange(change, value)
 
     def _activatePlug(self, edge, plug_index, side, position):
@@ -454,16 +452,6 @@ class GraphView(_GraphicsViewport):
 
         self.view((key,))
 
-    def set_nx_layout(self, graph):
-        if not graph:
-            return
-
-        positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
-        max_y = max(pos[1] for pos in positions.values())
-        for node, (x, y) in positions.items():
-            # SVG and dot seem to have inverted coordinates, let's flip Y
-            self._nodes_map[node].setPos(x, max_y - y)
-
     def view(self, node_indices: tuple):
         self._viewing = frozenset(node_indices)
         graph = self._graph
@@ -553,4 +541,8 @@ class GraphView(_GraphicsViewport):
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
 
-        self.set_nx_layout(graph)
+        positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+        max_y = max(pos[1] for pos in positions.values())
+        for node, (x, y) in positions.items():
+            # SVG and dot have inverted coordinates, let's flip Y
+            self._nodes_map[node].setPos(x, max_y - y)
