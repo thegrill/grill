@@ -368,7 +368,7 @@ class TestViews(unittest.TestCase):
 
         widget._model_hierarchy.click()  # enables model hierarchy, which we don't have any
         widget.table.selectAll()
-        expected_rows = set()  # 0 prim from filtered name + no model
+        expected_rows = set()
         visible_rows = ({i.row() for i in widget.table.selectedIndexes()})
         self.assertEqual(expected_rows, visible_rows)
 
@@ -386,7 +386,7 @@ class TestViews(unittest.TestCase):
         with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
             widget._pasteClipboard()
 
-        widget.model._prune_children = {Sdf.Path("/inactive")}
+        widget.model._prune_children = {Sdf.Path("/pruned")}
         gworld = self.grill_world
         with cook.unit_context(self.generic_agent):
             child_agent = gworld.DefinePrim(self.generic_agent.GetPath().AppendChild("child"))
@@ -397,10 +397,38 @@ class TestViews(unittest.TestCase):
             agent = gworld.DefinePrim(f"/Instanced/Agent{i}")
             agent.GetReferences().AddReference(agent_id.identifier)
             agent.SetInstanceable(True)
+        agent.SetActive(False)
         gworld.OverridePrim("/non/existing/prim")
-        inactive = gworld.DefinePrim("/inactive/prim")
+        gworld.DefinePrim("/pruned/prim")
+        inactive = gworld.DefinePrim("/another_inactive")
         inactive.SetActive(False)
-        widget.stage = self.grill_world
+        gworld.GetRootLayer().subLayerPaths.append(self.world.GetRootLayer().identifier)
+        widget._column_options[0]._line_filter.setText("")
+        widget.table.clearSelection()
+        widget._active.setChecked(False)
+        widget._classes.setChecked(True)
+        widget._filters_logical_op.setCurrentIndex(1)
+        widget.stage = gworld
+        widget.table.selectAll()
+        expected_colors = {str(each.value): each for each in sheets._PrimTextColor}  # colors are not hashable
+        expected_fonts = {
+            sheets._prim_font(),
+            sheets._prim_font(abstract=True),
+            sheets._prim_font(abstract=True, orphaned=True),
+            sheets._prim_font(orphaned=True),
+        }
+        for each in widget.table.selectionModel().selectedIndexes():
+            # each.data(role=QtCore.Qt.ForegroundRole)
+            # data = widget.table.model().data(each, QtCore.Qt.ForegroundRole)
+            color_key = str(each.data(role=QtCore.Qt.ForegroundRole))
+            font_key = each.data(role=QtCore.Qt.FontRole)
+            print(widget.table.model().data(each, role=_core._QT_OBJECT_DATA_ROLE))
+            expected_colors.pop(color_key, None)
+            expected_fonts.discard(font_key)
+
+        # collected_colors = sorted(collected_colors, key=lambda x: str(x))
+        self.assertEqual(expected_colors, dict())
+        self.assertEqual(expected_fonts, set())
 
     def test_prim_filter_data(self):
         stage = cook.fetch_stage(self.rootf)
