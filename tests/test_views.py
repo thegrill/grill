@@ -111,6 +111,12 @@ class TestViews(unittest.TestCase):
         shutil.rmtree(self._tmpf)
 
     def test_connection_view(self):
+        for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
+            with self.subTest(graph_viewer=graph_viewer):
+                description._GraphViewer = graph_viewer
+                self._sub_test_connection_view()
+
+    def _sub_test_connection_view(self):
         # https://openusd.org/release/tut_simple_shading.html
         stage = Usd.Stage.CreateInMemory()
         material = UsdShade.Material.Define(stage, '/TexModel/boardMat')
@@ -198,6 +204,12 @@ class TestViews(unittest.TestCase):
         widget._layers.table.selectAll()
 
     def test_prim_composition(self):
+        for pixmap_enabled in True, False:
+            with self.subTest(pixmap_enabled=pixmap_enabled):
+                description._SVG_AS_PIXMAP = pixmap_enabled
+                self._sub_test_prim_composition()
+
+    def _sub_test_prim_composition(self):
         temp = Usd.Stage.CreateInMemory()
         temp.GetRootLayer().subLayerPaths = [self.nested.GetStage().GetRootLayer().identifier]
         prim = temp.GetPrimAtPath(self.nested.GetPath())
@@ -258,7 +270,13 @@ class TestViews(unittest.TestCase):
         for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
                 description._GraphViewer = graph_viewer
-                self._sub_test_taxonomy_editor()
+                if graph_viewer == description._GraphSVGViewer:
+                    for pixmap_enabled in True, False:
+                        with self.subTest(pixmap_enabled=pixmap_enabled):
+                            description._SVG_AS_PIXMAP = pixmap_enabled
+                            self._sub_test_taxonomy_editor()
+                else:
+                    self._sub_test_taxonomy_editor()
 
     def _sub_test_taxonomy_editor(self):
         stage = cook.fetch_stage(str(self.rootf.get_anonymous()))
@@ -411,24 +429,23 @@ class TestViews(unittest.TestCase):
         widget.stage = gworld
         widget.table.selectAll()
         expected_colors = {str(each.value): each for each in sheets._PrimTextColor}  # colors are not hashable
-        expected_fonts = {
+        expected_fonts = {each.weight() for each in (  # font not hashable in PySide2
             sheets._prim_font(),
             sheets._prim_font(abstract=True),
             sheets._prim_font(abstract=True, orphaned=True),
             sheets._prim_font(orphaned=True),
-        }
+        )}
+        self.assertEqual(len(expected_fonts), 3)  # three weights: Light, ExtraLight, Normal
+        collected_fonts = set()
         for each in widget.table.selectionModel().selectedIndexes():
-            # each.data(role=QtCore.Qt.ForegroundRole)
-            # data = widget.table.model().data(each, QtCore.Qt.ForegroundRole)
             color_key = str(each.data(role=QtCore.Qt.ForegroundRole))
-            font_key = each.data(role=QtCore.Qt.FontRole)
-            print(widget.table.model().data(each, role=_core._QT_OBJECT_DATA_ROLE))
+            font = each.data(role=QtCore.Qt.FontRole)
+            font_key = font.weight()
             expected_colors.pop(color_key, None)
-            expected_fonts.discard(font_key)
+            collected_fonts.add(font_key)
 
-        # collected_colors = sorted(collected_colors, key=lambda x: str(x))
         self.assertEqual(expected_colors, dict())
-        self.assertEqual(expected_fonts, set())
+        self.assertEqual(expected_fonts, collected_fonts)
 
     def test_prim_filter_data(self):
         stage = cook.fetch_stage(self.rootf)

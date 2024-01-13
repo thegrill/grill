@@ -459,7 +459,6 @@ class _GraphSVGViewer(_DotViewer):
         self.sticky_nodes = list()
         self._graph = None
         self._viewing = frozenset()
-        self._filter_nodes = None
         self._filter_edges = None
 
     @property
@@ -499,8 +498,6 @@ class _GraphSVGViewer(_DotViewer):
         subgraph = graph.subgraph(nodes_of_interest)
 
         filters = {}
-        if self._filter_nodes:
-            filters['filter_node'] = self._filter_nodes
         if self.filter_edges:
             print(f"{self.filter_edges=}")
             print("FILTERRRINNG")
