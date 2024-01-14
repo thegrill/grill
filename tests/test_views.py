@@ -9,7 +9,7 @@ from unittest import mock
 from pxr import Usd, UsdGeom, Sdf, UsdShade
 
 from grill import cook, usd, names
-from grill.views import description, sheets, create, _attributes, stats, _core, _graph
+from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
 from grill.views._qt import QtWidgets, QtCore
 
 
@@ -578,3 +578,7 @@ class TestViews(unittest.TestCase):
 
         widget = stats.StageStats(stage=self.world)
         self.assertGreater(widget._usd_tree.topLevelItemCount(), 1)
+        current = _qt.QtCharts
+        del _qt.QtCharts
+        stats.StageStats(stage=self.world)
+        _qt.QtCharts = current
