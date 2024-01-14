@@ -26,8 +26,9 @@ from . import sheets as _sheets, _core, _graph
 from ._core import _which
 
 
-_USE_WEB_ENGINE = os.getenv("GRILL_GRAPH_VIEW_VIA_WEB_ENGINE")
-# _USE_WEB_ENGINE = True
+_GRAPHV_VIEW_VIA_SVG = os.getenv("GRILL_GRAPH_VIEW_VIA_SVG")
+_USE_SVG_VIEWPORT = os.getenv("GRILL_SVG_VIEW_AS_PIXMAP")
+
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
@@ -400,21 +401,24 @@ class _SvgPixmapViewport(_graph._GraphicsViewport):
         scene.addItem(self._svg_item)
 
 
-_SVG_AS_PIXMAP = False
 class _DotViewer(QtWidgets.QFrame):
+    _svg_viewport_placeholder_signal = QtCore.Signal(object)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         layout = QtWidgets.QVBoxLayout()
         # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
-        if not _SVG_AS_PIXMAP:
+        if not _USE_SVG_VIEWPORT:
             if QtWidgets.__package__ == "PySide6":
-                # PySide-6.6.0 and 6.6.1 freeze when QtWebEngineWidgets is imported on ._qt, so inlining here until fixed
+                # PySide-6.6.0 and 6.6.1 freeze when QtWebEngineWidgets is import in Python-3.12 so inlining here until fixed
+                # Newest working combination for me in Windows is 3.11 + PySide-6.5.3
                 from PySide6 import QtWebEngineWidgets
             else:
                 from PySide2 import QtWebEngineWidgets
             self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
             self.urlChanged = self._graph_view.urlChanged
         else:
+            self.urlChanged = self._svg_viewport_placeholder_signal
             self._graph_view = _SvgPixmapViewport(parent=self)
 
         self._error_view = QtWidgets.QTextBrowser(parent=self)
@@ -425,7 +429,7 @@ class _DotViewer(QtWidgets.QFrame):
         self.setLayout(layout)
         self._dot2svg = None
         self._threadpool = QtCore.QThreadPool()
-        if not _SVG_AS_PIXMAP:
+        if not _USE_SVG_VIEWPORT:
             # otherwise it seems invisible
             self.setMinimumHeight(100)
 
@@ -447,7 +451,7 @@ class _DotViewer(QtWidgets.QFrame):
     def _on_dot_result(self, filepath):
         self._error_view.setVisible(False)
         self._graph_view.setVisible(True)
-        if not _SVG_AS_PIXMAP:
+        if not _USE_SVG_VIEWPORT:
             filepath = QtCore.QUrl.fromLocalFile(filepath)
         self._graph_view.load(filepath)
 
@@ -1203,7 +1207,7 @@ class LayerStackComposition(QtWidgets.QDialog):
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
 
 
-if _USE_WEB_ENGINE:
+if _GRAPHV_VIEW_VIA_SVG:
     _GraphViewer = _GraphSVGViewer
 else:
     _GraphViewer = _graph.GraphView

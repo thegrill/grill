@@ -114,7 +114,13 @@ class TestViews(unittest.TestCase):
         for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
                 description._GraphViewer = graph_viewer
-                self._sub_test_connection_view()
+                if graph_viewer == description._GraphSVGViewer:
+                    for pixmap_enabled in True, False:
+                        with self.subTest(pixmap_enabled=pixmap_enabled):
+                            description._USE_SVG_VIEWPORT = pixmap_enabled
+                            self._sub_test_connection_view()
+                else:
+                    self._sub_test_connection_view()
 
     def _sub_test_connection_view(self):
         # https://openusd.org/release/tut_simple_shading.html
@@ -136,7 +142,13 @@ class TestViews(unittest.TestCase):
         for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
                 description._GraphViewer = graph_viewer
-                self._sub_test_scenegraph_composition()
+                if graph_viewer == description._GraphSVGViewer:
+                    for pixmap_enabled in True, False:
+                        with self.subTest(pixmap_enabled=pixmap_enabled):
+                            description._USE_SVG_VIEWPORT = pixmap_enabled
+                            self._sub_test_scenegraph_composition()
+                else:
+                    self._sub_test_scenegraph_composition()
 
     def _sub_test_scenegraph_composition(self):
         widget = description.LayerStackComposition()
@@ -273,7 +285,7 @@ class TestViews(unittest.TestCase):
                 if graph_viewer == description._GraphSVGViewer:
                     for pixmap_enabled in True, False:
                         with self.subTest(pixmap_enabled=pixmap_enabled):
-                            description._SVG_AS_PIXMAP = pixmap_enabled
+                            description._USE_SVG_VIEWPORT = pixmap_enabled
                             self._sub_test_taxonomy_editor()
                 else:
                     self._sub_test_taxonomy_editor()
