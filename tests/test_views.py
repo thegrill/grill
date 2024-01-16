@@ -10,7 +10,7 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade
 
 from grill import cook, usd, names
 from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
-from grill.views._qt import QtWidgets, QtCore
+from grill.views._qt import QtWidgets, QtCore, QtTest
 
 
 class TestPrivate(unittest.TestCase):
@@ -216,7 +216,7 @@ class TestViews(unittest.TestCase):
         widget = description.LayerStackComposition()
         widget.setStage(parent_stage)
         widget._layers.table.selectAll()
-        from PySide6 import QtTest
+
         graph_view = widget._graph_view
         if isinstance(graph_view, _graph.GraphView):
             for item in graph_view.scene().items():
