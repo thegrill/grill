@@ -147,8 +147,10 @@ class TestViews(unittest.TestCase):
                         with self.subTest(pixmap_enabled=pixmap_enabled):
                             description._USE_SVG_VIEWPORT = pixmap_enabled
                             self._sub_test_scenegraph_composition()
+                            self._sub_test_layer_stack_bidirectionality()
                 else:
                     self._sub_test_scenegraph_composition()
+                    self._sub_test_layer_stack_bidirectionality()
 
     def _sub_test_scenegraph_composition(self):
         widget = description.LayerStackComposition()
@@ -193,7 +195,7 @@ class TestViews(unittest.TestCase):
 
         widget.deleteLater()
 
-    def test_layer_stack_bidirectionality(self):
+    def _sub_test_layer_stack_bidirectionality(self):
         """Confirm that bidirectionality between layer stacks completes.
 
         Bidirectionality in the composition graph is achieved by:
@@ -214,6 +216,13 @@ class TestViews(unittest.TestCase):
         widget = description.LayerStackComposition()
         widget.setStage(parent_stage)
         widget._layers.table.selectAll()
+        from PySide6 import QtTest
+        graph_view = widget._graph_view
+        if isinstance(graph_view, _graph.GraphView):
+            for item in graph_view.scene().items():
+                if isinstance(item, (_graph._Node, _graph._Edge)):
+                    item.boundingRect()  # trigger bounding rect logic
+                    QtTest.QTest.mousePress(graph_view.viewport(), QtCore.Qt.LeftButton, pos=item.scenePos().toPoint())
 
     def test_prim_composition(self):
         for pixmap_enabled in True, False:
