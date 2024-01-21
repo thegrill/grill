@@ -10,7 +10,7 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade
 
 from grill import cook, usd, names
 from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
-from grill.views._qt import QtWidgets, QtCore, QtTest
+from grill.views._qt import QtWidgets, QtCore, QtGui
 
 
 class TestPrivate(unittest.TestCase):
@@ -109,6 +109,7 @@ class TestViews(unittest.TestCase):
         self.nested = None
         self.sibling = None
         shutil.rmtree(self._tmpf)
+        self._app.quit()
 
     def test_connection_view(self):
         for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
@@ -195,7 +196,7 @@ class TestViews(unittest.TestCase):
 
         widget.deleteLater()
 
-    def _sub_test_layer_stack_bidirectionality(self):
+    def test_layer_stack_bidirectionality(self):
         """Confirm that bidirectionality between layer stacks completes.
 
         Bidirectionality in the composition graph is achieved by:
@@ -220,9 +221,35 @@ class TestViews(unittest.TestCase):
         graph_view = widget._graph_view
         if isinstance(graph_view, _graph.GraphView):
             for item in graph_view.scene().items():
-                if isinstance(item, (_graph._Node, _graph._Edge)):
-                    item.boundingRect()  # trigger bounding rect logic
-                    QtTest.QTest.mousePress(graph_view.viewport(), QtCore.Qt.LeftButton, pos=item.scenePos().toPoint())
+                item.boundingRect()  # trigger bounding rect logic
+                if isinstance(item, _graph._Node):
+                    if not item.isVisible():
+                        continue
+
+                    # Test hover with no modifiers
+                    print(item.textInteractionFlags())
+                    event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
+                    event.setScenePos(item.sceneBoundingRect().center())
+                    item.sceneEvent(event)
+                    self.assertEqual(item.cursor().shape(), QtGui.Qt.ArrowCursor)
+                    # self.assertEqual(item.textInteractionFlags(), item._default_text_interaction)
+                    self.assertEqual(item.textInteractionFlags(), item._default_text_interaction)
+
+                    # Test hover with Ctrl modifier
+                    event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
+                    event.setScenePos(item.sceneBoundingRect().center())
+                    event.setModifiers(QtCore.Qt.ControlModifier)
+                    item.sceneEvent(event)
+                    self.assertEqual(item.cursor().shape(), QtGui.Qt.PointingHandCursor)
+
+                    # Test hover with Alt modifier
+                    event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
+                    event.setScenePos(item.sceneBoundingRect().center())
+                    event.setModifiers(QtCore.Qt.AltModifier)
+                    item.sceneEvent(event)
+                    self.assertEqual(item.cursor().shape(), QtGui.Qt.ClosedHandCursor)
+                    self.assertEqual(item.textInteractionFlags(), QtCore.Qt.NoTextInteraction)
+                    break
 
     def test_prim_composition(self):
         for pixmap_enabled in True, False:
@@ -591,3 +618,113 @@ class TestViews(unittest.TestCase):
         del _qt.QtCharts
         stats.StageStats(stage=self.world)
         _qt.QtCharts = current
+
+
+class TestGraphicsViewport(unittest.TestCase):
+    def setUp(self):
+        self._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def tearDown(self):
+        self._app.quit()
+
+    def test_zoom(self):
+        """Zoom is triggered by ctrl + mouse wheel"""
+        view = _graph._GraphicsViewport()
+
+        initial_scale = view.transform().m11()
+
+        position = QtCore.QPoint(10, 10)
+        pixelDelta = QtCore.QPoint(0, 0)
+        angleDelta_zoomIn = QtCore.QPoint(0, 120)
+        buttons = QtCore.Qt.NoButton
+        modifiers = QtCore.Qt.ControlModifier
+        phase = QtCore.Qt.NoScrollPhase
+        inverted = False
+
+        # ZOOM IN
+        event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomIn, buttons, modifiers, phase, inverted)
+        view.wheelEvent(event)
+
+        zoomed_in_scale = view.transform().m11()
+
+        # Assert that the scale has changed according to the zoom logic
+        self.assertGreater(zoomed_in_scale, initial_scale)
+        angleDelta_zoomOut = QtCore.QPoint(-120, 0)
+
+        # ZOOM OUT
+        event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomOut, buttons, modifiers, phase, inverted)
+        view.wheelEvent(event)
+        self.assertGreater(zoomed_in_scale, view.transform().m11())
+
+    def test_horizontal_scroll(self):
+        """Horizontal scrolling with alt + mouse wheel"""
+        view = _graph._GraphicsViewport()
+        scroll_bar = view.horizontalScrollBar()
+        initial_value = scroll_bar.value()
+        scroll_bar.setMaximum(200)
+        position = QtCore.QPoint(10, 10)
+        pixelDelta = QtCore.QPoint(0, 0)
+        angleDelta= QtCore.QPoint(-120, 0)
+        buttons = QtCore.Qt.NoButton
+        modifiers = QtCore.Qt.AltModifier
+        phase = QtCore.Qt.NoScrollPhase
+        inverted = False
+        event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta, buttons, modifiers, phase, inverted)
+        view.wheelEvent(event)
+        final_value = scroll_bar.value()
+        # Assert that the horizontal scroll has changed according to your pan logic
+        self.assertGreater(final_value, initial_value)
+
+    def test_vertical_scroll(self):
+        """Vertical scroll with only mouse wheel"""
+        view = _graph._GraphicsViewport()
+        scroll_bar = view.verticalScrollBar()
+        initial_value = scroll_bar.value()
+        scroll_bar.setMaximum(200)
+        position = QtCore.QPoint(10, 10)
+        pixelDelta = QtCore.QPoint(0, 0)
+        angleDelta = QtCore.QPoint(0, -120)
+        buttons = QtCore.Qt.NoButton
+        modifiers = QtCore.Qt.NoModifier
+        phase = QtCore.Qt.NoScrollPhase
+        inverted = False
+        event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta, buttons, modifiers, phase, inverted)
+        view.wheelEvent(event)
+        final_value = scroll_bar.value()
+        # Assert that the horizontal scroll has changed according to your pan logic
+        self.assertGreater(final_value, initial_value)
+
+    def test_pan(self):
+        """Horizontal and vertical pan with mouse middle button"""
+        view = _graph._GraphicsViewport()
+        vertical_scroll_bar = view.verticalScrollBar()
+        vertical_scroll_bar.setMaximum(200)
+        horizontal_scroll_bar = view.horizontalScrollBar()
+        horizontal_scroll_bar.setMaximum(200)
+        start_position = QtCore.QPoint(50, 50)
+        end_position = QtCore.QPoint(-5, -5)
+
+        # 1. Mouse press
+        middle_button_event = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, start_position, QtCore.Qt.MiddleButton, QtCore.Qt.MiddleButton, QtCore.Qt.NoModifier)
+        vertical_value = vertical_scroll_bar.value()
+        horizontal_value = horizontal_scroll_bar.value()
+        view.mousePressEvent(middle_button_event)
+        self.assertEqual(self._app.overrideCursor().shape(), QtGui.Qt.ClosedHandCursor)
+        self.assertTrue(view._dragging)
+
+        # 2. Mouse move
+        view._last_pan_pos = middle_button_event.globalPosition().toPoint() + QtCore.QPoint(10,10)
+        move_event = QtGui.QMouseEvent(QtCore.QEvent.MouseMove, end_position, QtCore.Qt.MiddleButton, QtCore.Qt.MiddleButton, QtCore.Qt.NoModifier)
+        view.mouseMoveEvent(move_event)
+        last_vertical_scroll_bar = vertical_scroll_bar.value()
+        last_horizontal_scroll_bar = horizontal_scroll_bar.value()
+        self.assertGreater(last_vertical_scroll_bar, vertical_value)
+        self.assertGreater(last_horizontal_scroll_bar, horizontal_value)
+
+        # 3. Release
+        view.mouseReleaseEvent(middle_button_event)
+        view._last_pan_pos = middle_button_event.globalPosition().toPoint() + QtCore.QPoint(20, 20)
+        view.mouseMoveEvent(move_event)
+        # Confirm no further move is performed
+        self.assertEqual(last_vertical_scroll_bar, vertical_scroll_bar.value())
+        self.assertEqual(last_horizontal_scroll_bar, horizontal_scroll_bar.value())
