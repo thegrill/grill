@@ -372,7 +372,7 @@ def _parallel_line(line, distance, head_offset=0):
     return parallel_line
 
 
-_EVENT_POSITION_FUNC = QtGui.QMouseEvent if _IS_QT5 else lambda event: event.globalPosition().toPoint()
+_EVENT_POSITION_FUNC = QtGui.QMouseEvent.globalPos if _IS_QT5 else lambda event: event.globalPosition().toPoint()
 
 
 class _GraphicsViewport(QtWidgets.QGraphicsView):
