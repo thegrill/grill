@@ -10,7 +10,7 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade
 
 from grill import cook, usd, names
 from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
-from grill.views._qt import QtWidgets, QtCore, QtGui
+from grill.views._qt import QtWidgets, QtCore, QtGui, QtTest
 
 
 class TestPrivate(unittest.TestCase):
@@ -219,37 +219,66 @@ class TestViews(unittest.TestCase):
         widget._layers.table.selectAll()
 
         graph_view = widget._graph_view
-        if isinstance(graph_view, _graph.GraphView):
-            for item in graph_view.scene().items():
-                item.boundingRect()  # trigger bounding rect logic
-                if isinstance(item, _graph._Node):
-                    if not item.isVisible():
-                        continue
 
-                    # Test hover with no modifiers
-                    print(item.textInteractionFlags())
-                    event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
-                    event.setScenePos(item.sceneBoundingRect().center())
-                    item.sceneEvent(event)
-                    self.assertEqual(item.cursor().shape(), QtGui.Qt.ArrowCursor)
-                    # self.assertEqual(item.textInteractionFlags(), item._default_text_interaction)
-                    self.assertEqual(item.textInteractionFlags(), item._default_text_interaction)
+    def test_layer_stack_hovers(self):
+        description._GraphViewer = _graph.GraphView
+        description._USE_SVG_VIEWPORT = False
 
-                    # Test hover with Ctrl modifier
-                    event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
-                    event.setScenePos(item.sceneBoundingRect().center())
-                    event.setModifiers(QtCore.Qt.ControlModifier)
-                    item.sceneEvent(event)
-                    self.assertEqual(item.cursor().shape(), QtGui.Qt.PointingHandCursor)
+        parent_stage = Usd.Stage.CreateInMemory()
+        child_stage = Usd.Stage.CreateInMemory()
+        prim = parent_stage.DefinePrim("/a/b")
+        child_prim = child_stage.DefinePrim("/child")
+        child_prim.GetInherits().AddInherit("/foo")
+        child_prim.GetSpecializes().AddSpecialize("/foo")
+        child_stage.SetDefaultPrim(child_prim)
+        child_identifier = child_stage.GetRootLayer().identifier
+        prim.GetReferences().AddReference(child_identifier)
+        prim.GetPayloads().AddPayload(child_identifier)
 
-                    # Test hover with Alt modifier
-                    event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
-                    event.setScenePos(item.sceneBoundingRect().center())
-                    event.setModifiers(QtCore.Qt.AltModifier)
-                    item.sceneEvent(event)
-                    self.assertEqual(item.cursor().shape(), QtGui.Qt.ClosedHandCursor)
-                    self.assertEqual(item.textInteractionFlags(), QtCore.Qt.NoTextInteraction)
-                    break
+        widget = description.LayerStackComposition()
+        widget.setStage(parent_stage)
+        widget._graph_precise_source_ports.setChecked(True)
+        widget._has_specs.setCheckState(QtCore.Qt.CheckState.PartiallyChecked)
+
+        widget._layers.table.selectAll()
+        graph_view = widget._graph_view
+        cycle_collected = False
+        nodes_hovered_checked = False
+        for item in graph_view.scene().items():
+            item.boundingRect()  # trigger bounding rect logic
+            if isinstance(item, _graph._Edge):
+                cycle_collected = True
+            if isinstance(item, _graph._Node) and item.isVisible():
+                nodes_hovered_checked = True
+
+                # Test hover with no modifiers
+                event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
+                center = item.sceneBoundingRect().center()
+                event.setScenePos(center)
+                item.hoverEnterEvent(event)
+                self.assertEqual(item.cursor().shape(), QtGui.Qt.ArrowCursor)
+                self.assertEqual(item.textInteractionFlags(), item._default_text_interaction)
+                item.hoverLeaveEvent(event)
+
+                # Test hover with Ctrl modifier
+                event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
+                event.setScenePos(center)
+                event.setModifiers(QtCore.Qt.ControlModifier)
+                item.hoverEnterEvent(event)
+                self.assertEqual(item.cursor().shape(), QtGui.Qt.PointingHandCursor)
+                item.hoverLeaveEvent(event)
+
+                # Test hover with Alt modifier
+                event = QtWidgets.QGraphicsSceneHoverEvent(QtCore.QEvent.GraphicsSceneHoverMove)
+                event.setScenePos(item.sceneBoundingRect().center())
+                event.setModifiers(QtCore.Qt.AltModifier)
+                item.hoverEnterEvent(event)
+                self.assertEqual(item.cursor().shape(), QtGui.Qt.ClosedHandCursor)
+                self.assertEqual(item.textInteractionFlags(), QtCore.Qt.NoTextInteraction)
+                item.hoverLeaveEvent(event)
+
+        self.assertTrue(cycle_collected)
+        self.assertTrue(nodes_hovered_checked)
 
     def test_prim_composition(self):
         for pixmap_enabled in True, False:
