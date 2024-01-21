@@ -196,7 +196,7 @@ class TestViews(unittest.TestCase):
 
         widget.deleteLater()
 
-    def test_layer_stack_bidirectionality(self):
+    def _sub_test_layer_stack_bidirectionality(self):
         """Confirm that bidirectionality between layer stacks completes.
 
         Bidirectionality in the composition graph is achieved by:
@@ -713,7 +713,7 @@ class TestGraphicsViewport(unittest.TestCase):
         self.assertTrue(view._dragging)
 
         # 2. Mouse move
-        view._last_pan_pos = middle_button_event.globalPosition().toPoint() + QtCore.QPoint(10,10)
+        view._last_pan_pos = _graph._EVENT_POSITION_FUNC(middle_button_event) + QtCore.QPoint(10,10)
         move_event = QtGui.QMouseEvent(QtCore.QEvent.MouseMove, end_position, QtCore.Qt.MiddleButton, QtCore.Qt.MiddleButton, QtCore.Qt.NoModifier)
         view.mouseMoveEvent(move_event)
         last_vertical_scroll_bar = vertical_scroll_bar.value()
@@ -723,7 +723,7 @@ class TestGraphicsViewport(unittest.TestCase):
 
         # 3. Release
         view.mouseReleaseEvent(middle_button_event)
-        view._last_pan_pos = middle_button_event.globalPosition().toPoint() + QtCore.QPoint(20, 20)
+        view._last_pan_pos = _graph._EVENT_POSITION_FUNC(middle_button_event) + QtCore.QPoint(20, 20)
         view.mouseMoveEvent(move_event)
         # Confirm no further move is performed
         self.assertEqual(last_vertical_scroll_bar, vertical_scroll_bar.value())

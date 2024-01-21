@@ -372,6 +372,9 @@ def _parallel_line(line, distance, head_offset=0):
     return parallel_line
 
 
+_EVENT_POSITION_FUNC = QtGui.QMouseEvent if _IS_QT5 else lambda event: event.globalPosition().toPoint()
+
+
 class _GraphicsViewport(QtWidgets.QGraphicsView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -394,7 +397,7 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
         if event.button() == QtCore.Qt.MiddleButton:
             self._dragging = True
             QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.ClosedHandCursor)
-            self._last_pan_pos = event.globalPosition().toPoint()
+            self._last_pan_pos = _EVENT_POSITION_FUNC(event)
             event.accept()
 
         return super().mousePressEvent(event)
@@ -410,10 +413,10 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
     def mouseMoveEvent(self, event):
         if self._dragging and event.buttons() == QtCore.Qt.MiddleButton:
             # Pan the scene when middle mouse button is held down
-            delta = event.globalPosition().toPoint() - self._last_pan_pos
+            delta = _EVENT_POSITION_FUNC(event) - self._last_pan_pos
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
-            self._last_pan_pos = event.globalPosition().toPoint()
+            self._last_pan_pos = _EVENT_POSITION_FUNC(event)
             return
         return super().mouseMoveEvent(event)
 
