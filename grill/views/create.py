@@ -1,12 +1,11 @@
 from pathlib import Path
 from functools import partial
 
-import networkx
 from pxr import Usd
 from grill import cook
 
 from ._qt import QtWidgets, QtCore, QtGui
-from . import sheets as _sheets, description as _description, _core
+from . import sheets as _sheets, _graph, _core
 
 
 class _CreatePrims(QtWidgets.QDialog):
@@ -224,7 +223,7 @@ class TaxonomyEditor(_CreatePrims):
         existing.layout().setContentsMargins(0, 0, 0, 0)
         existing_splitter.addWidget(existing)
 
-        self._graph_view = _description._GraphViewer(parent=self)
+        self._graph_view = _graph._GraphViewer(parent=self)
         existing_splitter.addWidget(self._graph_view)
 
         selectionModel = existing.table.selectionModel()
