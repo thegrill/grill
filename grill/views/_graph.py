@@ -1,24 +1,44 @@
 # Learnt from https://doc.qt.io/qtforpython-6/examples/example_external_networkx.html
 from __future__ import annotations
 
+import os
 import math
+import typing
+import tempfile
 import networkx as nx
 from itertools import chain
+from functools import cache
 
 from networkx import drawing
 
 from . import _core
-from ._qt import QtCore, QtGui, QtWidgets
+from ._qt import QtCore, QtGui, QtWidgets, QtSvg
 _core._ensure_dot()
+
+
+_GRAPHV_VIEW_VIA_SVG = os.getenv("GRILL_GRAPH_VIEW_VIA_SVG")
+_USE_SVG_VIEWPORT = os.getenv("GRILL_SVG_VIEW_AS_PIXMAP")
 
 _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
+#   Blockers:
+#   - ConnectableAPI missing from Maya menu
+#   Non blockers:
+#   - Popup everytime a new graph is loaded in Houdini ( it's on _run_prog func line 1380 of agraph.py )
+#   - Focus with F
 #   - Context menu items
 #   - Ability to move further in canvas after Nodes don't exist
-#   - Focus with F
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
+
+_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
+the 'dot' command must be available on the current environment.
+
+Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
+
+For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
+"""
 
 
 def _convert_graphviz_to_html_label(label):
@@ -29,6 +49,8 @@ def _convert_graphviz_to_html_label(label):
         for index, field in enumerate(fields):
             port, text = field.strip("<>").split(">", 1)
             bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
+            # text = f'<font color="#3e4444">{text}</font>'
+            text = f'<font color="#242828">{text}</font>'
             label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
         label += "</table>"
     elif label.startswith("<"):
@@ -38,21 +60,34 @@ def _convert_graphviz_to_html_label(label):
     return label
 
 
+@cache
+def _dot_2_svg(sourcepath):
+    print(f"Creating svg for: {sourcepath}")
+    import datetime
+    now = datetime.datetime.now()
+    targetpath = f"{sourcepath}.svg"
+    args = [_core._which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
+    error, __ = _core._run(args)
+    total = datetime.datetime.now() - now
+    print(f"{total=}")
+    return error, targetpath
+
+
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    def __init__(self, parent=None, label="", color="", fillcolor="", plugs=None, active_plugs: set = frozenset(), visible=True):
+    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: dict =None, active_plugs: set = frozenset(), visible=True):
         super().__init__(parent)
         self._edges = []
-        self._plugs = plugs or {}
+        self._plugs = plugs or {}  # {identifier: index}
 
-        plug_items = {}
+        plug_items = {}  # {index: (QEllipse, QEllipse)}
         radius = 4
         def _plug_item():
             item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
             item.setPen(_NO_PEN)
             return item
         self._active_plugs = active_plugs
-        self._active_plugs_by_side = dict()
+        self._active_plugs_by_side = dict()  # {index: {left[int]: {}, right[int]: {}}
         for plug_index in active_plugs:
             plug_items[plugs[plug_index]] = (_plug_item(), _plug_item())
             self._active_plugs_by_side[plugs[plug_index]] = {0: dict(), 1: dict()}
@@ -122,25 +157,28 @@ class _Node(QtWidgets.QGraphicsTextItem):
                 edge.adjust()
         return super().itemChange(change, value)
 
-    def _activatePlug(self, edge, plug_index, side, position):
+    def _activatePlug(self, edge, plug_index, side, position, other_position):
         if plug_index is None:
             return  # we're at the center, nothing to draw nor activate
-        plugs_by_side = self._active_plugs_by_side[plug_index]
+        plugs_by_side = self._active_plugs_by_side[plug_index]  # {index: {left[int]: {}, right[int]: {}}
         plugs_by_side[side][edge] = True
         other_side = bool(not side)
         inactive_plugs = plugs_by_side[other_side]
         inactive_plugs.pop(edge, None)
-        plug_items = self._plug_items[plug_index]
+        plug_items = self._plug_items[plug_index]  # {index: (QEllipse, QEllipse)}
         if not inactive_plugs:
-            plug_items[other_side].setVisible(False)
+            plug_items[other_side].setVisible(True)
+            plug_items[other_side].setBrush(edge._brush)
+            plug_items[other_side].setPos(other_position)
+            # plug_items[other_side].setVisible(False)
         this_item = plug_items[side]
         this_item.setVisible(True)
         this_item.setBrush(edge._brush)
-        self._plug_items[plug_index][side].setPos(position)
+        plug_items[side].setPos(position)
 
 
 class _Edge(QtWidgets.QGraphicsItem):
-    def __init__(self, source: _Node, target: _Node, *, source_plug=None, target_plug=None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
+    def __init__(self, source: _Node, target: _Node, *, source_plug: int =None, target_plug: int =None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
         super().__init__(parent)
         source.add_edge(self)
         target.add_edge(self)
@@ -153,13 +191,15 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._is_cycle = is_cycle = source == target
 
         self._plug_positions = plug_positions = {}
-        for node, plug in (source, source_plug), (target, target_plug):
+        outer_shift = 10  # surrounding rect has ~5 px top and bottom
+
+        for node, plug, max_plug in (source, source_plug, max(source._plugs.values(), default=0)), (target, target_plug, max(target._plugs.values(), default=0)):
             bounds = node.boundingRect()
             if plug is None:
                 plug_positions[node, plug] = {None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()}
                 continue
-            port_size = bounds.height() / len(node._plugs) if node._plugs else 0
-            y_pos = plug * port_size + port_size / 2
+            port_size = ((bounds.height() - outer_shift) / (max_plug + 1)) if max_plug else 0
+            y_pos = (plug * port_size) + (port_size / 2) + (outer_shift / 2)
             plug_positions[node, plug] = {
                 0: QtCore.QPointF(0, y_pos),  # left
                 1: QtCore.QPointF(bounds.right(), y_pos),  # right
@@ -224,7 +264,9 @@ class _Edge(QtWidgets.QGraphicsItem):
         is_source_plugged = self._is_source_plugged
         is_target_plugged = self._is_target_plugged
         source_side = source_on_left if is_source_plugged else None
+        other_source_side = not source_side if is_source_plugged else None
         target_side = not source_side if is_target_plugged else None
+        other_target_side = not target_side if is_target_plugged else None
         source_point = source_pos + self._plug_positions[self._source, self._source_plug][source_side]
         target_point = target_pos + self._plug_positions[self._target, self._target_plug][target_side]
 
@@ -267,8 +309,22 @@ class _Edge(QtWidgets.QGraphicsItem):
             self._spline_path.moveTo(source_point)
             self._spline_path.cubicTo(control_point1, control_point2, target_point)
 
-        self._source._activatePlug(self, self._source_plug, source_side, source_point)
-        self._target._activatePlug(self, self._target_plug, target_side, target_point)
+        source_width_diff = QtCore.QPointF(self._source.boundingRect().width(), 0)
+        target_width_diff = QtCore.QPointF(self._target.boundingRect().width(), 0)
+        if other_source_side == 0:  # left
+            other_source_poit = source_point - source_width_diff
+        elif other_source_side == 1:  # right
+            other_source_poit = source_point + source_width_diff
+        else:  # none
+            other_source_poit = source_point
+        if other_target_side == 0:  # left
+            other_target_point = target_point - target_width_diff
+        elif other_target_side == 1:  # right
+            other_target_point = target_point + target_width_diff
+        else:  # none
+            other_target_point = target_point
+        self._source._activatePlug(self, self._source_plug, source_side, source_point, other_source_poit)
+        self._target._activatePlug(self, self._target_plug, target_side, target_point, other_target_point)
         if self._label_text:
             self._label_text.setPos((source_point + target_point) / 2)
 
@@ -458,6 +514,8 @@ class GraphView(_GraphicsViewport):
     def view(self, node_indices: tuple):
         self._viewing = frozenset(node_indices)
         graph = self._graph
+        if not graph:
+            return
         successors = chain.from_iterable(graph.successors(index) for index in node_indices)
         predecessors = chain.from_iterable(graph.predecessors(index) for index in node_indices)
         nodes_of_interest = chain(self.sticky_nodes, node_indices, successors, predecessors)
@@ -497,6 +555,9 @@ class GraphView(_GraphicsViewport):
 
     def _load_graph(self, graph):
         if not graph:
+            return
+        if not _core._which("dot"):
+            print(_DOT_ENVIRONMENT_ERROR)
             return
         print("LOADING GRAPH")
         self.scene().clear()
@@ -549,3 +610,188 @@ class GraphView(_GraphicsViewport):
         for node, (x, y) in positions.items():
             # SVG and dot have inverted coordinates, let's flip Y
             self._nodes_map[node].setPos(x, max_y - y)
+
+
+class _Dot2SvgSignals(QtCore.QObject):
+    error = QtCore.Signal(str)
+    result = QtCore.Signal(str)
+
+
+class _Dot2Svg(QtCore.QRunnable):
+    def __init__(self, source_fp, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.signals = _Dot2SvgSignals()
+        self.source_fp = source_fp
+
+    @QtCore.Slot()
+    def run(self):
+        if not _core._which("dot"):
+            self.signals.error.emit(_DOT_ENVIRONMENT_ERROR)
+            return
+        error, svg_fp = _dot_2_svg(self.source_fp)
+        self.signals.error.emit(error) if error else self.signals.result.emit(svg_fp)
+
+
+class _SvgPixmapViewport(_GraphicsViewport):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        scene = QtWidgets.QGraphicsScene(self)
+        self.setScene(scene)
+
+    def load(self, filepath):
+        scene = self.scene()
+        scene.clear()
+
+        renderer = QtSvg.QSvgRenderer(filepath)
+        image = QtGui.QImage(renderer.defaultSize() * 1.5, QtGui.QImage.Format_ARGB32)
+        image.fill(QtCore.Qt.transparent)
+
+        painter = QtGui.QPainter(image)
+        renderer.render(painter)
+        painter.end()
+
+        pixmap = QtGui.QPixmap.fromImage(image)
+        self._svg_item = QtWidgets.QGraphicsPixmapItem(pixmap)
+        scene.addItem(self._svg_item)
+
+
+class _DotViewer(QtWidgets.QFrame):
+    _svg_viewport_placeholder_signal = QtCore.Signal(object)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        layout = QtWidgets.QVBoxLayout()
+        # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
+        if not _USE_SVG_VIEWPORT:
+            if QtWidgets.__package__ == "PySide6":
+                # PySide-6.6.0 and 6.6.1 freeze when QtWebEngineWidgets is import in Python-3.12 so inlining here until fixed
+                # Newest working combination for me in Windows is 3.11 + PySide-6.5.3
+                from PySide6 import QtWebEngineWidgets
+            else:
+                from PySide2 import QtWebEngineWidgets
+            self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
+            self.urlChanged = self._graph_view.urlChanged
+        else:
+            self.urlChanged = self._svg_viewport_placeholder_signal
+            self._graph_view = _SvgPixmapViewport(parent=self)
+
+        self._error_view = QtWidgets.QTextBrowser(parent=self)
+        layout.addWidget(self._graph_view)
+        layout.addWidget(self._error_view)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._error_view.setVisible(False)
+        self.setLayout(layout)
+        self._dot2svg = None
+        self._threadpool = QtCore.QThreadPool()
+        if not _USE_SVG_VIEWPORT:
+            # otherwise it seems invisible
+            self.setMinimumHeight(100)
+
+    def setDotPath(self, path):
+        if self._dot2svg:  # forget about previous, unfinished runners
+            self._dot2svg.signals.error.disconnect()
+            self._dot2svg.signals.result.disconnect()
+
+        self._dot2svg = dot2svg = _Dot2Svg(path)
+        dot2svg.signals.error.connect(self._on_dot_error)
+        dot2svg.signals.result.connect(self._on_dot_result)
+        self._threadpool.start(dot2svg)
+
+    def _on_dot_error(self, message):
+        self._error_view.setVisible(True)
+        self._graph_view.setVisible(False)
+        self._error_view.setText(message)
+
+    def _on_dot_result(self, filepath):
+        self._error_view.setVisible(False)
+        self._graph_view.setVisible(True)
+        if not _USE_SVG_VIEWPORT:
+            filepath = QtCore.QUrl.fromLocalFile(filepath)
+        self._graph_view.load(filepath)
+
+
+class _GraphSVGViewer(_DotViewer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.urlChanged.connect(self._graph_url_changed)
+        self.sticky_nodes = list()
+        self._graph = None
+        self._viewing = frozenset()
+        self._filter_edges = None
+
+    @property
+    def filter_edges(self):
+        return self._filter_edges
+
+    @filter_edges.setter
+    def filter_edges(self, value):
+        if value == self._filter_edges:
+            return
+        self._subgraph_dot_path.cache_clear()
+        if value:
+            predicate = lambda *edge: value(*edge) or bool({edge[0], edge[1]}.intersection(self.sticky_nodes))
+        else:
+            predicate = None
+        self._filter_edges = predicate
+
+    @property
+    def url_id_prefix(self):
+        return "_node_id_"
+
+    def _graph_url_changed(self, url: QtCore.QUrl):
+        node_uri = url.toString()
+        node_uri_stem = node_uri.split("/")[-1]
+        if node_uri_stem.startswith(self.url_id_prefix):
+            index = node_uri_stem.split(self.url_id_prefix)[-1]
+            self.view([int(index)] if index.isdigit() else [index])
+
+    @cache
+    def _subgraph_dot_path(self, node_indices: tuple):
+        graph = self.graph
+        if not graph:
+            raise RuntimeError(f"'graph' attribute not set yet on {self}. Can't view nodes {node_indices}")
+        successors = chain.from_iterable(graph.successors(index) for index in node_indices)
+        predecessors = chain.from_iterable(graph.predecessors(index) for index in node_indices)
+        nodes_of_interest = chain(self.sticky_nodes, node_indices, successors, predecessors)
+        subgraph = graph.subgraph(nodes_of_interest)
+
+        filters = {}
+        if self.filter_edges:
+            print(f"{self.filter_edges=}")
+            print("FILTERRRINNG")
+            filters['filter_edge'] = self.filter_edges
+        if filters:
+            subgraph = nx.subgraph_view(subgraph, **filters)
+
+        fd, fp = tempfile.mkstemp()
+        try:
+            nx.nx_agraph.write_dot(subgraph, fp)
+        except ImportError as exc:
+            error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+        else:
+            error = ""
+        return error, fp
+
+    def view(self, node_indices: typing.Iterable):
+        error, dot_path = self._subgraph_dot_path(tuple(node_indices))
+        self._viewing = frozenset(node_indices)
+        if error:
+            self._on_dot_error(error)
+        else:
+            self.setDotPath(dot_path)
+
+    @property
+    def graph(self):
+        return self._graph
+
+    @graph.setter
+    def graph(self, graph):
+        self._subgraph_dot_path.cache_clear()
+        self.sticky_nodes.clear()
+        self._graph = graph
+
+
+if _GRAPHV_VIEW_VIA_SVG:
+    _GraphViewer = _GraphSVGViewer
+else:
+    _GraphViewer = GraphView
