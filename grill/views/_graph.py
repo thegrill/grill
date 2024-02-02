@@ -157,7 +157,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
                 edge.adjust()
         return super().itemChange(change, value)
 
-    def _activatePlug(self, edge, plug_index, side, position, other_position):
+    def _activatePlug(self, edge, plug_index, side, position):
         if plug_index is None:
             return  # we're at the center, nothing to draw nor activate
         plugs_by_side = self._active_plugs_by_side[plug_index]  # {index: {left[int]: {}, right[int]: {}}
@@ -167,10 +167,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
         inactive_plugs.pop(edge, None)
         plug_items = self._plug_items[plug_index]  # {index: (QEllipse, QEllipse)}
         if not inactive_plugs:
-            plug_items[other_side].setVisible(True)
-            plug_items[other_side].setBrush(edge._brush)
-            plug_items[other_side].setPos(other_position)
-            # plug_items[other_side].setVisible(False)
+            plug_items[other_side].setVisible(False)
         this_item = plug_items[side]
         this_item.setVisible(True)
         this_item.setBrush(edge._brush)
@@ -264,9 +261,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         is_source_plugged = self._is_source_plugged
         is_target_plugged = self._is_target_plugged
         source_side = source_on_left if is_source_plugged else None
-        other_source_side = not source_side if is_source_plugged else None
         target_side = not source_side if is_target_plugged else None
-        other_target_side = not target_side if is_target_plugged else None
         source_point = source_pos + self._plug_positions[self._source, self._source_plug][source_side]
         target_point = target_pos + self._plug_positions[self._target, self._target_plug][target_side]
 
@@ -309,22 +304,8 @@ class _Edge(QtWidgets.QGraphicsItem):
             self._spline_path.moveTo(source_point)
             self._spline_path.cubicTo(control_point1, control_point2, target_point)
 
-        source_width_diff = QtCore.QPointF(self._source.boundingRect().width(), 0)
-        target_width_diff = QtCore.QPointF(self._target.boundingRect().width(), 0)
-        if other_source_side == 0:  # left
-            other_source_poit = source_point - source_width_diff
-        elif other_source_side == 1:  # right
-            other_source_poit = source_point + source_width_diff
-        else:  # none
-            other_source_poit = source_point
-        if other_target_side == 0:  # left
-            other_target_point = target_point - target_width_diff
-        elif other_target_side == 1:  # right
-            other_target_point = target_point + target_width_diff
-        else:  # none
-            other_target_point = target_point
-        self._source._activatePlug(self, self._source_plug, source_side, source_point, other_source_poit)
-        self._target._activatePlug(self, self._target_plug, target_side, target_point, other_target_point)
+        self._source._activatePlug(self, self._source_plug, source_side, source_point)
+        self._target._activatePlug(self, self._target_plug, target_side, target_point)
         if self._label_text:
             self._label_text.setPos((source_point + target_point) / 2)
 
