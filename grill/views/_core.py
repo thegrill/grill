@@ -3,6 +3,7 @@ import os
 import enum
 import shutil
 import typing
+import subprocess
 import contextlib
 from pathlib import Path
 from functools import partial, cache
@@ -96,6 +97,21 @@ _USDVIEW_STYLE = _USDVIEW_PUSH_BUTTON_STYLE + _USDVIEW_QTREEVIEW_STYLE
 @cache
 def _which(what):
     return shutil.which(what)
+
+
+def _run(args: list):
+    if not args or not args[0]:
+        raise ValueError(f"Expected arguments to contain an executable value on the first index. Got: {args}")
+    kwargs = dict(capture_output=True)
+    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on CentOS
+        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        result = subprocess.run(args, **kwargs)
+    except TypeError as exc:
+        return str(exc), ""
+    else:
+        error = result.stderr.decode() if result.returncode else None
+        return error, result.stdout.decode()
 
 
 @cache
