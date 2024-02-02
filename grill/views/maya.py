@@ -59,6 +59,25 @@ def _prim_composition():
 
 
 @cache
+def _connections_viewer():
+    widget = _description._ConnectableAPIViewer(parent=_main_window())
+
+    def selection_changed(*_, **__):
+        for item in ufe.GlobalSelection.get():
+            prim = mayaUsd.ufe.getPrimFromRawItem(item.getRawAddress())
+            if prim.IsValid():
+                widget.setPrim(prim)
+                break
+        else:
+            widget.setPrim(None)
+            # widget.clear()
+
+    om.MEventMessage.addEventCallback("UFESelectionChanged", selection_changed)
+    selection_changed()
+    return widget
+
+
+@cache
 def create_menu():
     print(f"Creating The Grill menu.")
     menu = cmds.menu("grill", label="👨‍🍳 Grill", tearOff=True, parent="MayaWindow")
@@ -71,6 +90,7 @@ def create_menu():
             ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
             ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
             ("Prim Composition", _prim_composition),
+            ("Connections Viewer", _connections_viewer),
             ("LayerStack Composition", _stage_on_widget(_description.LayerStackComposition)),
             ("Stage Stats", _stage_on_widget(_stats.StageStats, _cache=False)),
     ):

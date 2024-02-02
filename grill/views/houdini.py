@@ -84,6 +84,34 @@ def _prim_composition():
     return editor
 
 
+def _connectable_viewer():
+    _description._PALETTE.set(0)  # (0 == dark, 1 == light)
+    editor = _description._ConnectableAPIViewer(parent=hou.qt.mainWindow())
+    editor._prim = None
+
+    def _updatePrim():
+        # find a cheaper way for this?
+        viewer = toolutils.sceneViewer()
+        stage = viewer.stage()
+        if not stage:
+            editor.setPrim(None)
+            return
+        selection = viewer.currentSceneGraphSelection()
+        prims = tuple(stage.GetPrimAtPath(path) for path in selection)
+        prim = next(iter(prims), None)
+        if not prim:
+            if editor._prim:
+                editor.setPrim(None)
+                editor._prim = None
+        else:
+            if prim != editor._prim:
+                editor.setPrim(prim)
+                editor._prim = prim
+
+    hou.ui.addEventLoopCallback(_updatePrim)
+    return editor
+
+
 _create_assets = partial(_creator, _create.CreateAssets)
 _taxonomy_editor = partial(_creator, _create.TaxonomyEditor)
 _layerstack_composition = _stage_on_widget(_description.LayerStackComposition)

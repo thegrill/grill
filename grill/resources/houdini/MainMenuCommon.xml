@@ -29,6 +29,12 @@ houdini._spreadsheet().show()]]></scriptCode>
 houdini._prim_composition().show()]]></scriptCode>
             </scriptItem>
 
+            <scriptItem id="connections_viewer">
+                <label>Connections Viewer</label>
+                <scriptCode><![CDATA[from grill.views import houdini
+houdini._connectable_viewer().show()]]></scriptCode>
+            </scriptItem>
+
             <scriptItem id="layerstack_composition">
                 <label>LayerStack Composition</label>
                 <scriptCode><![CDATA[from grill.views import houdini
