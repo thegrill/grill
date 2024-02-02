@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import re
-import os
 import typing
 import weakref
 import operator
 import tempfile
-import subprocess
 import contextvars
 import collections
 
@@ -19,15 +17,12 @@ from types import MappingProxyType
 
 import networkx as nx
 from pxr import UsdUtils, UsdShade, Usd, Ar, Pcp, Sdf, Tf
-from ._qt import QtWidgets, QtGui, QtCore, QtSvg
+from ._qt import QtWidgets, QtGui, QtCore
 
 from .. import usd as _usd
 from . import sheets as _sheets, _core, _graph
 from ._core import _which
 
-
-_GRAPHV_VIEW_VIA_SVG = os.getenv("GRILL_GRAPH_VIEW_VIA_SVG")
-_USE_SVG_VIEWPORT = os.getenv("GRILL_SVG_VIEW_AS_PIXMAP")
 
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
@@ -83,37 +78,9 @@ _USD_COMPOSITION_ARC_QUERY_KEYS = tuple(func.__name__ for func in _USD_COMPOSITI
 _USD_COMPOSITION_ARC_QUERY_DEFAULTS = lambda: dict.fromkeys(_USD_COMPOSITION_ARC_QUERY_KEYS, False)
 
 
-def _run(args: list):
-    if not args or not args[0]:
-        raise ValueError(f"Expected arguments to contain an executable value on the first index. Got: {args}")
-    kwargs = dict(capture_output=True)
-    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on CentOS
-        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
-    try:
-        result = subprocess.run(args, **kwargs)
-    except TypeError as exc:
-        return str(exc), ""
-    else:
-        error = result.stderr.decode() if result.returncode else None
-        return error, result.stdout.decode()
-
-
 @cache
 def _edge_color(edge_arcs):
     return dict(color=":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs))
-
-
-@cache
-def _dot_2_svg(sourcepath):
-    print(f"Creating svg for: {sourcepath}")
-    import datetime
-    now = datetime.datetime.now()
-    targetpath = f"{sourcepath}.svg"
-    args = [_which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
-    error, __ = _run(args)
-    total = datetime.datetime.now() - now
-    print(f"{total=}")
-    return error, targetpath
 
 
 def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), output_args=tuple()):
@@ -127,7 +94,7 @@ def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), outp
             args = [_which("usdtree"), "-a", "-m", str(path)]
         else:
             args = [_which("sdffilter"), "--outputType", output_type, *output_args, *path_args, str(path)]
-        return _run(args)
+        return _core._run(args)
 
 
 def _layer_label(layer):
@@ -172,7 +139,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='rounded,filled', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        plugs = dict()
+        plugs = []
         label = '{'
         tooltip = 'Layer Stack:'
         for layer, layer_index in sublayers.items():
@@ -182,10 +149,11 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # For new line: https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             # For Windows path sep: https://stackoverflow.com/questions/15094591/how-to-escape-forwardslash-character-in-html-but-have-it-passed-correctly-to-jav
             tooltip += f"&#10;{layer_index}: {(layer.realPath or layer.identifier)}".replace('\\', '&#47;')
-            plugs[layer_index] = layer_index
+            plugs.append(layer_index)
             label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_layer_label(layer)}"
         label += '}'
-        attrs['plugs'] = plugs
+        # attrs['plugs'] = dict(zip(plugs, range(len(plugs))))
+        attrs['plugs'] = tuple(plugs)
         attrs['active_plugs'] = set()  # all active connections, for GUI
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
@@ -287,7 +255,7 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
             plug_name = plug.GetBaseName()
             sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
             color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else background_color
-            label += table_row.format(port=plug_name, color=color, text=plug_name)
+            label += table_row.format(port=plug_name, color=color, text=f'<font color="#242828">{plug_name}</font>')
             for source in sources:
                 _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
                 traverse(source.source)
@@ -332,20 +300,6 @@ class _GraphInfo(typing.NamedTuple):
     paths_by_ids: typing.Mapping
 
 
-class _Dot2SvgSignals(QtCore.QObject):
-    error = QtCore.Signal(str)
-    result = QtCore.Signal(str)
-
-
-_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
-the 'dot' command must be available on the current environment.
-
-Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
-
-For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
-"""
-
-
 @cache
 def _nx_graph_edge_filter(*, has_specs=None, ancestral=None, implicit=None, introduced_in_root_layer_prim_spec=None, introduced_in_root_layer_stack=None):
     match = {
@@ -363,184 +317,10 @@ def _nx_graph_edge_filter(*, has_specs=None, ancestral=None, implicit=None, intr
     return lambda edge_info: match.items() <= edge_info.items()
 
 
-class _Dot2Svg(QtCore.QRunnable):
-    def __init__(self, source_fp, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.signals = _Dot2SvgSignals()
-        self.source_fp = source_fp
-
-    @QtCore.Slot()
-    def run(self):
-        if not _which("dot"):
-            self.signals.error.emit(_DOT_ENVIRONMENT_ERROR)
-            return
-        error, svg_fp = _dot_2_svg(self.source_fp)
-        self.signals.error.emit(error) if error else self.signals.result.emit(svg_fp)
-
-
-class _SvgPixmapViewport(_graph._GraphicsViewport):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        scene = QtWidgets.QGraphicsScene(self)
-        self.setScene(scene)
-
-    def load(self, filepath):
-        scene = self.scene()
-        scene.clear()
-
-        renderer = QtSvg.QSvgRenderer(filepath)
-        image = QtGui.QImage(renderer.defaultSize() * 1.5, QtGui.QImage.Format_ARGB32)
-        image.fill(QtCore.Qt.transparent)
-
-        painter = QtGui.QPainter(image)
-        renderer.render(painter)
-        painter.end()
-
-        pixmap = QtGui.QPixmap.fromImage(image)
-        self._svg_item = QtWidgets.QGraphicsPixmapItem(pixmap)
-        scene.addItem(self._svg_item)
-
-
-class _DotViewer(QtWidgets.QFrame):
-    _svg_viewport_placeholder_signal = QtCore.Signal(object)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        layout = QtWidgets.QVBoxLayout()
-        # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
-        if not _USE_SVG_VIEWPORT:
-            if QtWidgets.__package__ == "PySide6":
-                # PySide-6.6.0 and 6.6.1 freeze when QtWebEngineWidgets is import in Python-3.12 so inlining here until fixed
-                # Newest working combination for me in Windows is 3.11 + PySide-6.5.3
-                from PySide6 import QtWebEngineWidgets
-            else:
-                from PySide2 import QtWebEngineWidgets
-            self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
-            self.urlChanged = self._graph_view.urlChanged
-        else:
-            self.urlChanged = self._svg_viewport_placeholder_signal
-            self._graph_view = _SvgPixmapViewport(parent=self)
-
-        self._error_view = QtWidgets.QTextBrowser(parent=self)
-        layout.addWidget(self._graph_view)
-        layout.addWidget(self._error_view)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self._error_view.setVisible(False)
-        self.setLayout(layout)
-        self._dot2svg = None
-        self._threadpool = QtCore.QThreadPool()
-        if not _USE_SVG_VIEWPORT:
-            # otherwise it seems invisible
-            self.setMinimumHeight(100)
-
-    def setDotPath(self, path):
-        if self._dot2svg:  # forget about previous, unfinished runners
-            self._dot2svg.signals.error.disconnect()
-            self._dot2svg.signals.result.disconnect()
-
-        self._dot2svg = dot2svg = _Dot2Svg(path)
-        dot2svg.signals.error.connect(self._on_dot_error)
-        dot2svg.signals.result.connect(self._on_dot_result)
-        self._threadpool.start(dot2svg)
-
-    def _on_dot_error(self, message):
-        self._error_view.setVisible(True)
-        self._graph_view.setVisible(False)
-        self._error_view.setText(message)
-
-    def _on_dot_result(self, filepath):
-        self._error_view.setVisible(False)
-        self._graph_view.setVisible(True)
-        if not _USE_SVG_VIEWPORT:
-            filepath = QtCore.QUrl.fromLocalFile(filepath)
-        self._graph_view.load(filepath)
-
-
-class _GraphSVGViewer(_DotViewer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.urlChanged.connect(self._graph_url_changed)
-        self.sticky_nodes = list()
-        self._graph = None
-        self._viewing = frozenset()
-        self._filter_edges = None
-
-    @property
-    def filter_edges(self):
-        return self._filter_edges
-
-    @filter_edges.setter
-    def filter_edges(self, value):
-        if value == self._filter_edges:
-            return
-        self._subgraph_dot_path.cache_clear()
-        if value:
-            predicate = lambda *edge: value(*edge) or bool({edge[0], edge[1]}.intersection(self.sticky_nodes))
-        else:
-            predicate = None
-        self._filter_edges = predicate
-
-    @property
-    def url_id_prefix(self):
-        return "_node_id_"
-
-    def _graph_url_changed(self, url: QtCore.QUrl):
-        node_uri = url.toString()
-        node_uri_stem = node_uri.split("/")[-1]
-        if node_uri_stem.startswith(self.url_id_prefix):
-            index = node_uri_stem.split(self.url_id_prefix)[-1]
-            self.view([int(index)] if index.isdigit() else [index])
-
-    @cache
-    def _subgraph_dot_path(self, node_indices: tuple):
-        graph = self.graph
-        if not graph:
-            raise RuntimeError(f"'graph' attribute not set yet on {self}. Can't view nodes {node_indices}")
-        successors = chain.from_iterable(graph.successors(index) for index in node_indices)
-        predecessors = chain.from_iterable(graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = chain(self.sticky_nodes, node_indices, successors, predecessors)
-        subgraph = graph.subgraph(nodes_of_interest)
-
-        filters = {}
-        if self.filter_edges:
-            print(f"{self.filter_edges=}")
-            print("FILTERRRINNG")
-            filters['filter_edge'] = self.filter_edges
-        if filters:
-            subgraph = nx.subgraph_view(subgraph, **filters)
-
-        fd, fp = tempfile.mkstemp()
-        try:
-            nx.nx_agraph.write_dot(subgraph, fp)
-        except ImportError as exc:
-            error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
-        else:
-            error = ""
-        return error, fp
-
-    def view(self, node_indices: typing.Iterable):
-        error, dot_path = self._subgraph_dot_path(tuple(node_indices))
-        self._viewing = frozenset(node_indices)
-        if error:
-            self._on_dot_error(error)
-        else:
-            self.setDotPath(dot_path)
-
-    @property
-    def graph(self):
-        return self._graph
-
-    @graph.setter
-    def graph(self, graph):
-        self._subgraph_dot_path.cache_clear()
-        self.sticky_nodes.clear()
-        self._graph = graph
-
-
 class _ConnectableAPIViewer(QtWidgets.QDialog):
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        self._graph_view = _GraphViewer(parent=self)
+        self._graph_view = _graph._GraphViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(self._graph_view)
         layout = QtWidgets.QVBoxLayout()
@@ -621,7 +401,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree.setAlternatingRowColors(True)
         tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        self._dot_view = _DotViewer(parent=self)
+        self._dot_view = _graph._DotViewer(parent=self)
 
         tree_controls = QtWidgets.QFrame()
         tree_controls_layout = QtWidgets.QHBoxLayout()
@@ -1060,7 +840,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         horizontal.addWidget(self._layers)
         horizontal.addWidget(self._prims)
 
-        self._graph_view = _GraphViewer(parent=self)
+        self._graph_view = _graph._GraphViewer(parent=self)
 
         _graph_legend_controls = QtWidgets.QFrame()
         _graph_controls_layout = QtWidgets.QVBoxLayout()
@@ -1206,8 +986,3 @@ class LayerStackComposition(QtWidgets.QDialog):
                     color = _edge_color(tuple(visible_arcs))
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
 
-
-if _GRAPHV_VIEW_VIA_SVG:
-    _GraphViewer = _GraphSVGViewer
-else:
-    _GraphViewer = _graph.GraphView

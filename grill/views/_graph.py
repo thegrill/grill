@@ -25,6 +25,7 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 #   Blockers:
 #   - ConnectableAPI missing from Maya menu
 #   Non blockers:
+#   - Tooltip on nodes for layerstack
 #   - Popup everytime a new graph is loaded in Houdini ( it's on _run_prog func line 1380 of agraph.py )
 #   - Focus with F
 #   - Context menu items
@@ -75,10 +76,10 @@ def _dot_2_svg(sourcepath):
 
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: dict =None, active_plugs: set = frozenset(), visible=True):
+    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: tuple =None, active_plugs: set = frozenset(), visible=True):
         super().__init__(parent)
         self._edges = []
-        self._plugs = plugs or {}  # {identifier: index}
+        self._plugs = plugs = dict(zip(plugs, range(len(plugs)))) or {}  # {identifier: index}
 
         plug_items = {}  # {index: (QEllipse, QEllipse)}
         radius = 4
@@ -190,12 +191,13 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._plug_positions = plug_positions = {}
         outer_shift = 10  # surrounding rect has ~5 px top and bottom
 
-        for node, plug, max_plug in (source, source_plug, max(source._plugs.values(), default=0)), (target, target_plug, max(target._plugs.values(), default=0)):
+        for node, plug, max_plug_idx in (source, source_plug, max(source._plugs.values(), default=0)), (target, target_plug, max(target._plugs.values(), default=0)):
             bounds = node.boundingRect()
             if plug is None:
                 plug_positions[node, plug] = {None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()}
                 continue
-            port_size = ((bounds.height() - outer_shift) / (max_plug + 1)) if max_plug else 0
+            # max_plug_idx can be 0, so we add 1 since this needs to be 1-index based
+            port_size = (bounds.height() - outer_shift) / (max_plug_idx + 1)
             y_pos = (plug * port_size) + (port_size / 2) + (outer_shift / 2)
             plug_positions[node, plug] = {
                 0: QtCore.QPointF(0, y_pos),  # left
