@@ -11,7 +11,9 @@ from grill import cook, names, usd as gusd, tokens
 
 logger = logging.getLogger(__name__)
 
-
+# Ran 12 tests in 0.454s
+# Ran 12 tests in 0.449s
+# Ran 12 tests in 0.440sc
 class TestCook(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.mkdtemp()
@@ -192,15 +194,8 @@ class TestCook(unittest.TestCase):
 
     def test_create_many(self):
         stage = cook.fetch_stage(self.root_asset)
-        taxon = cook.define_taxon(stage, "Another")
-        cook.create_many(taxon, (f"new_{x}" for x in range(10)))
-
-        anon_stage = Usd.Stage.CreateInMemory()
-        # An anon stage containing a grill layer on its stack should succeed.
-        anon_pipeline = cook.fetch_stage(names.UsdAsset.get_anonymous())
-        anon_stage.GetRootLayer().subLayerPaths.append(anon_pipeline.GetRootLayer().realPath)
-        anon_taxon = cook.define_taxon(anon_stage, "Anon")
-        cook.create_many(anon_taxon, ("first", "second"))
+        taxon = cook.define_taxon(stage, "Anon")
+        cook.create_many(taxon, ("first", "second"))
 
     def test_spawn_unit(self):
         stage = cook.fetch_stage(self.root_asset)

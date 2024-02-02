@@ -10,7 +10,12 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade
 
 from grill import cook, usd, names
 from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
-from grill.views._qt import QtWidgets, QtCore, QtGui, QtTest
+from grill.views._qt import QtWidgets, QtCore, QtGui
+
+# 2024-01-24
+# Ran 12 tests in 8.190s
+# Ran 12 tests in 7.649s
+# Ran 12 tests in 7.281s
 
 
 class TestPrivate(unittest.TestCase):
@@ -49,6 +54,7 @@ class TestPrivate(unittest.TestCase):
             Sdf.Path('/world/hi'),
         ]
         self.assertEqual(actual, expected)
+
     def test_core(self):
         _core._ensure_dot()
 
@@ -112,13 +118,13 @@ class TestViews(unittest.TestCase):
         self._app.quit()
 
     def test_connection_view(self):
-        for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
+        for graph_viewer in _graph.GraphView, _graph._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
-                description._GraphViewer = graph_viewer
-                if graph_viewer == description._GraphSVGViewer:
+                _graph._GraphViewer = graph_viewer
+                if graph_viewer == _graph._GraphSVGViewer:
                     for pixmap_enabled in True, False:
                         with self.subTest(pixmap_enabled=pixmap_enabled):
-                            description._USE_SVG_VIEWPORT = pixmap_enabled
+                            _graph._USE_SVG_VIEWPORT = pixmap_enabled
                             self._sub_test_connection_view()
                 else:
                     self._sub_test_connection_view()
@@ -140,13 +146,13 @@ class TestViews(unittest.TestCase):
         viewer.setPrim(None)
 
     def test_scenegraph_composition(self):
-        for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
+        for graph_viewer in _graph.GraphView, _graph._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
-                description._GraphViewer = graph_viewer
-                if graph_viewer == description._GraphSVGViewer:
+                _graph._GraphViewer = graph_viewer
+                if graph_viewer == _graph._GraphSVGViewer:
                     for pixmap_enabled in True, False:
                         with self.subTest(pixmap_enabled=pixmap_enabled):
-                            description._USE_SVG_VIEWPORT = pixmap_enabled
+                            _graph._USE_SVG_VIEWPORT = pixmap_enabled
                             self._sub_test_scenegraph_composition()
                             self._sub_test_layer_stack_bidirectionality()
                 else:
@@ -221,8 +227,8 @@ class TestViews(unittest.TestCase):
         graph_view = widget._graph_view
 
     def test_layer_stack_hovers(self):
-        description._GraphViewer = _graph.GraphView
-        description._USE_SVG_VIEWPORT = False
+        _graph._GraphViewer = _graph.GraphView
+        _graph._USE_SVG_VIEWPORT = False
 
         parent_stage = Usd.Stage.CreateInMemory()
         child_stage = Usd.Stage.CreateInMemory()
@@ -344,13 +350,13 @@ class TestViews(unittest.TestCase):
         widget._apply()
 
     def test_taxonomy_editor(self):
-        for graph_viewer in _graph.GraphView, description._GraphSVGViewer:
+        for graph_viewer in _graph.GraphView, _graph._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
-                description._GraphViewer = graph_viewer
-                if graph_viewer == description._GraphSVGViewer:
+                _graph._GraphViewer = graph_viewer
+                if graph_viewer == _graph._GraphSVGViewer:
                     for pixmap_enabled in True, False:
                         with self.subTest(pixmap_enabled=pixmap_enabled):
-                            description._USE_SVG_VIEWPORT = pixmap_enabled
+                            _graph._USE_SVG_VIEWPORT = pixmap_enabled
                             self._sub_test_taxonomy_editor()
                 else:
                     self._sub_test_taxonomy_editor()
@@ -559,7 +565,7 @@ class TestViews(unittest.TestCase):
         """Test execution of function by mocking dot with python call"""
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = 'python'
-            error, targetpath = description._dot_2_svg('nonexisting_path')
+            error, targetpath = _graph._dot_2_svg('nonexisting_path')
             # an error would be reported back
             self.assertIsNotNone(error)
 
@@ -615,7 +621,7 @@ class TestViews(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Expected arguments to contain an executable value on the first index"):
                 description._start_content_browser(*args)
 
-        error, result = description._run(["python", 42])
+        error, result = _core._run(["python", 42])
         self.assertTrue(error.startswith('expected str'))
         self.assertEqual(result, "")
 
