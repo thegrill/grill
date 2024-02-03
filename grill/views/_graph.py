@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import math
 import typing
+import logging
 import tempfile
 import networkx as nx
 from itertools import chain
@@ -14,6 +15,8 @@ from networkx import drawing
 from . import _core
 from ._qt import QtCore, QtGui, QtWidgets, QtSvg
 _core._ensure_dot()
+
+_logger = logging.getLogger(__name__)
 
 
 _GRAPHV_VIEW_VIA_SVG = os.getenv("GRILL_GRAPH_VIEW_VIA_SVG")
@@ -481,7 +484,7 @@ class GraphView(_GraphicsViewport):
         self._nodes_map = {}  # {str: Node}
 
         self._load_graph(None)
-        # ~~~~~~~~~~~~
+
         self.sticky_nodes = list()
         self._viewing = set()
         self.url_id_prefix = ""
@@ -741,7 +744,6 @@ class _GraphSVGViewer(_DotViewer):
         filters = {}
         if self.filter_edges:
             print(f"{self.filter_edges=}")
-            print("FILTERRRINNG")
             filters['filter_edge'] = self.filter_edges
         if filters:
             subgraph = nx.subgraph_view(subgraph, **filters)

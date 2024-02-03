@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import typing
 import weakref
+import logging
 import operator
 import tempfile
 import contextvars
@@ -23,6 +24,8 @@ from .. import usd as _usd
 from . import sheets as _sheets, _core, _graph
 from ._core import _which
 
+
+_logger = logging.getLogger(__name__)
 
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
@@ -268,9 +271,6 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
 
     graph.add_nodes_from(all_nodes.items())
     graph.add_edges_from(edges)
-    from pprint import pp
-    pp(f"{_get_node_id.cache_info()=}")
-    pp(f"{_add_edges.cache_info()=}")
     return graph
 
 
@@ -576,6 +576,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
         self._tab_layer_by_idx = list()  # {tab_idx: Sdf.Layer}
         self._addLayerTab(layer, paths)
+        self._resolved_layers = {layer}
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
@@ -591,7 +592,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             paths_in_layer = []
             for path in paths:
                 if not layer.GetObjectAtPath(path):
-                    print(f"{path=} does not exist on {layer=}")
+                    _logger.debug(f"{path=} does not exist on {layer=}")
                     continue
                 if path.IsPropertyPath():
                     path = path.GetParentPath()
@@ -643,6 +644,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 outline_valies_check.setEnabled(cls == _SdfOutlineHighlighter)
 
             def update_contents(*_, **__):
+                layer_ = layer_ref()
                 format_choice = format_combo.currentText()
                 output_args = []
                 if format_choice == "pseudoLayer":
@@ -657,13 +659,13 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     path = each.data(QtCore.Qt.UserRole)
                     variant_set, selection = path.GetVariantSelection()
                     if path.IsPrimVariantSelectionPath() and not selection:  # we're the "parent" variant. collect all variant paths as sdffilter does not math unselected variants ):
-                        paths.extend([v.path for v in layer.GetObjectAtPath(path).variants.values()])
+                        paths.extend([v.path for v in layer_.GetObjectAtPath(path).variants.values()])
                     else:
                         paths.append(path)
 
                 with QtCore.QSignalBlocker(browser):
                     _ensure_highligther(highlighters.get(format_choice, _Highlighter))
-                    error, text = _format_layer_contents(layer, format_combo.currentText(), paths, output_args)
+                    error, text = _format_layer_contents(layer_, format_combo.currentText(), paths, output_args)
                     browser.setText(error if error else text)
 
             populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
@@ -766,6 +768,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             else:
                 if layer:
                     self._addLayerTab(layer)
+                    self._resolved_layers.add(layer)
                     return
                 title = "Layer Not Found"
                 text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context} with {anchor=}"
@@ -955,7 +958,6 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._prim_paths_to_compute = {p if isinstance(p, Sdf.Path) else Sdf.Path(p) for p in value}
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
-        print("~~~~~~~~~~~~~~~~~~~~~~")
         self._computed_graph_info = graph_info
         # https://stackoverflow.com/questions/33262913/networkx-move-edges-in-nx-multidigraph-plot
         graph = nx.MultiDiGraph()
