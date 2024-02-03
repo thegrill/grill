@@ -18,6 +18,7 @@ from grill.views._qt import QtWidgets, QtCore, QtGui
 # alternatively, the following can be called to ensure shared contexts are set, which also prevent the freeze of the application:
 QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
 # but don't want to use that since that needs to be set prior to an application initialization (which grill can't control as in USDView, Maya, Houdini...)
+# https://stackoverflow.com/questions/56159475/qt-webengine-seems-to-be-initialized
 
 # 2024-02-03
 # python -m unittest --durations 0 test_views

@@ -26,10 +26,10 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
 #   Blockers:
-#   - ConnectableAPI missing from Maya menu
+#   - There seems to be two calls to LOADGRAPH when ConnectionViewer
+#   - Popup everytime a new graph is loaded in Houdini or Maya ( it's on _run_prog func line 1380 of agraph.py )
 #   Non blockers:
 #   - Tooltip on nodes for layerstack
-#   - Popup everytime a new graph is loaded in Houdini ( it's on _run_prog func line 1380 of agraph.py )
 #   - Focus with F
 #   - Context menu items
 #   - Ability to move further in canvas after Nodes don't exist
@@ -650,8 +650,8 @@ class _DotViewer(QtWidgets.QFrame):
         # After some experiments, QWebEngineView brings nicer UX and speed than QGraphicsSvgItem and QSvgWidget
         if not _USE_SVG_VIEWPORT:
             if QtWidgets.__package__ == "PySide6":
-                # PySide-6.6.0 and 6.6.1 freeze when QtWebEngineWidgets is import in Python-3.12 so inlining here until fixed
-                # Newest working combination for me in Windows is 3.11 + PySide-6.5.3
+                # PySide-6.6.0 and 6.6.1 freeze when QtWebEngineWidgets is imported in Python-3.12 so inlining here until fixed
+                # Newest working combination for me in Windows is 3.11 + PySide-6.5.3 as of Feb 3rd 2024
                 from PySide6 import QtWebEngineWidgets
             else:
                 from PySide2 import QtWebEngineWidgets
