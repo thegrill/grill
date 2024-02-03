@@ -12,10 +12,35 @@ from grill import cook, usd, names
 from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
 from grill.views._qt import QtWidgets, QtCore, QtGui
 
-# 2024-01-24
-# Ran 12 tests in 8.190s
-# Ran 12 tests in 7.649s
-# Ran 12 tests in 7.281s
+# 2024-02-03 - Python-3.12 & USD-23.11
+# leaving the PySide6 import below freezes windows in Python-3.12. Importing it first when running tests "fixes" the freeze.
+# from PySide6 import QtWebEngineWidgets
+# alternatively, the following can be called to ensure shared contexts are set, which also prevent the freeze of the application:
+QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
+# but don't want to use that since that needs to be set prior to an application initialization (which grill can't control as in USDView, Maya, Houdini...)
+
+# 2024-02-03
+# python -m unittest --durations 0 test_views
+# Slowest test durations
+# ----------------------------------------------------------------------
+# 1.963s     test_scenegraph_composition (test_views.TestViews.test_scenegraph_composition)
+# 1.882s     test_taxonomy_editor (test_views.TestViews.test_taxonomy_editor)
+# 1.579s     test_content_browser (test_views.TestViews.test_content_browser)
+# 0.789s     test_spreadsheet_editor (test_views.TestViews.test_spreadsheet_editor)
+# 0.383s     test_horizontal_scroll (test_views.TestGraphicsViewport.test_horizontal_scroll)
+# 0.329s     test_connection_view (test_views.TestViews.test_connection_view)
+# 0.322s     test_layer_stack_hovers (test_views.TestViews.test_layer_stack_hovers)
+# 0.204s     test_dot_call (test_views.TestViews.test_dot_call)
+# 0.169s     test_display_color_editor (test_views.TestViews.test_display_color_editor)
+# 0.167s     test_stats (test_views.TestViews.test_stats)
+# 0.121s     test_prim_filter_data (test_views.TestViews.test_prim_filter_data)
+# 0.116s     test_prim_composition (test_views.TestViews.test_prim_composition)
+# 0.106s     test_create_assets (test_views.TestViews.test_create_assets)
+# 0.014s     test_pan (test_views.TestGraphicsViewport.test_pan)
+#
+# (durations < 0.001s were hidden; use -v to show these durations)
+# ----------------------------------------------------------------------
+# Ran 18 tests in 8.216s
 
 
 class TestPrivate(unittest.TestCase):
@@ -615,6 +640,8 @@ class TestViews(unittest.TestCase):
             with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
             browser.tabCloseRequested.emit(0)  # request closing our first tab
+            for child in dialog.findChildren(description._PseudoUSDBrowser):
+                child._resolved_layers.clear()
 
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = None

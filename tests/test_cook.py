@@ -11,9 +11,27 @@ from grill import cook, names, usd as gusd, tokens
 
 logger = logging.getLogger(__name__)
 
-# Ran 12 tests in 0.454s
-# Ran 12 tests in 0.449s
-# Ran 12 tests in 0.440sc
+# 2024-02-03 - Python-3.12 & USD-23.11
+# python -m unittest --durations 0 test_cook
+# Slowest test durations
+# ----------------------------------------------------------------------
+# 0.058s     test_define_taxon (test_cook.TestCook.test_define_taxon)
+# 0.056s     test_inherited_and_specialized_contexts (test_cook.TestCook.test_inherited_and_specialized_contexts)
+# 0.050s     test_create_on_previous_stage (test_cook.TestCook.test_create_on_previous_stage)
+# 0.047s     test_asset_unit (test_cook.TestCook.test_asset_unit)
+# 0.034s     test_spawn_unit (test_cook.TestCook.test_spawn_unit)
+# 0.034s     test_spawn_unit_with_absolute_paths (test_cook.TestCook.test_spawn_unit_with_absolute_paths)
+# 0.033s     test_create_many (test_cook.TestCook.test_create_many)
+# 0.032s     test_spawn_many (test_cook.TestCook.test_spawn_many)
+# 0.023s     test_fetch_stage (test_cook.TestCook.test_fetch_stage)
+# 0.007s     test_edit_context (test_cook.TestCook.test_edit_context)
+# 0.006s     test_match (test_cook.TestCook.test_match)
+# 0.001s     test_spawn_many_invalid (test_cook.TestCook.test_spawn_many_invalid)
+#
+# ----------------------------------------------------------------------
+# Ran 12 tests in 0.385s
+
+
 class TestCook(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.mkdtemp()
