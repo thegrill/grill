@@ -103,7 +103,7 @@ def _run(args: list):
     if not args or not args[0]:
         raise ValueError(f"Expected arguments to contain an executable value on the first index. Got: {args}")
     kwargs = dict(capture_output=True)
-    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on CentOS
+    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # Only on Windows OS
         kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         result = subprocess.run(args, **kwargs)

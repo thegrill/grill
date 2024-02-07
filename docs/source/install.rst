@@ -92,7 +92,50 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
    .. warning::
 
-      At the moment, installing pygraphviz can be tricky. Hopefully a simpler pip based solution comes with `pygraphviz#167 <https://github.com/pygraphviz/pygraphviz/issues/167>`_.
+      At the moment, installing pygraphviz can be tricky. Hopefully a simpler pip+wheel based solution comes with `pygraphviz#167 <https://github.com/pygraphviz/pygraphviz/issues/167>`_.
+
+   .. warning::
+
+      Versions older than ``pip-23.3.2`` may have trouble installing ``pygraphviz`` in Windows for DCCs like Maya and Houdini `pygraphviz#468 <https://github.com/pygraphviz/pygraphviz/pull/468>`_.
+      If you come through this trouble, visit... and try to install with this exact particular version.
+      The below tests ran successfully with ``Maya-2024`` and ``Houdini-20.0`` on Windows-10 and ``pip-23.3.2``.
+
+      The current ``pip`` version can be extracted like so:
+
+      .. tab:: Standalone Python
+
+         .. code:: PowerShell
+
+            python -m pip -V
+
+      .. tab:: Houdini
+
+         .. code:: PowerShell
+
+            hython -m pip -V
+
+      .. tab:: Maya
+         .. code:: PowerShell
+
+            mayapy -m pip -V
+
+      To update to 23.3.2, update the interpreter command to run:
+      .. tab:: Standalone Python
+
+         .. code:: PowerShell
+
+            python -m pip install -U pip==23.3.2
+
+      .. tab:: Houdini
+
+         .. code:: PowerShell
+
+            hython -m pip install -U pip==23.3.2
+
+      .. tab:: Maya
+         .. code:: PowerShell
+
+            mayapy -m pip install -U pip==23.3.2
 
    .. tab:: Standalone Python
 
@@ -110,7 +153,7 @@ walk-through on how to start using ``The Grill`` tools with a fresh
      .. code:: PowerShell
 
         (grilldemo01) C:\>conda install --channel conda-forge pygraphviz
-        (grilldemo01) C:\Program Files\Side Effects Software\Houdini 19.5.534\bin>hython -m pip install --global-option=build_ext --global-option="-IC:\Users\Christian\.conda\envs\glowdeps\Library\include" --global-option="-LC:\Users\Christian\.conda\envs\glowdeps\Library\lib" pygraphviz
+        (grilldemo01) C:\Program Files\Side Effects Software\Houdini 19.5.534\bin>hython -m pip install -vvv --use-pep517 --config-settings="--global-option=build_ext" --config-settings="--global-option=-IC:\Users\Christian\.conda\envs\pygraphviz310\Library\include" --config-settings="--global-option=-LC:\Users\Christian\.conda\envs\pygraphviz310\Library\lib" pygraphviz
 
    .. tab:: Maya
 
@@ -119,7 +162,8 @@ walk-through on how to start using ``The Grill`` tools with a fresh
      .. code:: PowerShell
 
         (grilldemo01) C:\>conda install --channel conda-forge pygraphviz
-        (grilldemo01) C:\Program Files\Autodesk\Maya2023\bin>mayapy -m pip install --global-option=build_ext  --global-option="-IC:\Users\Christian\.conda\envs\glowdeps\Library\include;C:\Program Files\Autodesk\Maya2023\include\Python39\Python" --global-option="-LC:\Users\Christian\.conda\envs\glowdeps\Library\lib;C:\Program Files\Autodesk\Maya2023\lib" pygraphviz
+        (grilldemo01) C:\Program Files\Autodesk\Maya2023\bin>mayapy -m pip install -U pip==23.3.2
+        (grilldemo01) C:\Program Files\Autodesk\Maya2023\bin>mayapy -m pip install -vvv --use-pep517 --config-settings="--global-option=build_ext" --config-settings="--global-option=-IC:\Users\Christian\.conda\envs\pygraphviz310\Library\include;C:\Program Files\Autodesk\Maya2024\include\Python39\Python" --config-settings="--global-option=-LC:\Users\Christian\.conda\envs\pygraphviz310\Library\lib;C:\Program Files\Autodesk\Maya2024\lib" pygraphviz
 
 
 7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView**, **Maya** and **Houdini***.
