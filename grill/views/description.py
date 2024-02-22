@@ -323,6 +323,7 @@ class _ConnectableAPIViewer(QtWidgets.QDialog):
         self._graph_view = _graph._GraphViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(self._graph_view)
+        self.setFocusProxy(self._graph_view)
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(vertical)
         self.setLayout(layout)
@@ -844,7 +845,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         horizontal.addWidget(self._prims)
 
         self._graph_view = _graph._GraphViewer(parent=self)
-
+        self.setFocusProxy(self._graph_view)
         _graph_legend_controls = QtWidgets.QFrame()
         _graph_controls_layout = QtWidgets.QVBoxLayout()
         _graph_arcs_layout = QtWidgets.QHBoxLayout()
@@ -877,7 +878,8 @@ class LayerStackComposition(QtWidgets.QDialog):
             return widget
 
         _graph_arcs_layout.addStretch(0)
-        self._has_specs = _arc_filter("Has Specs", QtCore.Qt.CheckState.Checked)
+        # self._has_specs = _arc_filter("Has Specs", QtCore.Qt.CheckState.Checked)
+        self._has_specs = _arc_filter("Has Specs")
         self._is_ancestral = _arc_filter("Is Ancestral")
         self._is_implicit = _arc_filter("Is Implicit")
         self._from_root_prim_spec = _arc_filter("From Root Layer Prim Spec")
@@ -885,8 +887,6 @@ class LayerStackComposition(QtWidgets.QDialog):
         filters_layout.addStretch(0)
         ##############
 
-
-        # _graph_controls_layout.addStretch(0)
         _graph_legend_controls.setFixedHeight(_graph_legend_controls.sizeHint().height())
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(horizontal)

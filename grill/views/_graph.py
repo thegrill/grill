@@ -28,11 +28,14 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 #   Blockers:
 #   - There seems to be two calls to LOADGRAPH when ConnectionViewer
 #   - Popup everytime a new graph is loaded in Houdini or Maya ( it's on _run_prog func line 1380 of agraph.py )
+#       https://github.com/pygraphviz/pygraphviz/pull/514
+#   - LayerStack composition does not load if pygraphviz is not in the environment
 #   Non blockers:
 #   - Tooltip on nodes for layerstack
-#   - Focus with F
 #   - Context menu items
 #   - Ability to move further in canvas after Nodes don't exist
+#   - when switching a node left to right with precise source layers, the source node plugs do not refresh if we're moving the target node
+
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
 
@@ -421,7 +424,9 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._dragging = False
-        self._last_pan_pos = None
+        self._last_pan_pos = QtCore.QPoint()
+        self._rubber_band = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Rectangle, self)
+        self._start_rubber_band_pos = QtCore.QPoint()
 
     def wheelEvent(self, event):
         modifiers = event.modifiers()
@@ -441,6 +446,10 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
             QtWidgets.QApplication.setOverrideCursor(QtGui.Qt.ClosedHandCursor)
             self._last_pan_pos = _EVENT_POSITION_FUNC(event)
             event.accept()
+        elif event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.NoModifier:
+            self._start_rubber_band_pos = event.pos()
+            self._rubber_band.setGeometry(QtCore.QRect(self._start_rubber_band_pos, QtCore.QSize()))
+            self._rubber_band.show()
 
         return super().mousePressEvent(event)
 
@@ -449,8 +458,16 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
             self._dragging = False
             QtWidgets.QApplication.restoreOverrideCursor()
             event.accept()
-
+        elif event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.NoModifier:
+            self._rubber_band.hide()
+            for item in self._get_items_in_rubber_band():
+                item.setSelected(True)
         return super().mouseReleaseEvent(event)
+
+    def _get_items_in_rubber_band(self):
+        rubber_band_rect = self._rubber_band.geometry()
+        scene_rect = self.mapToScene(rubber_band_rect).boundingRect()
+        return self.scene().items(scene_rect)
 
     def mouseMoveEvent(self, event):
         if self._dragging and event.buttons() == QtCore.Qt.MiddleButton:
@@ -460,6 +477,8 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
             self._last_pan_pos = _EVENT_POSITION_FUNC(event)
             return
+        elif event.buttons() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.NoModifier:
+            self._rubber_band.setGeometry(QtCore.QRect(self._start_rubber_band_pos, event.pos()).normalized())
         return super().mouseMoveEvent(event)
 
     def horizontal_pan(self, event):
@@ -471,6 +490,21 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
         delta = event.angleDelta().y()
         scroll_bar = self.verticalScrollBar()
         scroll_bar.setValue(scroll_bar.value() - delta)
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_F:
+            self._focus_view_requested()
+        return super().keyPressEvent(event)
+
+    def _focus_view_requested(self):
+        if selected_items := self.scene().selectedItems():
+            bounding_rect = QtCore.QRectF()
+            for item in selected_items:
+                bounding_rect |= item.sceneBoundingRect()
+        else:  # if no items have been selected, focus on all items
+            bounding_rect = self.scene().itemsBoundingRect()
+
+        self.fitInView(bounding_rect, QtCore.Qt.KeepAspectRatio)
 
 
 class GraphView(_GraphicsViewport):
