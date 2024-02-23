@@ -76,12 +76,9 @@ def _convert_graphviz_to_html_label(label):
 @cache
 def _dot_2_svg(sourcepath):
     print(f"Creating svg for: {sourcepath}")
-    import datetime
-    now = datetime.datetime.now()
     targetpath = f"{sourcepath}.svg"
     args = [_core._which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
     error, __ = _core._run(args)
-    total = datetime.datetime.now() - now
     return error, targetpath
 
 
