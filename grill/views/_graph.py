@@ -6,6 +6,7 @@ import math
 import typing
 import logging
 import tempfile
+import configparser
 import networkx as nx
 from itertools import chain
 from functools import cache
@@ -18,23 +19,28 @@ _core._ensure_dot()
 
 _logger = logging.getLogger(__name__)
 
-
-_GRAPHV_VIEW_VIA_SVG = os.getenv("GRILL_GRAPH_VIEW_VIA_SVG")
-_USE_SVG_VIEWPORT = os.getenv("GRILL_SVG_VIEW_AS_PIXMAP")
+_env_config = configparser.ConfigParser()
+_env_config.read_dict(
+    {
+        "graph_view": {
+            "via_svg": os.environ.get("GRILL_GRAPH_VIEW_VIA_SVG", 0),
+            "svg_as_pixmap": os.environ.get("GRILL_SVG_VIEW_AS_PIXMAP", 0),
+        }
+    }
+)
+_GRAPHV_VIEW_VIA_SVG = _env_config.getboolean('graph_view', 'via_svg')
+_USE_SVG_VIEWPORT = _env_config.getboolean('graph_view', 'svg_as_pixmap')
 
 _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
-#   Blockers:
-#   - There seems to be two calls to LOADGRAPH when ConnectionViewer
 #   - Popup everytime a new graph is loaded in Houdini or Maya ( it's on _run_prog func line 1380 of agraph.py )
 #       https://github.com/pygraphviz/pygraphviz/pull/514
-#   - LayerStack composition does not load if pygraphviz is not in the environment
-#   Non blockers:
-#   - Tooltip on nodes for layerstack
+#   - Tooltip on nodes for _GraphViewer
 #   - Context menu items
 #   - Ability to move further in canvas after Nodes don't exist
 #   - when switching a node left to right with precise source layers, the source node plugs do not refresh if we're moving the target node
+#   - refactor conditionals for _GraphSVGViewer from the description module
 
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
@@ -76,7 +82,6 @@ def _dot_2_svg(sourcepath):
     args = [_core._which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
     error, __ = _core._run(args)
     total = datetime.datetime.now() - now
-    print(f"{total=}")
     return error, targetpath
 
 
@@ -576,12 +581,28 @@ class GraphView(_GraphicsViewport):
     def _load_graph(self, graph):
         if not graph:
             return
-        if not _core._which("dot"):
-            print(_DOT_ENVIRONMENT_ERROR)
-            return
-        print("LOADING GRAPH")
         self.scene().clear()
         self.viewport().update()
+
+        if not _core._which("dot"):  # dot has not been installed
+            print(_DOT_ENVIRONMENT_ERROR)
+            text_item = QtWidgets.QGraphicsTextItem()
+            text_item.setPlainText(_DOT_ENVIRONMENT_ERROR)
+            text_item.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction)
+            self.scene().addItem(text_item)
+            return
+
+        try:  # exit early if pygraphviz is not installed, needed for positions
+            positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+        except ImportError as exc:
+            message = str(exc)
+            print(message)
+            text_item = QtWidgets.QGraphicsTextItem()
+            text_item.setPlainText(message)
+            self.scene().addItem(text_item)
+            return
+
+        print("LOADING GRAPH")
         self._nodes_map.clear()
         edge_color = graph.graph.get('edge', {}).get("color", "")
 
@@ -625,7 +646,6 @@ class GraphView(_GraphicsViewport):
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
 
-        positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
         max_y = max(pos[1] for pos in positions.values())
         for node, (x, y) in positions.items():
             # SVG and dot have inverted coordinates, let's flip Y
