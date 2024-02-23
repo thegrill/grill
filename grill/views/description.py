@@ -311,7 +311,6 @@ def _nx_graph_edge_filter(*, has_specs=None, ancestral=None, implicit=None, intr
             ("IsIntroducedInRootLayerStack", introduced_in_root_layer_stack),
         ) if value is not None
     }
-    print(f"{match=}")
     if not match:
         return None
     return lambda edge_info: match.items() <= edge_info.items()
@@ -335,7 +334,8 @@ class _ConnectableAPIViewer(QtWidgets.QDialog):
         type_text = "" if not (type_name := prim.GetTypeName()) else f" {type_name}"
         self.setWindowTitle(f"Scene Graph Connections From{type_text}: {prim.GetName()} ({prim.GetPath()})")
         self._graph_view.graph = graph = _graph_from_connections(prim)
-        self._graph_view.view(graph.nodes.keys())
+        if isinstance(self._graph_view, _graph._GraphSVGViewer):
+            self._graph_view.view(graph.nodes.keys())
 
 
 # Reminder: Inheriting does not bring QTreeView stylesheet (Stylesheet needs to target this class specifically).
@@ -921,7 +921,8 @@ class LayerStackComposition(QtWidgets.QDialog):
             return result
 
         self._graph_view.filter_edges = actual if edge_data_filter else None
-        # self._graph_view._subgraph_dot_path.cache_clear()
+        if isinstance(self._graph_view, _graph._GraphSVGViewer):
+            self._graph_view._subgraph_dot_path.cache_clear()
         self._graph_view.view(self._graph_view._viewing)
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
