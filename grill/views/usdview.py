@@ -326,7 +326,7 @@ def _patch_style(cls):  # while a nicer way comes up
     cls.__init__ = _init_with_usdview_style
 
 
-for cls in _description._Tree, _description.LayerStackComposition:
+for cls in _description._Tree, _description.LayerStackComposition, _sheets._StageSpreadsheet:
     # Only when in USDView we want to extend the stylesheet of some of the classes tha require them
     # TODO: find a better way to do this
     _patch_style(cls)
