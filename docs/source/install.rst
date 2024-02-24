@@ -4,7 +4,7 @@ Installation
 Pip Install
 -----------
 
-By default, ``grill`` won't install ``USD``, ``PySide2`` & ``PyOpenGL``. This is because
+By default, ``grill`` won't install ``USD``, ``PySide(2|6)`` & ``PyOpenGL``. This is because
 DCC apps and other environments bundle them outside of ``pip``. To include them, use the ``[full]`` option.
 
 .. tab:: Default
@@ -92,13 +92,11 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
    .. warning::
 
-      At the moment, installing pygraphviz can be tricky. Hopefully a simpler pip+wheel based solution comes with `pygraphviz#167 <https://github.com/pygraphviz/pygraphviz/issues/167>`_.
+      At the moment, installing `pygraphviz`_ can be tricky. Hopefully a simpler pip+wheel based solution comes with `pygraphviz#167 <https://github.com/pygraphviz/pygraphviz/issues/167>`_.
 
-   .. warning::
-
-      Versions older than ``pip-23.3.2`` may have trouble installing ``pygraphviz`` in Windows for DCCs like Maya and Houdini `pygraphviz#468 <https://github.com/pygraphviz/pygraphviz/pull/468>`_.
-      If you come through this trouble, visit... and try to install with this exact particular version.
-      The below tests ran successfully with ``Maya-2024`` and ``Houdini-20.0`` on Windows-10 and ``pip-23.3.2``.
+      Versions older than ``pip-23.3.2`` may have trouble installing `pygraphviz`_ in Windows for DCCs like ``Maya`` and ``Houdini``.
+      If you come through this trouble, visit `pygraphviz#468 <https://github.com/pygraphviz/pygraphviz/pull/468>`_ and try to install with this exact particular version of ``pip``.
+      The below tests ran successfully with ``Maya-2024`` and ``Houdini-20.0`` on ``Windows-10`` and ``pip-23.3.2``.
 
       The current ``pip`` version can be extracted like so:
 
@@ -115,11 +113,13 @@ walk-through on how to start using ``The Grill`` tools with a fresh
             hython -m pip -V
 
       .. tab:: Maya
+
          .. code:: PowerShell
 
             mayapy -m pip -V
 
-      To update to 23.3.2, update the interpreter command to run:
+      To update to ``23.3.2``, update the interpreter command to run:
+
       .. tab:: Standalone Python
 
          .. code:: PowerShell
@@ -133,6 +133,7 @@ walk-through on how to start using ``The Grill`` tools with a fresh
             hython -m pip install -U pip==23.3.2
 
       .. tab:: Maya
+
          .. code:: PowerShell
 
             mayapy -m pip install -U pip==23.3.2
