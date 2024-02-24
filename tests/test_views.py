@@ -213,6 +213,8 @@ class TestViews(unittest.TestCase):
         self.assertEqual(2, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
 
+        widget._has_specs.setChecked(True)
+        widget._graph_edge_include[description.Pcp.ArcTypeReference].setChecked(False)
         # add_dll_directory only on Windows
         os.add_dll_directory = lambda path: print(f"Added {path}") if not hasattr(os, "add_dll_directory") else os.add_dll_directory
 
