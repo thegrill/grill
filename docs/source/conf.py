@@ -34,19 +34,15 @@ from datetime import datetime
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.doctest',
               'sphinx.ext.intersphinx',
+              'sphinx.ext.inheritance_diagram',
               'sphinx.ext.todo',
               'sphinx.ext.coverage',
-              # 'sphinx.ext.imgmath',
-              # 'sphinx.ext.ifconfig',
               'sphinx.ext.viewcode',
-              # 'sphinx.ext.githubpages',
               'sphinx.ext.graphviz',
-              # 'm2r2',
               "myst_parser",
               'sphinx_copybutton',
               'sphinx_toggleprompt',
               'sphinx_togglebutton',
-              'sphinx.ext.inheritance_diagram',
               'sphinx_inline_tabs',
               'hoverxref.extension',
               'sphinx.ext.autosectionlabel',
@@ -116,7 +112,7 @@ release = '0.15.0'
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -156,35 +152,16 @@ html_static_path = ['_static']
 htmlhelp_basename = 'grilldoc'
 html_sidebars = {
     '**': [
-        # 'logo.html',
-        # 'github.html',
-        # 'globaltoc.html',
-        # 'searchbox.html',
-        # "sidebars/localtoc.html",
     ]
 }
 html_title = '👨‍🍳 The Grill'
 html_theme_options = {
-    # 'color': 'Coral',
     "accent_color": "sky",
-    # "accent_color": "mint",
-    # "accent_color": "teal",
-    # 'description': 'Cook digital',
-    # "announcement": "Cook digital",
     "github_url": "https://github.com/thegrill/grill",
     "globaltoc_expand_depth": 2,
     "toctree_collapse": True,
     "toctree_titles_only": False,
-    # "toctree_includehidden": False,
-    # "titles_only": False,
-    # 'logo_name': '👨‍🍳 The Grill',
 }
-# html_logo = "images/grill_logo_light.png"
-# html_static_path = ["_static", "images"]
-# html_theme_options = {
-#     "light_logo": "grill_logo_light.png",
-#     "dark_logo": "grill_logo_dark.png",
-# }
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
