@@ -4,8 +4,6 @@ Spreadsheet Editor
 Tabular representation of a `USD stage`_. Ability to quickly inspect and edit `prims`_ in bulk is the main motivation for this view to exist.
 Copy pasting functionality like in other spreadsheet applications should be possible (via csv clipboards).
 
-Hi RTD
-
 .. tab:: USDView
 
     .. image:: images/sheet_usdview.gif
