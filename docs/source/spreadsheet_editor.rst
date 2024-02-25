@@ -8,7 +8,7 @@ Hi RTD
 
 .. tab:: USDView
 
-    .. image:: https://private-user-images.githubusercontent.com/8294116/307558221-a0db8d39-3b08-49c5-a1e0-31ec29ce394b.gif
+    .. image:: images/sheet_usdview.gif
 
 .. tab:: Houdini
 

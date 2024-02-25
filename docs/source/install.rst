@@ -171,15 +171,15 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
    .. tab:: USDView
 
-        .. image:: https://private-user-images.githubusercontent.com/8294116/307558219-cfc04597-d308-4591-a581-46974ad3434b.gif
+        .. image:: images/menu_usdview.gif
 
    .. tab:: Houdini
 
-        .. image:: https://private-user-images.githubusercontent.com/8294116/307558212-ce3a9497-dee9-4d5c-a684-fde151ce7eaa.gif
+        .. image:: images/menu_hou.gif
 
    .. tab:: Maya
 
-        .. image:: https://private-user-images.githubusercontent.com/8294116/307558213-a92e3948-fb13-4f63-b296-06d80976a633.gif
+        .. image:: images/menu_maya.gif
 
    .. important::
 
