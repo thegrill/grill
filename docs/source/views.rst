@@ -6,7 +6,8 @@
 Views (Inspecting / Authoring)
 ==============================
 
-.. mdinclude:: ../../grill/views/README.md
+.. include:: ../../grill/views/README.md
+   :parser: myst_parser.sphinx_
 
 .. include:: spreadsheet_editor.rst
 

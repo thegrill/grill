@@ -41,7 +41,8 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.viewcode',
               # 'sphinx.ext.githubpages',
               'sphinx.ext.graphviz',
-              'm2r2',
+              # 'm2r2',
+              "myst_parser",
               'sphinx_copybutton',
               'sphinx_toggleprompt',
               'sphinx_togglebutton',
@@ -135,7 +136,7 @@ todo_include_todos = True
 # a list of builtin themes.
 #
 # also tried: python_docs_theme, sphinx_rtd_theme
-html_theme = 'sphinx_typlog_theme'
+html_theme = 'shibuya'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -152,19 +153,26 @@ html_static_path = ['_static']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'grilldoc'
-html_sidebars = {
-    '**': [
-        'logo.html',
-        'github.html',
-        'globaltoc.html',
-        'searchbox.html',
-    ]
-}
-
+# html_sidebars = {
+#     '**': [
+#         # 'logo.html',
+#         # 'github.html',
+#         # 'globaltoc.html',
+#         # 'searchbox.html',
+#     ]
+# }
+html_title = '👨‍🍳 The Grill'
 html_theme_options = {
-    'color': 'Coral',
-    'description': 'Cook digital',
-    'logo_name': '👨‍🍳 The Grill',
+    # 'color': 'Coral',
+    "accent_color": "sky",
+    # "accent_color": "mint",
+    # "accent_color": "teal",
+    # 'description': 'Cook digital',
+    # "announcement": "Cook digital",
+    "github_url": "https://github.com/thegrill/grill",
+    # "globaltoc_expand_depth": 3,
+    # "titles_only": False,
+    # 'logo_name': '👨‍🍳 The Grill',
 }
 
 # -- Options for LaTeX output ---------------------------------------------
