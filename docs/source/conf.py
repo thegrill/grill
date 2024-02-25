@@ -169,7 +169,7 @@ html_theme_options = {
     # "accent_color": "teal",
     # 'description': 'Cook digital',
     # "announcement": "Cook digital",
-    "github_url": "https://github.com/thegrill/grill",
+    # "github_url": "https://github.com/thegrill/grill",
     # "globaltoc_expand_depth": 3,
     # "titles_only": False,
     # 'logo_name': '👨‍🍳 The Grill',
