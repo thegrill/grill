@@ -171,8 +171,10 @@ html_theme_options = {
     # 'description': 'Cook digital',
     # "announcement": "Cook digital",
     "github_url": "https://github.com/thegrill/grill",
-    # "globaltoc_expand_depth": 1,
-    "toctree_includehidden": False,
+    "globaltoc_expand_depth": 2,
+    "toctree_collapse": True,
+    "toctree_titles_only": False,
+    # "toctree_includehidden": False,
     # "titles_only": False,
     # 'logo_name': '👨‍🍳 The Grill',
 }
