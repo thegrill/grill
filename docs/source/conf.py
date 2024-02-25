@@ -97,7 +97,8 @@ source_suffix = ['.rst', '.md']
 master_doc = 'index'
 
 # General information about the project.
-project = 'grill'
+# project = 'grill'
+project = '👨‍🍳 Cook digital.'
 copyright = f'{datetime.now().year}, The Grill'
 author = 'The Grill'
 
@@ -178,7 +179,12 @@ html_theme_options = {
     # "titles_only": False,
     # 'logo_name': '👨‍🍳 The Grill',
 }
-
+# html_logo = "images/grill_logo_light.png"
+# html_static_path = ["_static", "images"]
+# html_theme_options = {
+#     "light_logo": "grill_logo_light.png",
+#     "dark_logo": "grill_logo_dark.png",
+# }
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
