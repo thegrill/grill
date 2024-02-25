@@ -153,14 +153,15 @@ html_static_path = ['_static']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'grilldoc'
-# html_sidebars = {
-#     '**': [
-#         # 'logo.html',
-#         # 'github.html',
-#         # 'globaltoc.html',
-#         # 'searchbox.html',
-#     ]
-# }
+html_sidebars = {
+    '**': [
+        # 'logo.html',
+        # 'github.html',
+        # 'globaltoc.html',
+        # 'searchbox.html',
+        # "sidebars/localtoc.html",
+    ]
+}
 html_title = '👨‍🍳 The Grill'
 html_theme_options = {
     # 'color': 'Coral',
@@ -169,8 +170,9 @@ html_theme_options = {
     # "accent_color": "teal",
     # 'description': 'Cook digital',
     # "announcement": "Cook digital",
-    # "github_url": "https://github.com/thegrill/grill",
-    # "globaltoc_expand_depth": 3,
+    "github_url": "https://github.com/thegrill/grill",
+    # "globaltoc_expand_depth": 1,
+    "toctree_includehidden": False,
     # "titles_only": False,
     # 'logo_name': '👨‍🍳 The Grill',
 }
