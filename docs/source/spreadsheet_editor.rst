@@ -6,7 +6,7 @@ Copy pasting functionality like in other spreadsheet applications should be poss
 
 .. tab:: USDView
 
-    .. image:: https://user-images.githubusercontent.com/8294116/99148142-3e9af200-26da-11eb-9a9d-3c63a3c32ccb.gif
+    .. image:: https://private-user-images.githubusercontent.com/8294116/307558221-a0db8d39-3b08-49c5-a1e0-31ec29ce394b.gif
 
 .. tab:: Houdini
 
