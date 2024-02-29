@@ -949,6 +949,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         # prims = (prim for prim in prims if prim.IsActive())
         if self._prim_paths_to_compute:
             prims = (p for p in prims if p.GetPath() in self._prim_paths_to_compute)
+            self._prims._filter_predicate = lambda prim: prim.GetPath() in self._prim_paths_to_compute
 
         graph_info = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._prims.setStage(stage)
