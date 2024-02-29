@@ -151,9 +151,9 @@ class GrillPrimCompositionMenuItem(_GrillPrimContextMenuItem):
             widget.show()
 
 
-class GrillSceneGraphCompositionMenuItem(GrillPrimCompositionMenuItem):
+class GrillLayerStackCompositionMenuItem(GrillPrimCompositionMenuItem):
     _widget = _description.LayerStackComposition
-    _subtitle = "Scene Graph Composition"
+    _subtitle = "LayerStack Composition"
 
     def RunCommand(self):
         usdview_api = _usdview_api.get()

@@ -144,7 +144,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         attrs = dict(style='rounded,filled', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
         plugs = []
         label = '{'
-        tooltip = 'Layer Stack:'
+        tooltip = 'LayerStack:'
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
             if layer.dirty:
@@ -380,7 +380,7 @@ class PrimComposition(QtWidgets.QDialog):
         "Is Ancestral": Usd.CompositionArc.IsAncestral,
         "Is Implicit": Usd.CompositionArc.IsImplicit,
         "From Root Layer Prim Spec": Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
-        "From Root Layer Stack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
+        "From Root LayerStack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
     }
 
     def __init__(self, *args, **kwargs):
@@ -883,7 +883,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._is_ancestral = _arc_filter("Is Ancestral")
         self._is_implicit = _arc_filter("Is Implicit")
         self._from_root_prim_spec = _arc_filter("From Root Layer Prim Spec")
-        self._from_root_layer_stack = _arc_filter("From Root Layer Stack")
+        self._from_root_layer_stack = _arc_filter("From Root LayerStack")
         filters_layout.addStretch(0)
         ##############
 
@@ -898,7 +898,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         selectionModel = self._layers.table.selectionModel()
         selectionModel.selectionChanged.connect(self._selectionChanged)
         self._prim_paths_to_compute = set()
-        self.setWindowTitle("Layer Stack Composition")
+        self.setWindowTitle("LayerStack Composition")
 
     def _edge_filter_changed(self, *args, **kwargs):
         state = lambda widget: None if widget.checkState() == QtCore.Qt.CheckState.PartiallyChecked else widget.isChecked()
