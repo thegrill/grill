@@ -36,6 +36,7 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 # TODO:
 #   - Popup everytime a new graph is loaded in Houdini or Maya ( it's on _run_prog func line 1380 of agraph.py )
 #       https://github.com/pygraphviz/pygraphviz/pull/514
+#   - Should toggling "precise source layer" on LayerStack compostiion view preserve node position for _GraphViewer?
 #   - Tooltip on nodes for _GraphViewer
 #   - Context menu items
 #   - Ability to move further in canvas after Nodes don't exist
