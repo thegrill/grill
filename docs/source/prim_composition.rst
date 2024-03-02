@@ -1,12 +1,12 @@
 Prim Composition
 ----------------
 
-Uses existing `USD Prim`_ utilities to present extended `composition arc details`_ than the ones visible by default on USD view.
+Uses existing `USD Prim`_ utilities (`Usd.PrimCompositionQuery`_, `PrimIndex.DumpToDotGraph`_, `PrimIndex.DumpToString`_) to help diagnose `composition arc details`_ than the ones visible by default on USD view.
 To visualize the composition graph, the ``graphviz`` library needs to be available on the environment.
 
 .. tab:: USDView
 
-    .. image:: https://user-images.githubusercontent.com/8294116/98809052-1f4d5c00-2471-11eb-965d-43cea0c57322.gif
+    .. image:: images/prim_composition_usdview.gif
 
 .. tab:: Houdini
 
@@ -61,6 +61,9 @@ In the examples below, prims under ``ChairB_2`` and ``CheerioA_164`` have their 
 
     .. image:: https://user-images.githubusercontent.com/8294116/158165402-c1dd5119-fe78-4332-8ded-1495703345f9.gif
 
+.. _Usd.PrimCompositionQuery: https://openusd.org/release/api/class_usd_prim_composition_query.html
+.. _PrimIndex.DumpToDotGraph: https://openusd.org/release/api/class_pcp_prim_index.html#a354744c0f0132f3be40ba4d0b85c966d
+.. _PrimIndex.DumpToString: https://openusd.org/release/api/class_pcp_prim_index.html#a04007d783df319a8101b20e99bbdddd5
 .. _USD Prim: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim
 .. _composition arc details: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-CompositionArcs
 .. _Edit Target: https://graphics.pixar.com/usd/release/api/class_usd_edit_target.html
