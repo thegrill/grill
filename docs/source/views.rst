@@ -11,6 +11,8 @@ Views (Inspecting / Authoring)
 
 .. include:: spreadsheet_editor.rst
 
+.. include:: connections_viewer.rst
+
 .. include:: prim_composition.rst
 
 .. include:: layerstack_composition.rst
