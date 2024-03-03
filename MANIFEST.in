@@ -1,1 +1,2 @@
 include grill/resources/*/*
+include grill.pth
