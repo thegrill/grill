@@ -7,8 +7,10 @@ import functools
 import contextlib
 
 from itertools import chain
+from collections import abc
 
 from pxr import Usd, UsdGeom, Sdf, Plug, Ar, Tf
+from printree import TreePrinter
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +84,22 @@ def edit_context(reference: Sdf.Reference, /, prim: Usd.Prim) -> Usd.EditContext
 
 
 @typing.overload
+def edit_context(inherits: Usd.Inherits, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
+    ...
+
+
+@typing.overload
+def edit_context(specializes: Usd.Specializes, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
+    ...
+
+
+@typing.overload
 def edit_context(variant: Usd.VariantSet, /, layer: Sdf.Layer) -> Usd.EditContext:
     ...
 
 
 @typing.overload
-def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, target_predicate: typing.Callable) -> Usd.EditContext:
+def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: typing.Callable) -> Usd.EditContext:
     ...
 
 
@@ -222,7 +234,7 @@ def edit_context(obj, /, *args, **kwargs) -> Usd.EditContext:
 
 
 @edit_context.register
-def _(prim: Usd.Prim, /, query_filter, target_predicate):
+def _(prim: Usd.Prim, /, query_filter, arc_predicate):
     # https://blogs.mathworks.com/developer/2015/03/31/dont-get-in-too-deep/
     # with write.context(prim, dict(kingdom="assets")):
     #     prim.GetAttribute("abc").Set(True)
@@ -231,10 +243,11 @@ def _(prim: Usd.Prim, /, query_filter, target_predicate):
     query = Usd.PrimCompositionQuery(prim)
     query.filter = query_filter
     for arc in query.GetCompositionArcs():
-        if target_predicate(node := arc.GetTargetNode()):
+        if arc_predicate(arc):
+            node = arc.GetTargetNode()
             target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
             return Usd.EditContext(prim.GetStage(), target)
-    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {target_predicate}")
+    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {arc_predicate}")
 
 
 @edit_context.register(Sdf.Reference)
@@ -254,18 +267,13 @@ def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
         raise ValueError(f"Can't proceed without a prim path to target on arc {arc} for {layer}")
     path = arc.primPath or layer.GetPrimAtPath(layer.defaultPrim).path
     logger.debug(f"Searching to target {layer} on {path}")
+    return _edit_context_by_arc(prim, type(arc), path, layer)
 
-    def is_valid_target(node):
-        return node.path == path and node.layerStack.identifier.rootLayer == layer
 
-    query_filter = Usd.PrimCompositionQuery.Filter()
-    if isinstance(arc, Sdf.Payload):
-        query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Payload
-    elif isinstance(arc, Sdf.Reference):
-        query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Reference
-
-    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
-    return edit_context(prim, query_filter, is_valid_target)
+@edit_context.register(Usd.Inherits)
+@edit_context.register(Usd.Specializes)
+def _(arc_type: typing.Union[Usd.Inherits, Usd.Specializes], /, path, layer):
+    return _edit_context_by_arc(arc_type.GetPrim(), type(arc_type), path, layer)
 
 
 @edit_context.register
@@ -284,19 +292,75 @@ def _(variant_set: Usd.VariantSet, /, layer):
     selection = variant_set.GetVariantSelection()
     logger.debug(f"Searching target for {prim} with variant {name}, {selection} on {layer}")
 
-    def is_valid_target(node):
+    def is_target(arc):
+        node = arc.GetTargetNode()
         return node.path.GetVariantSelection() == (name, selection) and layer == node.layerStack.identifier.rootLayer
 
     query_filter = Usd.PrimCompositionQuery.Filter()
     query_filter.arcTypeFilter = Usd.PrimCompositionQuery.ArcTypeFilter.Variant
     query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
-    return edit_context(prim, query_filter, is_valid_target)
+    return edit_context(prim, query_filter, is_target)
+
+
+def _edit_context_by_arc(prim, arc_type, path, layer):
+    arc_filter = {
+        Sdf.Payload: Usd.PrimCompositionQuery.ArcTypeFilter.Payload,
+        Sdf.Reference: Usd.PrimCompositionQuery.ArcTypeFilter.Reference,
+        Usd.Inherits: Usd.PrimCompositionQuery.ArcTypeFilter.Inherit,
+        Usd.Specializes: Usd.PrimCompositionQuery.ArcTypeFilter.Specialize,
+    }
+    query_filter = Usd.PrimCompositionQuery.Filter()
+    query_filter.arcTypeFilter = arc_filter[arc_type]
+
+    def is_target(arc):
+        node = arc.GetTargetNode()
+        # USD-23.02 can do arc.GetTargetPrimPath() == path and arc.GetTargetLayer() == layer
+        return node.path == path and node.layerStack.identifier.rootLayer == layer
+
+    return edit_context(prim, query_filter, is_target)
+
+
+@contextlib.contextmanager
+def _prim_tree_printer(predicate, prims_to_include: typing.Container = frozenset()):
+    prim_entry = Usd.Prim.GetName if predicate != Usd.PrimIsModel else lambda prim: f"{prim.GetName()} ({Usd.ModelAPI(prim).GetKind()})"
+
+    class PrimTreePrinter(TreePrinter):
+        """For everything else, use usdtree from the vanilla USD toolset"""
+
+        def ftree(self, prim: Usd.Prim):
+            self.ROOT = f"{super().ROOT}{prim_entry(prim)}"
+            return super().ftree(prim)
+
+    # another duck
+    Usd.Prim.__iter__ = lambda prim: (p for p in prim.GetFilteredChildren(predicate) if not prims_to_include or p in prims_to_include)
+    Usd.Prim.items = lambda prim: ((prim_entry(p), p) for p in prim)
+    current = type(abc.Mapping).__instancecheck__  # can't unregister abc.Mapping.register, so use __instancecheck__
+
+    type(abc.Mapping).__instancecheck__ = lambda cls, inst: current(cls, inst) or (cls == abc.Mapping and type(inst) == Usd.Prim)
+    try:
+        yield PrimTreePrinter()
+    finally:
+        type(abc.Mapping).__instancecheck__ = current
+        del Usd.Prim.__iter__
+        del Usd.Prim.items
+
+
+def _format_prim_hierarchy(prims, include_descendants=True, predicate=Usd.PrimDefaultPredicate):
+    for prim in prims:
+        if prim.IsPseudoRoot():
+            prims_to_tree = {prim}
+            break
+    else:
+        root_paths = dict.fromkeys(common_paths((prim.GetPath() for prim in prims)))
+        prims_to_tree = (prim for prim in prims if prim.GetPath() in root_paths)
+
+    with _prim_tree_printer(predicate, set(prims) if not include_descendants else set()) as printer:
+        return "\n".join(printer.ftree(prim) for prim in prims_to_tree)
 
 
 class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
-    _ignore_ = 'sizes'
-    # One element for the entire Gprim; no interpolation.
-    CONSTANT = UsdGeom.Tokens.constant, {UsdGeom.Gprim: 1}
+    # One element for the entire Imageable prim; no interpolation.
+    CONSTANT = UsdGeom.Tokens.constant, {UsdGeom.Imageable: 1}
     # One element for each face of the mesh; elements are typically not interpolated
     # but are inherited by other faces derived from a given face (via subdivision, tessellation, etc.).
     UNIFORM = UsdGeom.Tokens.uniform, {

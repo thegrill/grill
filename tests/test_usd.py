@@ -72,3 +72,11 @@ class TestUSD(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ability to find layer"):
             gusd.edit_context(reference, prim)
 
+    def test_format_tree(self):
+        stage = Usd.Stage.CreateInMemory()
+        child1 = stage.DefinePrim("/path/to/child1")
+        stage.DefinePrim("/path/to/child02")
+        self.assertEqual('┐to\n├── child1\n└── child02', gusd._format_prim_hierarchy([child1.GetParent()]))
+        self.assertEqual('┐to', gusd._format_prim_hierarchy([child1.GetParent()], include_descendants=False))
+        self.assertEqual('┐/\n└── path\n    └── to\n        ├── child1\n        └── child02', gusd._format_prim_hierarchy([stage.GetPseudoRoot()]))
+        self.assertEqual('┐/', gusd._format_prim_hierarchy([stage.GetPseudoRoot()], include_descendants=False))

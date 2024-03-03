@@ -3,33 +3,36 @@ from __future__ import annotations
 
 import re
 import typing
+import weakref
+import logging
 import operator
 import tempfile
-import subprocess
 import contextvars
 import collections
 
 from pathlib import Path
 from itertools import chain
 from collections import defaultdict
-from functools import lru_cache, partial
+from functools import cache, partial
 from types import MappingProxyType
 
 import networkx as nx
-from pxr import Ar, Sdf, Usd, UsdUtils, Pcp, Tf
-from ._qt import QtWidgets, QtGui, QtCore, QtWebEngineWidgets
+from pxr import UsdUtils, UsdShade, Usd, Ar, Pcp, Sdf, Tf
+from ._qt import QtWidgets, QtGui, QtCore
 
 from .. import usd as _usd
-from . import sheets as _sheets, _core
+from . import sheets as _sheets, _core, _graph
 from ._core import _which
 
+
+_logger = logging.getLogger(__name__)
 
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
     Pcp.ArcTypeVariant: _color_attrs('orange'),
     Pcp.ArcTypeReference: _color_attrs('crimson'),  # ~red
-    Pcp.ArcTypePayload: _color_attrs('darkslateblue'),  # ~purple
+    Pcp.ArcTypePayload: _color_attrs('#9370db'),  # ~purple
     Pcp.ArcTypeSpecialize: _color_attrs('sienna'),  # ~brown
 })
 _BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
@@ -67,34 +70,20 @@ _TREE_PATTERN = re.compile(  # draft as well output of usdtree
     rf'^(?P<identifier_prim_path>([/`|\s:]+-+)(\w+)?)(\((?P<metadata>\w+)\)|(?P<prop_name>\.[\w:]+)|( \[(?P<specifier>def|over|class)( (?P<prim_type>\w+))?])( \((?P<custom_meta>[\w\s=]+)\))?)'
 )
 
-
-def _run(args: list):
-    if not args or not args[0]:
-        raise ValueError(f"Expected arguments to contain an executable value on the first index. Got: {args}")
-    kwargs = dict(capture_output=True)
-    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # not on CentOS
-        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
-    try:
-        result = subprocess.run(args, **kwargs)
-    except TypeError as exc:
-        return str(exc), ""
-    else:
-        error = result.stderr.decode() if result.returncode else None
-        return error, result.stdout.decode()
+_USD_COMPOSITION_ARC_QUERY_METHODS = (
+    Usd.CompositionArc.HasSpecs,
+    Usd.CompositionArc.IsAncestral,
+    Usd.CompositionArc.IsImplicit,
+    Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
+    Usd.CompositionArc.IsIntroducedInRootLayerStack,
+)
+_USD_COMPOSITION_ARC_QUERY_KEYS = tuple(func.__name__ for func in _USD_COMPOSITION_ARC_QUERY_METHODS)
+_USD_COMPOSITION_ARC_QUERY_DEFAULTS = lambda: dict.fromkeys(_USD_COMPOSITION_ARC_QUERY_KEYS, False)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _edge_color(edge_arcs):
     return dict(color=":".join(_ARCS_LEGEND[arc]["color"] for arc in edge_arcs))
-
-
-@lru_cache(maxsize=None)
-def _dot_2_svg(sourcepath):
-    print(f"Creating svg for: {sourcepath}")
-    targetpath = f"{sourcepath}.svg"
-    args = [_which("dot"), sourcepath, "-Tsvg", "-o", targetpath]
-    error, __ = _run(args)
-    return error, targetpath
 
 
 def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), output_args=tuple()):
@@ -108,14 +97,14 @@ def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), outp
             args = [_which("usdtree"), "-a", "-m", str(path)]
         else:
             args = [_which("sdffilter"), "--outputType", output_type, *output_args, *path_args, str(path)]
-        return _run(args)
+        return _core._run(args)
 
 
 def _layer_label(layer):
     return layer.GetDisplayName() or layer.identifier
 
 
-@lru_cache(maxsize=None)
+@cache
 def _highlight_syntax_format(key, value):
     text_fmt = QtGui.QTextCharFormat()
     if key == "arc":
@@ -138,11 +127,7 @@ def _highlight_syntax_format(key, value):
 def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     """Compute layer stack graph info for the provided prims"""
 
-    @lru_cache(maxsize=None)
-    def _cached_layer_label(layer):
-        return _layer_label(layer)
-
-    @lru_cache(maxsize=None)
+    @cache
     def _sublayers(layer_stack):  # {Sdf.Layer: int}
         return MappingProxyType({v: i for i, v in enumerate(layer_stack.layers)})
 
@@ -157,8 +142,9 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='rounded,filled', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
+        plugs = []
         label = '{'
-        tooltip = 'Layer Stack:'
+        tooltip = 'LayerStack:'
         for layer, layer_index in sublayers.items():
             indices_by_sublayers[layer].add(index)
             if layer.dirty:
@@ -166,62 +152,126 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # For new line: https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             # For Windows path sep: https://stackoverflow.com/questions/15094591/how-to-escape-forwardslash-character-in-html-but-have-it-passed-correctly-to-jav
             tooltip += f"&#10;{layer_index}: {(layer.realPath or layer.identifier)}".replace('\\', '&#47;')
-            label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_cached_layer_label(layer)}"
+            plugs.append(layer_index)
+            label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_layer_label(layer)}"
         label += '}'
-
+        # attrs['plugs'] = dict(zip(plugs, range(len(plugs))))
+        attrs['plugs'] = tuple(plugs)
+        attrs['active_plugs'] = set()  # all active connections, for GUI
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
 
-    @lru_cache(maxsize=None)
+    @cache
     def _compute_composition(_prim):
         query = Usd.PrimCompositionQuery(_prim)
-        query.filter = query_filter
         affected_by = set()  # {int}  indices of nodes affecting this prim
-        prim_edges = defaultdict(lambda: defaultdict(dict))  # {(source_int, target_int): {Pcp.ArcType...}}
         for arc in query.GetCompositionArcs():
             target_idx, __ = _add_node(arc.GetTargetNode())
             affected_by.add(target_idx)
             source_layer = arc.GetIntroducingLayer()
             if source_layer:
+                # Note: arc.GetIntroducingNode() is not guaranteed to be the same as
+                # arc.GetTargetNode().origin nor arc.GetTargetNode().GetOriginRootNode()
                 source_idx, source_layers = _add_node(arc.GetIntroducingNode())
                 source_port = source_layers[source_layer]
-                prim_edges[source_idx, target_idx][source_port, None][arc.GetArcType()] = {}  # TODO: probably include useful info here?
-        return affected_by, prim_edges
+                all_nodes[source_idx]['active_plugs'].add(source_port)  # all connections, for GUI
+                all_edges[source_idx, target_idx][source_port][arc.GetArcType()].update(
+                    {func.__name__:  is_fun for func in _USD_COMPOSITION_ARC_QUERY_METHODS if (is_fun := func(arc))}
+                )
 
-    def _freeze(dct):
-        return MappingProxyType({k: tuple(sorted(v)) for k,v in dct.items()})
+        return affected_by
 
-    query_filter = Usd.PrimCompositionQuery.Filter()
-    query_filter.hasSpecsFilter = Usd.PrimCompositionQuery.HasSpecsFilter.HasSpecs
     all_nodes = dict()  # {int: dict}
+    all_edges = defaultdict(                            #   { (source_node: int, target_node: int):
+        lambda: defaultdict(                            #       { source_port: int:
+            lambda: defaultdict(                        #           { Pcp.ArcType:
+                _USD_COMPOSITION_ARC_QUERY_DEFAULTS     #               { HasArcs: bool, IsImplicit: bool, ... }
+            )                                           #           }
+        )                                               #       }
+    )                                                   #   }
 
-    all_edges = defaultdict(lambda: defaultdict(dict))  # {(int, int, int, int): {Pcp.ArcType: {}, ..., }}
     for arc_type, attributes in _ARCS_LEGEND.items():
         arc_label_node_ids = (len(all_nodes), len(all_nodes) + 1)
         all_nodes.update(dict.fromkeys(arc_label_node_ids, dict(style='invis')))
-        all_edges[arc_label_node_ids][None, None][arc_type] = dict(label=f" {arc_type.displayName}", **attributes)
+        all_edges[arc_label_node_ids][None][arc_type] = dict(label=f" {arc_type.displayName}", **attributes)
 
     legend_node_ids = tuple(all_nodes)
     ids_by_root_layer = dict()
     indices_by_sublayers = defaultdict(set)  # {Sdf.Layer: {int,} }
     paths_by_node_idx = defaultdict(set)
+
     for prim in prims:
         # use a forwarded prim in case of instanceability to avoid computing same stack more than once
         prim_path = prim.GetPath()
-        forwarded_prim = UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)
-        affected_by_indices, edges = _compute_composition(forwarded_prim)
-        for edge_data, edge_arcs in edges.items():
-            all_edges[edge_data].update(edge_arcs)
-        for affected_by_idx in affected_by_indices:
+        for affected_by_idx in _compute_composition(UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)):
             paths_by_node_idx[affected_by_idx].add(prim_path)
 
     return _GraphInfo(
         edges=MappingProxyType(all_edges),
         nodes=MappingProxyType(all_nodes),
         sticky_nodes=legend_node_ids,
-        paths_by_ids=_freeze(paths_by_node_idx),
-        ids_by_layers=_freeze(indices_by_sublayers),
+        paths_by_ids=paths_by_node_idx,
+        ids_by_layers=indices_by_sublayers,
     )
+
+
+def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
+    connections_api = UsdShade.ConnectableAPI(prim)
+    graph = nx.MultiDiGraph()
+    outline_color = "#4682B4"  # 'steelblue'
+    background_color = "#F0FFFF"  # 'azure'
+    graph.graph['graph'] = {'rankdir': 'LR'}
+
+    graph.graph['node'] = {'shape': 'none', 'color': outline_color, 'fillcolor': background_color}  # color and fillcolor used for HTML view
+    graph.graph['edge'] = {"color": 'crimson'}
+
+    all_nodes = dict()  # {node_id: {graphviz_attr: value}}
+    edges = list()  # [(source_node_id, target_node_id, {source_plug_name, target_plug_name, graphviz_attrs})]
+
+    @cache
+    def _get_node_id(api):
+        return str(api.GetPrim().GetPath())
+
+    @cache
+    def _add_edges(src_node, src_name, tgt_node, tgt_name):
+        tooltip = f"{src_node}.{src_name} -> {tgt_node}.{tgt_name}"
+        edges.append((src_node, tgt_node, {"tailport": src_name, "headport": tgt_name, "tooltip": tooltip}))
+
+    plug_colors = {
+        UsdShade.Input: outline_color,  # blue
+        UsdShade.Output: "#F08080"  # "lightcoral",  # pink
+    }
+    table_row = '<tr><td port="{port}" border="0" bgcolor="{color}" style="ROUNDED">{text}</td></tr>'
+
+    traversed_prims = set()
+    def traverse(api: UsdShade.ConnectableAPI):
+        current_prim = api.GetPrim()
+        if current_prim in traversed_prims:
+            return
+        traversed_prims.add(current_prim)
+        node_id = _get_node_id(current_prim)
+        label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
+        label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
+        plugs = {"": 0}  # {graphviz port name: port index order}
+        active_plugs = set()
+        for index, plug in enumerate(chain(api.GetInputs(), api.GetOutputs()), start=1):  # we start at 1 because index 0 is the node itself
+            plug_name = plug.GetBaseName()
+            sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
+            color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else background_color
+            label += table_row.format(port=plug_name, color=color, text=f'<font color="#242828">{plug_name}</font>')
+            for source in sources:
+                _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
+                traverse(source.source)
+            plugs[plug_name] = index
+            active_plugs.add(plug_name)  # TODO: add only actual plugged properties, right now we're adding all of them
+        label += '</table>>'
+        all_nodes[node_id] = dict(label=label, plugs=plugs, active_plugs=active_plugs)
+
+    traverse(connections_api)
+
+    graph.add_nodes_from(all_nodes.items())
+    graph.add_edges_from(edges)
+    return graph
 
 
 def _launch_content_browser(layers, parent, context, paths=tuple()):
@@ -250,127 +300,42 @@ class _GraphInfo(typing.NamedTuple):
     paths_by_ids: typing.Mapping
 
 
-class _Dot2SvgSignals(QtCore.QObject):
-    error = QtCore.Signal(str)
-    result = QtCore.Signal(str)
+@cache
+def _nx_graph_edge_filter(*, has_specs=None, ancestral=None, implicit=None, introduced_in_root_layer_prim_spec=None, introduced_in_root_layer_stack=None):
+    match = {
+        key: value for key, value in (
+            ("HasSpecs", has_specs),
+            ("IsAncestral", ancestral),
+            ("IsImplicit", implicit),
+            ("IsIntroducedInRootLayerPrimSpec", introduced_in_root_layer_prim_spec),
+            ("IsIntroducedInRootLayerStack", introduced_in_root_layer_stack),
+        ) if value is not None
+    }
+    if not match:
+        return None
+    return lambda edge_info: match.items() <= edge_info.items()
 
 
-_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
-the 'dot' command must be available on the current environment.
-
-Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
-
-For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
-"""
-
-class _Dot2Svg(QtCore.QRunnable):
-    def __init__(self, source_fp, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.signals = _Dot2SvgSignals()
-        self.source_fp = source_fp
-
-    @QtCore.Slot()
-    def run(self):
-        if not _which("dot"):
-            self.signals.error.emit(_DOT_ENVIRONMENT_ERROR)
-            return
-        error, svg_fp = _dot_2_svg(self.source_fp)
-        self.signals.error.emit(error) if error else self.signals.result.emit(svg_fp)
-
-
-class _DotViewer(QtWidgets.QFrame):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class _ConnectableAPIViewer(QtWidgets.QDialog):
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
+        self._graph_view = _graph._GraphViewer(parent=self)
+        vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        vertical.addWidget(self._graph_view)
+        self.setFocusProxy(self._graph_view)
         layout = QtWidgets.QVBoxLayout()
-        self._graph_view = QtWebEngineWidgets.QWebEngineView(parent=self)
-        self._error_view = QtWidgets.QTextBrowser(parent=self)
-        layout.addWidget(self._graph_view)
-        layout.addWidget(self._error_view)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self._error_view.setVisible(False)
+        layout.addWidget(vertical)
         self.setLayout(layout)
-        self.urlChanged = self._graph_view.urlChanged
-        self._dot2svg = None
-        self._threadpool = QtCore.QThreadPool()
-        # otherwise it seems invisible
-        self.resize(QtCore.QSize(self.height() + 100, self.width()))
 
-    def setDotPath(self, path):
-        if self._dot2svg:  # forget about previous, unfinished runners
-            self._dot2svg.signals.error.disconnect()
-            self._dot2svg.signals.result.disconnect()
-
-        self._dot2svg = dot2svg = _Dot2Svg(path, parent=self)
-        dot2svg.signals.error.connect(self._on_dot_error)
-        dot2svg.signals.result.connect(self._on_dot_result)
-        self._threadpool.start(dot2svg)
-
-    def _on_dot_error(self, message):
-        self._error_view.setVisible(True)
-        self._graph_view.setVisible(False)
-        self._error_view.setText(message)
-
-    def _on_dot_result(self, filepath):
-        self._error_view.setVisible(False)
-        self._graph_view.setVisible(True)
-        self._graph_view.load(QtCore.QUrl.fromLocalFile(filepath))
-
-
-class _GraphViewer(_DotViewer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.urlChanged.connect(self._graph_url_changed)
-        self.sticky_nodes = list()
-        self._graph = None
-        self._viewing = frozenset()
-
-    @property
-    def url_id_prefix(self):
-        return "_node_id_"
-
-    def _graph_url_changed(self, url: QtCore.QUrl):
-        node_uri = url.toString()
-        node_uri_stem = node_uri.split("/")[-1]
-        if node_uri_stem.startswith(self.url_id_prefix):
-            index = node_uri_stem.split(self.url_id_prefix)[-1]
-            if not index.isdigit():
-                raise ValueError(f"Expected suffix of node URL ID to be a digit. Got instead '{index}' of type: {type(index)}.")
-            self.view([int(index)])
-
-    @lru_cache(maxsize=None)
-    def _subgraph_dot_path(self, node_indices: tuple):
-        graph = self.graph
-        successors = chain.from_iterable(graph.successors(index) for index in node_indices)
-        predecessors = chain.from_iterable(graph.predecessors(index) for index in node_indices)
-        nodes_of_interest = chain(self.sticky_nodes, node_indices, successors, predecessors)
-        subgraph = graph.subgraph(nodes_of_interest)
-
-        fd, fp = tempfile.mkstemp()
-        try:
-            nx.nx_agraph.write_dot(subgraph, fp)
-        except ImportError as exc:
-            error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
-        else:
-            error = ""
-        return error, fp
-
-    def view(self, node_indices: typing.Iterable):
-        error, dot_path = self._subgraph_dot_path(tuple(node_indices))
-        self._viewing = frozenset(node_indices)
-        if error:
-            self._on_dot_error(error)
-        else:
-            self.setDotPath(dot_path)
-
-    @property
-    def graph(self):
-        return self._graph
-
-    @graph.setter
-    def graph(self, graph):
-        self._subgraph_dot_path.cache_clear()
-        self.sticky_nodes.clear()
-        self._graph = graph
+    def setPrim(self, prim):
+        if not prim:
+            return
+        prim = prim.GetPrim()
+        type_text = "" if not (type_name := prim.GetTypeName()) else f" {type_name}"
+        self.setWindowTitle(f"Scene Graph Connections From{type_text}: {prim.GetName()} ({prim.GetPath()})")
+        self._graph_view.graph = graph = _graph_from_connections(prim)
+        if isinstance(self._graph_view, _graph._GraphSVGViewer):
+            self._graph_view.view(graph.nodes.keys())
 
 
 # Reminder: Inheriting does not bring QTreeView stylesheet (Stylesheet needs to target this class specifically).
@@ -405,8 +370,6 @@ class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
 
 
 class PrimComposition(QtWidgets.QDialog):
-    # TODO: when initializing this outside of the grill menu in USDView, the tree
-    #   does not have the appropiate stylesheet ):
     # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
         "Target Layer": lambda arc: _layer_label(arc.GetTargetNode().layerStack.layerTree.layer),
@@ -417,7 +380,7 @@ class PrimComposition(QtWidgets.QDialog):
         "Is Ancestral": Usd.CompositionArc.IsAncestral,
         "Is Implicit": Usd.CompositionArc.IsImplicit,
         "From Root Layer Prim Spec": Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
-        "From Root Layer Stack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
+        "From Root LayerStack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
     }
 
     def __init__(self, *args, **kwargs):
@@ -439,7 +402,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree.setAlternatingRowColors(True)
         tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-        self._dot_view = _DotViewer(parent=self)
+        self._dot_view = _graph._DotViewer(parent=self)
 
         tree_controls = QtWidgets.QFrame()
         tree_controls_layout = QtWidgets.QHBoxLayout()
@@ -458,6 +421,7 @@ class PrimComposition(QtWidgets.QDialog):
         vertical.addWidget(tree_controls)
         vertical.addWidget(tree)
         vertical.addWidget(self._dot_view)
+        vertical.setStretchFactor(2, 1)
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(vertical)
         horizontal.addWidget(self.index_box)
@@ -613,6 +577,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
         self._tab_layer_by_idx = list()  # {tab_idx: Sdf.Layer}
         self._addLayerTab(layer, paths)
+        self._resolved_layers = {layer}
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
@@ -621,13 +586,14 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
     @_core.wait()
     def _addLayerTab(self, layer, paths=tuple()):
+        layer_ref = weakref.ref(layer)
         try:
-            focus_widget = self._browsers_by_layer[layer]
+            focus_widget = self._browsers_by_layer[layer_ref]
         except KeyError:
             paths_in_layer = []
             for path in paths:
                 if not layer.GetObjectAtPath(path):
-                    print(f"{path=} does not exist on {layer=}")
+                    _logger.debug(f"{path=} does not exist on {layer=}")
                     continue
                 if path.IsPropertyPath():
                     path = path.GetParentPath()
@@ -679,6 +645,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 outline_valies_check.setEnabled(cls == _SdfOutlineHighlighter)
 
             def update_contents(*_, **__):
+                layer_ = layer_ref()
                 format_choice = format_combo.currentText()
                 output_args = []
                 if format_choice == "pseudoLayer":
@@ -693,13 +660,13 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     path = each.data(QtCore.Qt.UserRole)
                     variant_set, selection = path.GetVariantSelection()
                     if path.IsPrimVariantSelectionPath() and not selection:  # we're the "parent" variant. collect all variant paths as sdffilter does not math unselected variants ):
-                        paths.extend([v.path for v in layer.GetObjectAtPath(path).variants.values()])
+                        paths.extend([v.path for v in layer_.GetObjectAtPath(path).variants.values()])
                     else:
                         paths.append(path)
 
                 with QtCore.QSignalBlocker(browser):
                     _ensure_highligther(highlighters.get(format_choice, _Highlighter))
-                    error, text = _format_layer_contents(layer, format_combo.currentText(), paths, output_args)
+                    error, text = _format_layer_contents(layer_, format_combo.currentText(), paths, output_args)
                     browser.setText(error if error else text)
 
             populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
@@ -771,7 +738,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser = _PseudoUSDTabBrowser(parent=self)
             browser.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
             _Highlighter(browser)
-            browser.identifier_requested.connect(partial(self._on_identifier_requested, layer))
+            browser.identifier_requested.connect(partial(self._on_identifier_requested, weakref.proxy(layer)))
             browser.setText(text)
 
             def _find(text):
@@ -785,12 +752,13 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_layout.addWidget(browser)
 
             tab_idx = self.addTab(focus_widget, _layer_label(layer))
-            self._tab_layer_by_idx.append(layer)
+            self._tab_layer_by_idx.append(layer_ref)
             assert len(self._tab_layer_by_idx) == (tab_idx+1)
-            self._browsers_by_layer[layer] = focus_widget
+            self._browsers_by_layer[layer_ref] = focus_widget
         self.setCurrentWidget(focus_widget)
 
     def _on_identifier_requested(self, anchor: Sdf.Layer, identifier: str):
+        anchor = anchor.__repr__.__self__
         with Ar.ResolverContextBinder(self._resolver_context):
             try:
                 if not (layer := Sdf.Layer.FindOrOpen(identifier)):
@@ -801,6 +769,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             else:
                 if layer:
                     self._addLayerTab(layer)
+                    self._resolved_layers.add(layer)
                     return
                 title = "Layer Not Found"
                 text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context} with {anchor=}"
@@ -845,6 +814,8 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
 
 
 class LayerStackComposition(QtWidgets.QDialog):
+    # TODO: display total amount of layer stacks, and sites
+    #       TOO SLOW!! (ALab workbench environment takes 7 seconds for the complete stage.)
     _LAYERS_COLUMNS = (
         _core._Column(f"{_core._EMOJI.ID.value} Layer Identifier", operator.attrgetter('identifier')),
         _core._Column("🚧 Dirty", operator.attrgetter('dirty')),
@@ -854,7 +825,7 @@ class LayerStackComposition(QtWidgets.QDialog):
         _core._Column(f"{_core._EMOJI.NAME.value} Prim Name", Usd.Prim.GetName),
     )
 
-    def __init__(self, stage=None, parent=None, **kwargs):
+    def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         options = _core._ColumnOptions.SEARCH
         layers_model = LayerTableModel(columns=self._LAYERS_COLUMNS)
@@ -873,10 +844,13 @@ class LayerStackComposition(QtWidgets.QDialog):
         horizontal.addWidget(self._layers)
         horizontal.addWidget(self._prims)
 
-        self._graph_view = _GraphViewer(parent=self)
-
+        self._graph_view = _graph._GraphViewer(parent=self)
+        self.setFocusProxy(self._graph_view)
         _graph_legend_controls = QtWidgets.QFrame()
-        _graph_controls_layout = QtWidgets.QHBoxLayout()
+        _graph_controls_layout = QtWidgets.QVBoxLayout()
+        _graph_arcs_layout = QtWidgets.QHBoxLayout()
+
+        _graph_controls_layout.addLayout(_graph_arcs_layout)
         _graph_legend_controls.setLayout(_graph_controls_layout)
         self._graph_edge_include = _graph_edge_include = {}
         self._graph_precise_source_ports = QtWidgets.QCheckBox("Precise Source Layer")
@@ -886,11 +860,33 @@ class LayerStackComposition(QtWidgets.QDialog):
             arc_btn = QtWidgets.QCheckBox(arc.displayName.title())
             arc_btn.setStyleSheet(f"background-color: {arc_details['color']}; padding: 3px; border-width: 1px; border-radius: 3;")
             arc_btn.setChecked(True)
-            _graph_controls_layout.addWidget(arc_btn)
+            _graph_arcs_layout.addWidget(arc_btn)
             _graph_edge_include[arc] = arc_btn
             arc_btn.clicked.connect(lambda: self._update_graph_from_graph_info(self._computed_graph_info))
-        _graph_controls_layout.addWidget(self._graph_precise_source_ports)
-        _graph_controls_layout.addStretch(0)
+        _graph_arcs_layout.addWidget(self._graph_precise_source_ports)
+
+        filters_layout = QtWidgets.QHBoxLayout()
+        _graph_controls_layout.addLayout(filters_layout)
+        # Arcs filters
+        def _arc_filter(title, state=QtCore.Qt.CheckState.PartiallyChecked):
+            widget = QtWidgets.QCheckBox(title)
+            widget.setTristate(True)
+            widget.setCheckState(state)
+            widget.stateChanged.connect(self._edge_filter_changed)
+            # widget.toggled
+            filters_layout.addWidget(widget)
+            return widget
+
+        _graph_arcs_layout.addStretch(0)
+        # self._has_specs = _arc_filter("Has Specs", QtCore.Qt.CheckState.Checked)
+        self._has_specs = _arc_filter("Has Specs")
+        self._is_ancestral = _arc_filter("Is Ancestral")
+        self._is_implicit = _arc_filter("Is Implicit")
+        self._from_root_prim_spec = _arc_filter("From Root Layer Prim Spec")
+        self._from_root_layer_stack = _arc_filter("From Root LayerStack")
+        filters_layout.addStretch(0)
+        ##############
+
         _graph_legend_controls.setFixedHeight(_graph_legend_controls.sizeHint().height())
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(horizontal)
@@ -902,8 +898,32 @@ class LayerStackComposition(QtWidgets.QDialog):
         selectionModel = self._layers.table.selectionModel()
         selectionModel.selectionChanged.connect(self._selectionChanged)
         self._prim_paths_to_compute = set()
-        self.setStage(stage or Usd.Stage.CreateInMemory())
-        self.setWindowTitle("Layer Stack Composition")
+        self.setWindowTitle("LayerStack Composition")
+
+    def _edge_filter_changed(self, *args, **kwargs):
+        state = lambda widget: None if widget.checkState() == QtCore.Qt.CheckState.PartiallyChecked else widget.isChecked()
+        edge_data_filter = _nx_graph_edge_filter(
+            has_specs=state(self._has_specs),
+            ancestral=state(self._is_ancestral),
+            implicit=state(self._is_implicit),
+            introduced_in_root_layer_prim_spec=state(self._from_root_prim_spec),
+            introduced_in_root_layer_stack=state(self._from_root_layer_stack),
+        )
+        graph = self._graph_view.graph
+        # self._graph_view.filter_edges = (lambda *edge: edge_data_filter(graph.edges[edge])) if edge_data_filter else None
+        from pprint import pp
+        def actual(*edge):
+            # edge_info = graph.edges[edge]
+            # pp(edge_info)
+            # print(f"{edge_data_filter=}")
+            result = edge_data_filter(graph.edges[edge])
+            # print(f"{result=}")
+            return result
+
+        self._graph_view.filter_edges = actual if edge_data_filter else None
+        if isinstance(self._graph_view, _graph._GraphSVGViewer):
+            self._graph_view._subgraph_dot_path.cache_clear()
+        self._graph_view.view(self._graph_view._viewing)
 
     def _selectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         node_ids = {index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._layers.table.selectedIndexes()}
@@ -926,17 +946,18 @@ class LayerStackComposition(QtWidgets.QDialog):
         self._layers._resolver_context = stage.GetPathResolverContext()
         predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
         prims = Usd.PrimRange.Stage(stage, predicate)
+        # prims = (prim for prim in prims if prim.IsActive())
         if self._prim_paths_to_compute:
             prims = (p for p in prims if p.GetPath() in self._prim_paths_to_compute)
+            self._prims._filter_predicate = lambda prim: prim.GetPath() in self._prim_paths_to_compute
 
         graph_info = _compute_layerstack_graph(prims, self._graph_view.url_id_prefix)
         self._prims.setStage(stage)
+        # self._edge_filter_changed()
         self._update_graph_from_graph_info(graph_info)
-        self._selectionChanged(None, None)
 
     def setPrimPaths(self, value):
         self._prim_paths_to_compute = {p if isinstance(p, Sdf.Path) else Sdf.Path(p) for p in value}
-        print(self._prim_paths_to_compute)
 
     def _update_graph_from_graph_info(self, graph_info: _GraphInfo):
         self._computed_graph_info = graph_info
@@ -945,23 +966,27 @@ class LayerStackComposition(QtWidgets.QDialog):
         graph.graph['graph'] = dict(tooltip="LayerStack Composition")
         graph.add_nodes_from(self._computed_graph_info.nodes.items())
         graph.add_edges_from(self._iedges(graph_info))
-        self._graph_view.graph = graph
+        self._graph_view._graph = graph
         self._graph_view.sticky_nodes.extend(graph_info.sticky_nodes)
         self._layers.model.setLayers(graph_info.ids_by_layers)
         # view intersection as we might be seeing nodes that no longer exist
         # self._graph_view.view(self._graph_view._viewing)  # TODO: check if this is better <- and reset _viewing somewhere else
-        self._graph_view.view(self._graph_view._viewing.intersection(graph_info.nodes))
+        ## NEW
+        self._graph_view._viewing = self._graph_view._viewing.intersection(graph_info.nodes)
+        self._edge_filter_changed()
+        ## NEW END
+        # self._graph_view.view(self._graph_view._viewing.intersection(graph_info.nodes))
 
     def _iedges(self, graph_info: _GraphInfo):
         checked_arcs = {arc for arc, control in self._graph_edge_include.items() if control.isChecked()}
         precise_ports = self._graph_precise_source_ports.isChecked()
         for (src, tgt), edge_info in graph_info.edges.items():
-            arc_ports = edge_info if precise_ports else {(None, None): collections.ChainMap(*edge_info.values())}
-            for (src_port, tgt_port), arcs in arc_ports.items():
+            arc_ports = edge_info if precise_ports else {None: collections.ChainMap(*edge_info.values())}
+            for src_port, arcs in arc_ports.items():
                 visible_arcs = {arc: attrs for arc, attrs in arcs.items() if (arc in checked_arcs or {src, tgt}.issubset(graph_info.sticky_nodes))}
                 if visible_arcs:
                     # Composition arcs target layer stacks, so we don't specify port on our target nodes
-                    # since it does not change and visually helps for network layout.
-                    ports = {"tailport": src_port, "headport":None} if precise_ports else {}
+                    ports = {"tailport": src_port} if precise_ports and src_port is not None else {}
                     color = _edge_color(tuple(visible_arcs))
                     yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
+

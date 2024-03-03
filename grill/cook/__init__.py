@@ -34,6 +34,7 @@ import contextvars
 from pathlib import Path
 from pprint import pformat
 
+import networkx as nx
 from pxr import UsdGeom, Usd, Sdf, Kind, Ar
 
 from grill.tokens import ids
@@ -65,6 +66,7 @@ _CATALOGUE_FIELDS = types.MappingProxyType({_CATALOGUE_ID.name: _CATALOGUE_NAME}
 
 _INHERITED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild('Inherited')
 _SPECIALIZED_ROOT_PATH = Sdf.Path.absoluteRootPath.AppendChild('Specialized')
+_BROADCAST_METHOD_RELPATHS = {Usd.Inherits: _INHERITED_ROOT_PATH, Usd.Specializes: _SPECIALIZED_ROOT_PATH}
 
 _UNIT_UNIQUE_ID = ids.CGAsset.item  # Entry point for meaningful composed assets.
 _UNIT_ORIGIN_PATH = Sdf.Path.absoluteRootPath.AppendChild("Origin")
@@ -200,6 +202,11 @@ def _catalogue_path(taxon: Usd.Prim) -> Sdf.Path:
     return _CATALOGUE_ROOT_PATH.AppendPath(relpath)
 
 
+def _broadcast_root_path(taxon, broadcast_method, scope_path=None):
+    scope_path = scope_path or _catalogue_path(taxon)  # TODO: this feels strange, avoid the "or" later.
+    return scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _BROADCAST_METHOD_RELPATHS[broadcast_method])
+
+
 def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
@@ -213,8 +220,8 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
     taxon_path = taxon.GetPath()
     taxon_fields = _get_id_fields(taxon)
     scope_path = _catalogue_path(taxon)
-    specialized_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _SPECIALIZED_ROOT_PATH)
-    inherited_path = scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _INHERITED_ROOT_PATH)
+    specialized_path = _broadcast_root_path(taxon, Usd.Specializes, scope_path=scope_path)
+    inherited_path = _broadcast_root_path(taxon, Usd.Inherits, scope_path=scope_path)
 
     current_asset_name, root_layer = _root_asset(stage)
     new_asset_name = UsdAsset(current_asset_name.get(**taxon_fields))
@@ -343,7 +350,8 @@ def unit_context(prim: Usd.Prim) -> Usd.EditContext:
     # 'Cannot map </Catalogue/OtherPlace/CastleDracula> to current edit target.'
     layer = unit_asset(prim)
 
-    def target_predicate(node):
+    def target_predicate(arc: Usd.CompositionArc):
+        node = arc.GetTargetNode()
         return node.path == _UNIT_ORIGIN_PATH and node.layerStack.identifier.rootLayer == layer
 
     return _usd.edit_context(prim, _ASSET_UNIT_QUERY_FILTER, target_predicate)
@@ -479,3 +487,58 @@ def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Lay
             continue
         return layer
     raise ValueError(f"Could not find layer matching {tokens}. Searched on:\n{pformat(seen)}")
+
+
+def specialized_context(prim, context_unit=None):
+    return _inherit_or_specialize_unit(prim.GetSpecializes(), context_unit)
+
+
+def inherited_context(prim, context_unit=None):
+    return _inherit_or_specialize_unit(prim.GetInherits(), context_unit)
+
+
+def _inherit_or_specialize_unit(method, context_unit):
+    """This is on cook since it relies on some pipeline knowledge to find proper target. Could request the target
+    path as well at the expense of the caller if need arises or enough value is perceived."""
+    target_prim = method.GetPrim()
+    if not (unit_name:=Usd.ModelAPI(target_prim).GetAssetName()):
+        raise ValueError(f"{target_prim} is not a valid unit in the catalogue.")
+
+    context_unit = context_unit or target_prim
+    if not Usd.ModelAPI(context_unit).GetAssetName():
+        raise ValueError(f"{context_unit=} needs to be a valid unit in the catalogue.")
+
+    broadcast_method = type(method)
+    if not target_prim.GetPath().HasPrefix(context_unit.GetPath()):
+        raise ValueError(f"Can not check for {broadcast_method} on {context_unit} since {target_prim} is not a descendant of it.")
+
+    target_path = _broadcast_root_path(target_prim, broadcast_method).AppendPath(unit_name)
+
+    try:
+        return _usd.edit_context(method, target_path, (context_asset:=unit_asset(context_unit)))
+    except ValueError as exc:
+        raise ValueError(
+            f"Could not find an appropriate edit target node for a {broadcast_method.__name__}'s arc targeting {target_path} for {target_prim}. "
+            f"""Is there a composition arc bringing "{target_prim.GetName()}"'s unit into "{context_unit.GetName()}"'s layer stack at {context_asset}?"""
+        ) from exc
+
+
+def taxonomy_graph(prims, url_id_prefix):
+    graph = nx.DiGraph(tooltip="Taxonomy Graph")
+    graph.graph.update(
+        graph={'rankdir': 'LR'},
+        node={
+            'shape': 'box',
+            'fillcolor': "#afd7ff",  # lightskyblue1
+            'color': "#1E90FF",  # dodgerblue4
+            'style': 'filled,rounded',
+        },
+    )
+
+    # TODO:
+    #  - Guarantee taxa will be unique (no duplicated short names), raise here?
+    #  - Fail with clear error message when provided prims are not taxa
+    for taxon in prims:
+        graph.add_node(taxon_name:=taxon.GetName(), tooltip=taxon.GetPath(), href=f"{url_id_prefix}{taxon_name}",)
+        graph.add_edges_from(itertools.zip_longest(set(taxon.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY)) - {taxon_name}, (), fillvalue=taxon_name))
+    return graph

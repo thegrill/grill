@@ -6,7 +6,7 @@ Copy pasting functionality like in other spreadsheet applications should be poss
 
 .. tab:: USDView
 
-    .. image:: https://user-images.githubusercontent.com/8294116/99148142-3e9af200-26da-11eb-9a9d-3c63a3c32ccb.gif
+    .. image:: images/sheet_usdview.gif
 
 .. tab:: Houdini
 
@@ -16,5 +16,5 @@ Copy pasting functionality like in other spreadsheet applications should be poss
 
     .. image:: https://user-images.githubusercontent.com/8294116/115137690-e0987f00-a06a-11eb-9ba3-1e7df3c0163c.gif
 
-.. _USD stage: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Stage
-.. _prims: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim
+.. _USD stage: https://openusd.org/release/glossary.html#usdglossary-stage
+.. _prims: https://openusd.org/release/glossary.html#usdglossary-prim

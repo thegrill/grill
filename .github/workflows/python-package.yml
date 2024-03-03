@@ -12,8 +12,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.9"]
+        python-version: ["3.9", "3.11"]
+        include:
+          - python-version: "3.9"
+            install-arguments: ". PySide2 usd-core==22.5 PyOpenGL pygraphviz"
+          - python-version: "3.11"
+            install-arguments: ".[full]"
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python ${{ matrix.python-version }}
@@ -22,13 +28,19 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Set up Graphviz
         uses: ts-graphviz/setup-graphviz@v1
+      - name: Install Required Libraries
+        # Needed for PySide6 CI only: https://stackoverflow.com/questions/75907862/pyside6-wsl2-importerror-libegl-so-1
+        if: "matrix.python-version == '3.11'"
+        run: |
+          sudo apt-get install -y libegl1
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest pytest-cov
-          python -m pip install ".[full,test]"
+          python -m pip install pytest pytest-cov codecov
+          python -m pip install ${{ matrix.install-arguments }}
       - name: Test
         run: |
           pytest --cov=./ --cov-report xml
+          codecov
       - name: Codecov Report
         uses: codecov/codecov-action@v3

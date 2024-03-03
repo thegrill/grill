@@ -5,11 +5,31 @@ import tempfile
 
 from pathlib import Path
 
-from pxr import Usd, Sdf, Ar, UsdUtils
+from pxr import Usd, UsdGeom, Sdf, Ar, UsdUtils
 
 from grill import cook, names, usd as gusd, tokens
 
 logger = logging.getLogger(__name__)
+
+# 2024-02-03 - Python-3.12 & USD-23.11
+# python -m unittest --durations 0 test_cook
+# Slowest test durations
+# ----------------------------------------------------------------------
+# 0.058s     test_define_taxon (test_cook.TestCook.test_define_taxon)
+# 0.056s     test_inherited_and_specialized_contexts (test_cook.TestCook.test_inherited_and_specialized_contexts)
+# 0.050s     test_create_on_previous_stage (test_cook.TestCook.test_create_on_previous_stage)
+# 0.047s     test_asset_unit (test_cook.TestCook.test_asset_unit)
+# 0.034s     test_spawn_unit (test_cook.TestCook.test_spawn_unit)
+# 0.034s     test_spawn_unit_with_absolute_paths (test_cook.TestCook.test_spawn_unit_with_absolute_paths)
+# 0.033s     test_create_many (test_cook.TestCook.test_create_many)
+# 0.032s     test_spawn_many (test_cook.TestCook.test_spawn_many)
+# 0.023s     test_fetch_stage (test_cook.TestCook.test_fetch_stage)
+# 0.007s     test_edit_context (test_cook.TestCook.test_edit_context)
+# 0.006s     test_match (test_cook.TestCook.test_match)
+# 0.001s     test_spawn_many_invalid (test_cook.TestCook.test_spawn_many_invalid)
+#
+# ----------------------------------------------------------------------
+# Ran 12 tests in 0.385s
 
 
 class TestCook(unittest.TestCase):
@@ -86,16 +106,16 @@ class TestCook(unittest.TestCase):
         # Now, test stages fetched from the start via "common" pipeline calls.
         root_stage = cook.fetch_stage(self.root_asset)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "reserved name"):
             cook.define_taxon(root_stage, cook._TAXONOMY_NAME)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "reserved id fields"):
             cook.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={cook._TAXONOMY_UNIQUE_ID: "by_id_value"})
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "reserved id fields"):
             cook.define_taxon(root_stage, "taxonomy_not_allowed", id_fields={cook._TAXONOMY_UNIQUE_ID.name: "by_id_name"})
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "invalid id_field keys"):
             cook.define_taxon(root_stage, "nonexistingfield", id_fields={str(uuid.uuid4()): "by_id_name"})
 
         displayable = cook.define_taxon(root_stage, "DisplayableName")
@@ -107,24 +127,25 @@ class TestCook(unittest.TestCase):
         with cook.taxonomy_context(root_stage):
             displayable.CreateAttribute("label", Sdf.ValueTypeNames.String)
 
+        missing_or_empty_fields_msg = f"Missing or empty '{cook._FIELDS_KEY}'"
         not_taxon = root_stage.DefinePrim("/not/a/taxon")
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {'invalid': 42})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: 42})
-        with self.assertRaises(TypeError):
+        with self.assertRaisesRegex(TypeError, f"Expected mapping on key '{cook._FIELDS_KEY}'"):
             cook.create_unit(not_taxon, "WillFail")
 
         not_taxon.SetAssetInfoByKey(cook._ASSETINFO_KEY, {cook._FIELDS_KEY: {}})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, missing_or_empty_fields_msg):
             cook.create_unit(not_taxon, "WillFail")
 
         emil = cook.create_unit(person, "EmilSinclair", label="Emil Sinclair")
@@ -140,6 +161,26 @@ class TestCook(unittest.TestCase):
         stage_prims = root_stage.Traverse()
         self.assertEqual(expected_people, list(cook.itaxa(stage_prims, person)))
         self.assertEqual(expected_heroes, list(cook.itaxa(stage_prims, hero)))
+
+    def test_create_on_previous_stage(self):
+        """Confirm that creating assets on a previously saved stage works.
+
+        The default behavior from layer identifiers that are relative to the resolver search path is to be absolute
+        when a stage using them is re-opened, so:
+            original_identifier.usda
+                becomes
+            /absolute/path/original_identifier.usda
+        """
+        root_asset = names.UsdAsset.get_anonymous()
+        root_stage = cook.fetch_stage(root_asset)
+        # creates taxonomy.usda and adds it to the stage layer stack
+        cook.define_taxon(root_stage, "FirstTaxon")
+        root_stage.Save()
+        del root_stage
+
+        reopened_stage = cook.fetch_stage(root_asset)
+        # the taxonomy.usda now has as identifier /absolute/path/taxonomy.usda, so confirm we can use it still
+        cook.create_many(cook.define_taxon(reopened_stage, "SecondTaxon"), ["A", "B"])
 
     def test_asset_unit(self):
         stage = cook.fetch_stage(self.root_asset)
@@ -158,7 +199,7 @@ class TestCook(unittest.TestCase):
 
         layer = Sdf.Layer.CreateAnonymous()
         with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda node: node.layerStack.identifier.rootLayer == layer)
+            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer == layer)
 
         # break the unit model API
         Usd.ModelAPI(emil).SetAssetIdentifier("")
@@ -171,15 +212,8 @@ class TestCook(unittest.TestCase):
 
     def test_create_many(self):
         stage = cook.fetch_stage(self.root_asset)
-        taxon = cook.define_taxon(stage, "Another")
-        cook.create_many(taxon, (f"new_{x}" for x in range(10)))
-
-        anon_stage = Usd.Stage.CreateInMemory()
-        # An anon stage containing a grill layer on its stack should succeed.
-        anon_pipeline = cook.fetch_stage(names.UsdAsset.get_anonymous())
-        anon_stage.GetRootLayer().subLayerPaths.append(anon_pipeline.GetRootLayer().realPath)
-        anon_taxon = cook.define_taxon(anon_stage, "Anon")
-        cook.create_many(anon_taxon, ("first", "second"))
+        taxon = cook.define_taxon(stage, "Anon")
+        cook.create_many(taxon, ("first", "second"))
 
     def test_spawn_unit(self):
         stage = cook.fetch_stage(self.root_asset)
@@ -222,3 +256,51 @@ class TestCook(unittest.TestCase):
         child = stage.DefinePrim("/b")  # child needs to be a grill unit
         with self.assertRaisesRegex(ValueError, "Could not extract identifier from"):
             cook.spawn_many(parent, child, ["b"])
+
+    def test_inherited_and_specialized_contexts(self):
+        stage = cook.fetch_stage(self.root_asset)
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, via_s, via_i, not_under_context = cook.create_many(taxon, ['parent', 'via_s', 'via_i', 'not_under_context'])
+
+        not_a_unit = stage.DefinePrim("/vanilla_prim")
+        with self.assertRaisesRegex(ValueError, "is not a valid unit"):
+            cook.specialized_context(not_a_unit)
+
+        with self.assertRaisesRegex(ValueError, "needs to be a valid unit"):
+            cook.specialized_context(via_s, via_s.GetParent())
+
+        with self.assertRaisesRegex(ValueError, "is not a descendant"):
+            cook.specialized_context(parent, via_s)
+
+        spawned_invalid = cook.spawn_unit(parent, not_under_context)
+        with self.assertRaisesRegex(ValueError, "Is there a composition arc bringing"):
+            # TODO: find a more meaningful message (higher level) than the edit target context one.
+            cook.specialized_context(spawned_invalid, parent)
+
+        with cook.unit_context(parent):
+            via_s_spawned = cook.spawn_unit(parent, via_s)
+            via_i_spawned = cook.spawn_unit(parent, via_i)
+
+        with cook.inherited_context(not_under_context):
+            UsdGeom.Gprim(not_under_context).MakeInvisible()
+
+        with cook.specialized_context(via_s_spawned, parent):
+            UsdGeom.Gprim(via_s_spawned).MakeInvisible()
+
+        with cook.inherited_context(via_i_spawned):
+            UsdGeom.Gprim(via_i_spawned).MakeInvisible()
+
+        def _check_broadcasted_invisibility(asset, prim, method):
+            target_stage = Usd.Stage.Open(asset)
+            target_prefix = cook._broadcast_root_path(prim, method)
+            authored = UsdGeom.Gprim(target_stage.GetPrimAtPath(target_prefix.AppendChild(Usd.ModelAPI(prim).GetAssetName()))).GetVisibilityAttr().Get()
+            self.assertEqual(authored, 'invisible')
+
+        for target_asset, target_prim, broadcast_type in (
+                (not_under_context, not_under_context, Usd.Inherits),  # non-referenced, no context, asset unit is the target
+                (via_i_spawned, via_i_spawned, Usd.Inherits),  # referenced asset unit, no context, asset unit is the target
+                (parent, via_s_spawned, Usd.Specializes),  # referenced, context unit is the target
+        ):
+            with self.subTest(target_asset=str(target_asset), target_prim=str(target_prim), broadcast_type=str(broadcast_type)):
+                _check_broadcasted_invisibility(cook.unit_asset(target_asset), target_prim, broadcast_type)

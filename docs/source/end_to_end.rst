@@ -105,4 +105,4 @@ Following the above, both a new ``taxon`` and new ``asset units`` are created, t
    Note how same rules apply (e.g. the ``Repository`` path must be set before any creation action).
 
 .. _taxonomy: https://en.wikipedia.org/wiki/Taxonomy
-.. _stage: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Stage
+.. _stage: https://openusd.org/release/glossary.html#usdglossary-stage

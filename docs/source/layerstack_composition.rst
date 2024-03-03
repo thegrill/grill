@@ -1,14 +1,14 @@
 Layer Stack Composition
 -----------------------
 
-Similar to ``Prim Composition``, but available for the whole `stage`_ by
-creating a graph of `layer stacks`_. This helps answer questions like:
+Similar to ``Prim Composition``, but available for the whole `stage`_ or multiple `prims`_ at once.
+This helps answer questions like:
 
 -  What prims are being affected by `layers`_ X and Y?
 
 .. tab:: USDView
 
-    .. image:: https://user-images.githubusercontent.com/8294116/131240483-9b428c4a-92fc-4d79-b464-8b1d07f982e0.gif
+    .. image:: images/layerstack_composition_usdview.gif
 
 .. tab:: Houdini
 
@@ -20,35 +20,34 @@ creating a graph of `layer stacks`_. This helps answer questions like:
 
 In the above example, we're inspecting `Animal Logic's USD ALab`_.
 
-1. On the upper left, all used layers in the current `stage`_ are listed.
-2. On the upper right, all `prims`_ that are affected by the selected `layers`_ are listed.
-3. On the bottom, a `composition arcs`_ graph is displayed for the selected `layers`_ plus the neighbors (predecessors and successors) for each of them.
+1. On the upper left, all used layers in the composition of the inspected `stage`_ or `prims`_ are listed.
+2. On the upper right, all `prims`_ that are affected by the current selected `layers`_ are listed.
+3. On the bottom, a `composition arcs`_ graph is displayed for the selected `layers`_ plus the neighbors (predecessors and successors) for each of their `layerStacks`_.
 
-   - Nodes in the network represent `layer stacks`_.
+   - Nodes in the network represent `layerStacks`_.
    - Edges are the `composition arcs`_ between them (it follows the same color scheme as the ones provided by Pcp.PrimIndex.DumpToDotGraph).
-   - Options to filter `composition arcs`_ are provided on the up left corner of the network view.
+   - Options to filter `composition arcs`_ are provided above the network view.
 
-     .. image:: https://user-images.githubusercontent.com/8294116/131248473-8855cca9-f011-4c2e-af3c-1f1eb50d4acb.png
+     .. image:: images/layerstack_composition_arc_filter_options.jpg
 
    - The additional option ``Precise Source Layer`` (**off** by default) exists to draw the edge source from the layer from the stack that introduces it.
      This allows to go from this:
 
-     .. image:: https://user-images.githubusercontent.com/8294116/131248571-3d4a7e31-eb1c-434c-953d-eef51bc5808c.png
-
+     .. image:: images/layerstack_composition_options_default.jpg
      To (note the outputs of ``books_magazines01_surfacing`` and ``books_magazines01_modelling``):
 
-     .. image:: https://user-images.githubusercontent.com/8294116/131248575-e50a6d64-c298-48fa-a9d2-290696c6d5eb.png
+     .. image:: images/layerstack_composition_options_precise_source_layer.jpg
 
 
-.. hint::
-    It is also possible to compute the graph from currently selected prims:
+.. warning::
+    Time for computing this graph increases with stage complexity. So for larger stages, it is recommended to start the widget with the `prims`_ of interest rather than the complete `stage`_:
 
     .. image:: https://user-images.githubusercontent.com/8294116/131242428-7b06729d-f96e-4b92-b02f-1608e99859bd.gif
 
 .. _Animal Logic's USD ALab: https://animallogic.com/usd-alab
-.. _layer stacks: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack
-.. _layers: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Layer
-.. _stage: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Stage
-.. _prims: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim
-.. _composition arcs: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-CompositionArcs
+.. _layerStacks: https://openusd.org/release/glossary.html#usdglossary-layerstack
+.. _layers: https://openusd.org/release/glossary.html#usdglossary-layer
+.. _stage: https://openusd.org/release/glossary.html#usdglossary-stage
+.. _prims: https://openusd.org/release/glossary.html#usdglossary-prim
+.. _composition arcs: https://openusd.org/release/glossary.html#usdglossary-compositionarcs
 

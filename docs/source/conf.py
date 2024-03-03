@@ -34,18 +34,15 @@ from datetime import datetime
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.doctest',
               'sphinx.ext.intersphinx',
+              'sphinx.ext.inheritance_diagram',
               'sphinx.ext.todo',
               'sphinx.ext.coverage',
-              # 'sphinx.ext.imgmath',
-              # 'sphinx.ext.ifconfig',
               'sphinx.ext.viewcode',
-              # 'sphinx.ext.githubpages',
               'sphinx.ext.graphviz',
-              'm2r2',
+              "myst_parser",
               'sphinx_copybutton',
               'sphinx_toggleprompt',
               'sphinx_togglebutton',
-              'sphinx.ext.inheritance_diagram',
               'sphinx_inline_tabs',
               'hoverxref.extension',
               'sphinx.ext.autosectionlabel',
@@ -96,7 +93,8 @@ source_suffix = ['.rst', '.md']
 master_doc = 'index'
 
 # General information about the project.
-project = 'grill'
+# project = 'grill'
+project = '👨‍🍳 Cook digital.'
 copyright = f'{datetime.now().year}, The Grill'
 author = 'The Grill'
 
@@ -114,7 +112,7 @@ release = '0.15.0'
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -135,7 +133,7 @@ todo_include_todos = True
 # a list of builtin themes.
 #
 # also tried: python_docs_theme, sphinx_rtd_theme
-html_theme = 'sphinx_typlog_theme'
+html_theme = 'shibuya'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -154,19 +152,16 @@ html_static_path = ['_static']
 htmlhelp_basename = 'grilldoc'
 html_sidebars = {
     '**': [
-        'logo.html',
-        'github.html',
-        'globaltoc.html',
-        'searchbox.html',
     ]
 }
-
+html_title = '👨‍🍳 The Grill'
 html_theme_options = {
-    'color': 'Coral',
-    'description': 'Cook digital',
-    'logo_name': '👨‍🍳 The Grill',
+    "accent_color": "sky",
+    "github_url": "https://github.com/thegrill/grill",
+    "globaltoc_expand_depth": 2,
+    "toctree_collapse": True,
+    "toctree_titles_only": False,
 }
-
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {

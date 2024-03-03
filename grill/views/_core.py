@@ -3,6 +3,7 @@ import os
 import enum
 import shutil
 import typing
+import subprocess
 import contextlib
 from pathlib import Path
 from functools import partial, cache
@@ -44,6 +45,14 @@ QPushButton:disabled {
     background-color: QLinearGradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 rgb(66, 66, 66), stop: 1 rgb(56, 56, 56));
 }
 
+QCheckBox::indicator:indeterminate:hover {
+    border: 1px solid rgb(163, 135, 78);
+}
+/* Partially checked state (indeterminate) */
+QCheckBox::indicator:indeterminate {
+    background-color: rgb(135, 206, 250); /* lightskyblue */
+}
+
 """
 
 # Taken from QTreeWidget style and adapted for _Tree:
@@ -83,9 +92,26 @@ QTableView::item:hover:!pressed:selected {
 }
 """
 
+_USDVIEW_STYLE = _USDVIEW_PUSH_BUTTON_STYLE + _USDVIEW_QTREEVIEW_STYLE
+
 @cache
 def _which(what):
     return shutil.which(what)
+
+
+def _run(args: list):
+    if not args or not args[0]:
+        raise ValueError(f"Expected arguments to contain an executable value on the first index. Got: {args}")
+    kwargs = dict(capture_output=True)
+    if hasattr(subprocess, 'CREATE_NO_WINDOW'):  # Only on Windows OS
+        kwargs.update(creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        result = subprocess.run(args, **kwargs)
+    except TypeError as exc:
+        return str(exc), ""
+    else:
+        error = result.stderr.decode() if result.returncode else None
+        return error, result.stdout.decode()
 
 
 @cache
@@ -292,6 +318,8 @@ class _Header(QtWidgets.QHeaderView):
     def _updateVisualSections(self, start_index):
         """Updates all of the sections starting at the given index."""
         for index in range(start_index, self.count()):
+            if self.isSectionHidden(index):
+                continue
             self._updateOptionsGeometry(self.logicalIndex(index))
 
     def showEvent(self, event:QtGui.QShowEvent):
@@ -317,8 +345,9 @@ class _Header(QtWidgets.QHeaderView):
         """Without this, when a section is clicked (e.g. when sorting),
         we'd have a mismatch on the proxy geometry label.
         """
-        self._handleSectionResized(0)
-        self._updateVisualSections(0)
+        # With big stages (teste with ~51k prims) calling directly self._updateVisualSections does not adjust sizes.
+        # I've only found a way to guarantee the update by delaying execution with a QTimer.
+        QtCore.QTimer.singleShot(1, lambda: self._updateVisualSections(0))
 
     def _geometryForWidget(self, index):
         """Main geometry for the widget to show at the given index"""
@@ -451,6 +480,7 @@ class _ColumnHeaderMixin:
 
     def _setColumnVisibility(self, index: int, visible: bool):
         self.setColumnHidden(index, not visible)
+        self._fixPositions()
 
     def _setColumnLocked(self, column_index, value):
         method = set.add if value else set.discard

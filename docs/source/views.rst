@@ -6,12 +6,17 @@
 Views (Inspecting / Authoring)
 ==============================
 
-.. mdinclude:: ../../grill/views/README.md
+.. include:: ../../grill/views/README.md
+   :parser: myst_parser.sphinx_
 
 .. include:: spreadsheet_editor.rst
+
+.. include:: connections_viewer.rst
 
 .. include:: prim_composition.rst
 
 .. include:: layerstack_composition.rst
 
 .. include:: layer_content_browser.rst
+
+.. include:: environment_variables.rst

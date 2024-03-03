@@ -1,5 +1,6 @@
 # USDView not on pypi yet, so not possible to test this on CI
 import types
+import inspect
 import operator
 import contextvars
 from functools import lru_cache, partial
@@ -7,22 +8,37 @@ from functools import lru_cache, partial
 from pxr import UsdGeom, Usd, Sdf, Ar, Tf
 from pxr.Usdviewq import plugin, layerStackContextMenu, attributeViewContextMenu, primContextMenuItems, primContextMenu
 
-from ._qt import QtWidgets
+import grill.usd as gusd
 
+from ._qt import QtWidgets, QtGui
 from . import _core, _attributes, sheets as _sheets, description as _description, create as _create, stats as _stats
 
 _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
 _description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
 
 
-_tree_init = _description._Tree.__init__
-def _usdview_tree_init(self, *args, **kwargs):
-    _tree_init(self, *args, **kwargs)
-    self.setStyleSheet(_core._USDVIEW_QTREEVIEW_STYLE)
+def _findOrCreateMenu(parent, title):
+    return next((child for child in parent.findChildren(QtWidgets.QMenu) if child.title() == title), None) or parent.addMenu(title)
 
-# Only when in USDView we want to extend the stylesheet of the _Tree class
-# TODO: is there a better way?
-_description._Tree.__init__ = _usdview_tree_init
+
+def _addAction(self, *args, **kwargs):
+    if len(args) == 2:
+        # primContextMenu.PrimContextMenu calls addAction(menuItem.GetText(), menuItem.RunCommand)
+        # This will break as soon as it's called differently, but it's a risk worth to take for now.
+        path, method = args
+        if inspect.ismethod(method) and isinstance(method.__self__, _GrillPrimContextMenuItem):
+            path_segments = path.split("|")
+            if len(path_segments) > 2:
+                raise RuntimeError(f"Don't know how to handle submenus larger than 2: {path_segments}")
+            if len(path_segments) == 2:
+                submenu, action_text = path_segments
+                child_menu = _findOrCreateMenu(self, submenu)
+                return child_menu.addAction(action_text, method)
+
+    return super(type(self), self).addAction(*args, **kwargs)
+
+
+primContextMenu.PrimContextMenu.addAction = _addAction
 
 
 def _stage_on_widget(widget_creator):
@@ -30,14 +46,12 @@ def _stage_on_widget(widget_creator):
     def _launcher(usdviewApi):
         widget = widget_creator(parent=usdviewApi.qMainWindow)
         widget.setStage(usdviewApi.stage)
-        widget.setStyleSheet(_core._USDVIEW_PUSH_BUTTON_STYLE)
         return widget
     return _launcher
 
 
 def _layer_stack_from_prims(usdviewApi):
     widget = _description.LayerStackComposition(parent=usdviewApi.qMainWindow)
-    widget.setStyleSheet(_core._USDVIEW_PUSH_BUTTON_STYLE)
     widget.setPrimPaths(usdviewApi.dataModel.selection.getPrimPaths())
     widget.setStage(usdviewApi.stage)
     return widget
@@ -46,9 +60,23 @@ def _layer_stack_from_prims(usdviewApi):
 @lru_cache(maxsize=None)
 def prim_composition(usdviewApi):
     widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
+
     def primChanged(new_paths, __):
         new_path = next(iter(new_paths), None)
         widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()
+
+    usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
+    if usdviewApi.prim:
+        widget.setPrim(usdviewApi.prim)
+    return widget
+
+
+def _connection_viewer(usdviewApi):
+    widget = _description._ConnectableAPIViewer(parent=usdviewApi.qMainWindow)
+
+    def primChanged(new_paths, __):
+        new_path = next(iter(new_paths), None)
+        widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path) if new_path else None)
 
     usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
     if usdviewApi.prim:
@@ -91,7 +119,7 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
             context = usdview_api.stage.GetPathResolverContext()
             if not (layer:= getattr(self._item, 'layer', None)):  # USDView allows for single layer selection in composition tab :(
                 layerPath = getattr(self._item, 'layerPath', "")
-                # We're protected by the IsEnabled method above, so don't bother checkin layerPath value
+                # We're protected by the IsEnabled method above, so don't bother checking layerPath value
                 with Ar.ResolverContextBinder(context):
                     if not (layer:=Sdf.Layer.FindOrOpen(layerPath)):  # edge case, is this possible?
                         print(f"Could not find layer from {layerPath}")
@@ -99,17 +127,72 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
             _description._launch_content_browser([layer], usdview_api.qMainWindow, context, paths=paths)
 
 
-class GrillPrimCompositionMenuItem(primContextMenuItems.PrimContextMenuItem):
+class _GrillPrimContextMenuItem(primContextMenuItems.PrimContextMenuItem):
+    """A prim context menu item class that allows special Grill behavior like being added to submenus."""
+    _items = []
+
+    def __init_subclass__(cls, **kwargs):
+        _GrillPrimContextMenuItem._items.append(cls)
+
+
+class GrillPrimCompositionMenuItem(_GrillPrimContextMenuItem):
+    _widget = _description.PrimComposition
+    _subtitle = "Prim Composition"
+
     def GetText(self):
-        return f"Inspect Prim{'s' if len(self._selectionDataModel.getPrims())>1 else ''} Composition"
+        return f"Inspect|{self._subtitle}"
 
     def RunCommand(self):
         usdview_api = _usdview_api.get()
         # The "double pop up" upon showing widgets does not happen on PySide2, only on PySide6
         for prim in self._selectionDataModel.getPrims():
-            widget = _description.PrimComposition(parent=usdview_api.qMainWindow)
+            widget = self._widget(parent=usdview_api.qMainWindow)
             widget.setPrim(prim)
             widget.show()
+
+
+class GrillLayerStackCompositionMenuItem(GrillPrimCompositionMenuItem):
+    _widget = _description.LayerStackComposition
+    _subtitle = "LayerStack Composition"
+
+    def RunCommand(self):
+        usdview_api = _usdview_api.get()
+        stage = usdview_api.stage
+        prims = self._selectionDataModel.getPrims()
+        widget = self._widget(parent=usdview_api.qMainWindow)
+        widget.setPrimPaths(prim.GetPath() for prim in prims)
+        widget.setStage(stage)
+        widget.show()
+
+
+class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
+    _widget = _description._ConnectableAPIViewer
+    _subtitle = "Connections"
+
+
+class AllHierarchyTextMenuItem(_GrillPrimContextMenuItem):
+    _include_descendants = True
+    _subtitle = "All Descendants"
+    _predicate = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
+
+    def GetText(self):
+        return f"Copy Hierarchy|{self._subtitle}"
+
+    def RunCommand(self):
+        text = gusd._format_prim_hierarchy(self._selectionDataModel.getPrims(), self._include_descendants, self._predicate)
+        clipboard = QtWidgets.QApplication.clipboard()
+        clipboard.setText(text, QtGui.QClipboard.Selection)
+        clipboard.setText(text, QtGui.QClipboard.Clipboard)
+
+
+class ModelHierarchyTextMenuItem(AllHierarchyTextMenuItem):
+    _subtitle = "Model Hierarchy"
+    _predicate = Usd.PrimIsModel
+
+
+class SelectedHierarchyTextMenuItem(AllHierarchyTextMenuItem):
+    _include_descendants = False
+    _subtitle = "Selection Only"
 
 
 class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
@@ -186,6 +269,7 @@ class GrillPlugin(plugin.PluginContainer):
                 ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
                 ("Prim Composition", prim_composition),
+                ("Connection Viewer", _connection_viewer),
             )),
             {"LayerStack Composition": [
                 _menu_item("From Current Stage", _stage_on_widget(_description.LayerStackComposition)),
@@ -216,13 +300,14 @@ class GrillPlugin(plugin.PluginContainer):
 
 
 def _extend_menu(_extender, original, *args):
-    return [_extender(*args)] + original(*args)  # if it looks like a duck
+    return [extension(*args) for extension in _extender] + original(*args)  # if it looks like a duck
 
 
 for module, member_name, extender in (
-        (primContextMenuItems, "_GetContextMenuItems", GrillPrimCompositionMenuItem),
-        (layerStackContextMenu, "_GetContextMenuItems", GrillContentBrowserLayerMenuItem),
-        (attributeViewContextMenu, "_GetContextMenuItems", lambda *args: GrillAttributeEditorMenuItem(*reversed(args)))  # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
+        (primContextMenuItems, "_GetContextMenuItems", _GrillPrimContextMenuItem._items),
+        (layerStackContextMenu, "_GetContextMenuItems", (GrillContentBrowserLayerMenuItem,)),
+        # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
+        (attributeViewContextMenu, "_GetContextMenuItems", (lambda *args: GrillAttributeEditorMenuItem(*reversed(args)),))
 ):
     setattr(module, member_name, partial(_extend_menu, extender, getattr(module, member_name)))
 
@@ -230,3 +315,18 @@ for module, member_name, extender in (
 # We need to do this since primContextMenu imports the function directly, so re-assign with our recently patched one
 primContextMenu._GetContextMenuItems = primContextMenuItems._GetContextMenuItems
 Tf.Type.Define(GrillPlugin)
+
+
+def _patch_style(cls):  # while a nicer way comes up
+    original = cls.__init__
+
+    def _init_with_usdview_style(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        self.setStyleSheet(_core._USDVIEW_STYLE)
+    cls.__init__ = _init_with_usdview_style
+
+
+for cls in _description._Tree, _description.LayerStackComposition, _sheets._StageSpreadsheet:
+    # Only when in USDView we want to extend the stylesheet of some of the classes tha require them
+    # TODO: find a better way to do this
+    _patch_style(cls)

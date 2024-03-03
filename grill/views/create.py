@@ -1,12 +1,11 @@
 from pathlib import Path
 from functools import partial
 
-import networkx
 from pxr import Usd
 from grill import cook
 
 from ._qt import QtWidgets, QtCore, QtGui
-from . import sheets as _sheets, description as _description, _core
+from . import sheets as _sheets, _graph, _core
 
 
 class _CreatePrims(QtWidgets.QDialog):
@@ -97,7 +96,7 @@ class CreateAssets(_CreatePrims):
                 QtWidgets.QMessageBox.warning(self, "Repository path not set", msg)
                 return
         # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
-        root = self._stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
+        root = self._existing_model.stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
         for row in range(model.rowCount()):
             taxon_name = model.data(model.index(row, 0))
@@ -111,14 +110,13 @@ class CreateAssets(_CreatePrims):
             cook.create_unit(taxon, asset_name, label)
 
     def setStage(self, stage):
-        self._stage = stage
         self._existing_model.stage = stage
 
     def _apply(self):
         """Apply current changes and keep dialog open."""
         # TODO: move this to the base _CreatePrims class
         self._create()
-        self.setStage(self._stage)
+        self.setStage(self._existing_model.stage)
 
 
 class TaxonomyEditor(_CreatePrims):
@@ -225,12 +223,11 @@ class TaxonomyEditor(_CreatePrims):
         existing.layout().setContentsMargins(0, 0, 0, 0)
         existing_splitter.addWidget(existing)
 
-        self._graph_view = _description._GraphViewer(parent=self)
+        self._graph_view = _graph._GraphViewer(parent=self)
         existing_splitter.addWidget(self._graph_view)
 
         selectionModel = existing.table.selectionModel()
         selectionModel.selectionChanged.connect(self._existingSelectionChanged)
-        self._ids_by_taxa = dict()
 
         self._splitter.insertWidget(0, existing_splitter)
         self._splitter.setStretchFactor(0, 2)
@@ -243,46 +240,20 @@ class TaxonomyEditor(_CreatePrims):
         """Apply current changes and keep dialog open."""
         # TODO: move this to the base _CreatePrims class
         self._create()
-        self.setStage(self._stage)
+        self.setStage(self._existing.model.stage)
 
     def _existingSelectionChanged(self, selected: QtCore.QItemSelection, deselected: QtCore.QItemSelection):
         prims = (index.data(_core._QT_OBJECT_DATA_ROLE) for index in self._existing.table.selectedIndexes())
-        node_ids = [self._ids_by_taxa[prim.GetName()] for prim in prims]
-        self._graph_view.view(node_ids)
+        self._graph_view.view([prim.GetName() for prim in prims])
 
     @property
     def _taxon_options(self):
         return self._existing.model._objects
 
     def setStage(self, stage):
-        self._stage = stage
         self._existing.model.stage = stage
         existing_taxa = self._taxon_options
-        self._graph_view.graph = graph = networkx.DiGraph(tooltip="Taxonomy Graph")
-        graph.graph['graph'] = {'rankdir': 'LR'}
-        self._ids_by_taxa = _ids_by_taxa = dict()  # {"taxon1": 42}
-        for index, taxon in enumerate(existing_taxa):
-            # TODO: ensure to guarantee taxa will be unique (no duplicated short names)
-            taxon_name = taxon.GetName()
-            graph.add_node(
-                index,
-                label=taxon_name,
-                tooltip=taxon_name,
-                href=f"{self._graph_view.url_id_prefix}{index}",
-                shape="box",
-                fillcolor="lightskyblue1",
-                color="dodgerblue4",
-                style='"filled,rounded"',
-            )
-            _ids_by_taxa[taxon_name] = index
-
-        # TODO: in 3.9 use topological sorting for a single for loop. in the meantime, loop twice (so that all taxa have been added to the graph)
-        for taxon in existing_taxa:
-            taxa = taxon.GetAssetInfoByKey(cook._ASSETINFO_TAXA_KEY)
-            taxon_name = taxon.GetName()
-            taxa.pop(taxon_name)
-            for ref_taxon in taxa:
-                graph.add_edge(_ids_by_taxa[ref_taxon], _ids_by_taxa[taxon_name])
+        self._graph_view.graph = cook.taxonomy_graph(existing_taxa, self._graph_view.url_id_prefix)
 
     @_core.wait()
     def _create(self):
@@ -294,8 +265,9 @@ class TaxonomyEditor(_CreatePrims):
         # TODO: check for "write._TAXONOMY_ROOT_PATH" existence and handle missing
         # TODO: make data point to the actual existing prims from the start.
         #   So that we don't need to call GetPRimAtPath.
-        root = self._stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         model = self.sheet.table.model()
+        stage = self._existing.model.stage
+        root = stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH)
         for row in range(model.rowCount()):
             taxon_name = model.data(model.index(row, 0))
             if not taxon_name:
@@ -304,4 +276,4 @@ class TaxonomyEditor(_CreatePrims):
                 continue
             reference_names = (model.data(model.index(row, 1)) or '').split("\n")
             references = (root.GetPrimAtPath(ref_name) for ref_name in reference_names if ref_name)
-            cook.define_taxon(self._stage, taxon_name, references=references)
+            cook.define_taxon(stage, taxon_name, references=references)
