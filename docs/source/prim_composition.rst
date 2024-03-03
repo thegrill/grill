@@ -1,7 +1,7 @@
 Prim Composition
 ----------------
 
-Uses existing `USD Prim`_ utilities (`Usd.PrimCompositionQuery`_, `PrimIndex.DumpToDotGraph`_, `PrimIndex.DumpToString`_) to help diagnose `composition arc details`_ than the ones visible by default on USD view.
+Uses existing `USD Prim`_ utilities (`Usd.PrimCompositionQuery`_, `PrimIndex.DumpToDotGraph`_, `PrimIndex.DumpToString`_) to help inspect `composition arc details`_ beyond what is possible by default in USD view.
 To visualize the composition graph, the ``graphviz`` library needs to be available on the environment.
 
 .. tab:: USDView
