@@ -64,8 +64,8 @@ In the examples below, prims under ``ChairB_2`` and ``CheerioA_164`` have their 
 .. _Usd.PrimCompositionQuery: https://openusd.org/release/api/class_usd_prim_composition_query.html
 .. _PrimIndex.DumpToDotGraph: https://openusd.org/release/api/class_pcp_prim_index.html#a354744c0f0132f3be40ba4d0b85c966d
 .. _PrimIndex.DumpToString: https://openusd.org/release/api/class_pcp_prim_index.html#a04007d783df319a8101b20e99bbdddd5
-.. _USD Prim: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim
-.. _composition arc details: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-CompositionArcs
-.. _Edit Target: https://graphics.pixar.com/usd/release/api/class_usd_edit_target.html
+.. _USD Prim: https://openusd.org/release/glossary.html#usdglossary-prim
+.. _composition arc details: https://openusd.org/release/glossary.html#usdglossary-compositionarcs
+.. _Edit Target: https://openusd.org/release/glossary.html#edittarget
 .. _displayColor: https://graphics.pixar.com/usd/release/api/class_usd_geom_gprim.html#a0f8310a9dbe0bfc4be2bf4aa32e4a3e4
 .. _Mesh: https://graphics.pixar.com/usd/release/api/class_usd_geom_mesh.html

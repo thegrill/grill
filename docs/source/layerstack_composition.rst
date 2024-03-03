@@ -45,9 +45,9 @@ In the above example, we're inspecting `Animal Logic's USD ALab`_.
     .. image:: https://user-images.githubusercontent.com/8294116/131242428-7b06729d-f96e-4b92-b02f-1608e99859bd.gif
 
 .. _Animal Logic's USD ALab: https://animallogic.com/usd-alab
-.. _layerStacks: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-LayerStack
-.. _layers: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Layer
-.. _stage: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Stage
-.. _prims: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim
-.. _composition arcs: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-CompositionArcs
+.. _layerStacks: https://openusd.org/release/glossary.html#usdglossary-layerstack
+.. _layers: https://openusd.org/release/glossary.html#usdglossary-layer
+.. _stage: https://openusd.org/release/glossary.html#usdglossary-stage
+.. _prims: https://openusd.org/release/glossary.html#usdglossary-prim
+.. _composition arcs: https://openusd.org/release/glossary.html#usdglossary-compositionarcs
 

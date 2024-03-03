@@ -18,5 +18,5 @@ Outputs are marked as red. Inputs are blue (light for non connected inputs, dark
     .. image:: images/connections_viewer_maya.jpg
 
 .. _UsdShade.ConnectableAPI: https://openusd.org/release/api/class_usd_shade_connectable_a_p_i.html
-.. _prim: https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Prim
+.. _prim: https://openusd.org/release/glossary.html#usdglossary-prim
 
