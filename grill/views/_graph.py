@@ -620,8 +620,15 @@ class GraphView(_GraphicsViewport):
                 self.scene().addItem(each_plug)
             return item
 
+        max_y = max(pos[1] for pos in positions.values())
         for nx_node in graph:
-            self._nodes_map[nx_node] = _add_node(nx_node)
+            self._nodes_map[nx_node] = node = _add_node(nx_node)
+            x_pos, y_pos = positions[nx_node]
+            # SVG and dot have inverted coordinates, let's flip Y
+            y_pos = max_y - y_pos
+            bounds = node.boundingRect()
+            # x, y refer to the node's center. Calculate the node position now (top left corner is 0,0)
+            node.setPos(x_pos - bounds.width() / 2, y_pos - bounds.height() / 2)
 
         if isinstance(graph, nx.MultiDiGraph):
             edges = graph.edges
@@ -643,11 +650,6 @@ class GraphView(_GraphicsViewport):
                 kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
-
-        max_y = max(pos[1] for pos in positions.values())
-        for node, (x, y) in positions.items():
-            # SVG and dot have inverted coordinates, let's flip Y
-            self._nodes_map[node].setPos(x, max_y - y)
 
 
 class _Dot2SvgSignals(QtCore.QObject):
