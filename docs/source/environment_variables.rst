@@ -5,9 +5,9 @@ Environment Variables
 Previously, these views used to load static SVG images, leveraging ``QtWebEngine`` for performance.
 However, some environments do not bring ``QtWebEngine`` with them, and others lead to crashes (see `thegrill#36 <https://github.com/thegrill/grill/issues/36>`_ as an example).
 
-In order to help with these issues and to bring interactivity to graph views, `thegrill#35 <https://github.com/thegrill/grill/issues/35>`_ introduced GraphViewer.
+In order to help with these issues and to bring interactivity to graph views, `thegrill#35 <https://github.com/thegrill/grill/issues/35>`_ introduced a custom ``GraphView`` inheriting from ``QGraphicsView``.
 
-The following environment variables will help bring old SVG behavior and still prevent ``QtWebEngine`` crashes:
+When needed, the following environment variables will bring the old SVG behavior and prevent ``QtWebEngine`` crashes:
 
 GRILL_GRAPH_VIEW_VIA_SVG
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -34,12 +34,12 @@ Enable this with a boolean value to inspect graphs as SVG images. A value of ``0
 
         .. image:: images/layerstack_composition_svg.jpg
 
-If you come across any reason to inspect images as SVG, please reach out on GitHub as this will help assess if this should be removed or better integrated beyond an env variable.
+If you come across any reason to inspect images as SVG, please reach out on GitHub as this will help assess if this should be removed or better integrated beyond an environment variable.
 
 GRILL_SVG_VIEW_AS_PIXMAP
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Enable this with a boolean value to load SVG images as pixmaps (thus avoiding use of ``QtWebEngine``):
+Enable this with a boolean value to load SVG images as ``QPixmap`` (thus avoiding use of ``QtWebEngine``):
 
 .. tab:: GRILL_SVG_VIEW_AS_PIXMAP=0
 
