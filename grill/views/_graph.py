@@ -278,7 +278,8 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         if not is_target_plugged:
             line = QtCore.QLineF(source_point, target_point)
-            if self._bidirectional_shift and source_point != target_point:  # offset in case of bidirectional connections
+            if not self._spline_path and self._bidirectional_shift and source_point != target_point:
+                # offset in case of bidirectional connections when we are not using splines (as lines would overlap)
                 line = _parallel_line(line, distance=self._bidirectional_shift, head_offset=0)
 
             # Check if there is an intersection on the target node to know where to draw the arrow
