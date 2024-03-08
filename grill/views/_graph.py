@@ -42,7 +42,6 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 #   - Ability to move further in canvas after Nodes don't exist
 #   - when switching a node left to right with precise source layers, the source node plugs do not refresh if we're moving the target node
 #   - refactor conditionals for _GraphSVGViewer from the description module
-#   - with "precise source layers", if there is only 1 row OR the first / last items are outputing, they should slide with the targets
 
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
@@ -64,11 +63,9 @@ def _convert_graphviz_to_html_label(label):
         for index, field in enumerate(fields):
             port, text = field.strip("<>").split(">", 1)
             bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
-            # bgcolor = "blue opacity=0.5"  # light blue
             # text = f'<font color="#3e4444">{text}</font>'
             text = f'<font color="#242828">{text}</font>'
             label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
-            # label += f"<tr><td port='{port}' style=\"background-color:#ff634720;\">{text}</td></tr>"
         label += "</table>"
     elif label.startswith("<"):
         # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internal to graphviz
@@ -157,9 +154,9 @@ class _Node(QtWidgets.QGraphicsTextItem):
         rect_path = QtGui.QPainterPath()
         round_args = self.boundingRect().adjusted(1, 1, -1, -1), 6, 6
         rect_path.addRoundedRect(*round_args)
-        # painter.fillPath(rect_path, self._fillcolor)
+        painter.fillPath(rect_path, self._fillcolor)
         painter.drawRoundedRect(*round_args)
-        # return super().paint(painter, option, widget)
+        return super().paint(painter, option, widget)
 
     def add_edge(self, edge: _Edge):
         self._edges.append(edge)
@@ -194,17 +191,12 @@ class _Edge(QtWidgets.QGraphicsItem):
         target.add_edge(self)
         self._source = source
         self._target = target
-        # print(f">>>>\n{source=}\n{source_plug=}")
-        # source_plug = source_plug if (source_plug is not None and ((len(source._plugs) > 1) and source_plug > 0 )) else None
         self._source_plug = source_plug
         self._target_plug = target_plug
         self._is_source_plugged = source_plug is not None
         self._is_target_plugged = target_plug is not None
         self._is_cycle = is_cycle = source == target
 
-        radius = 4
-        self._intersection_point = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius) if target_plug is None else None
-        self._intersection_line = None
         self._plug_positions = plug_positions = {}
         outer_shift = 10  # surrounding rect has ~5 px top and bottom
 
@@ -272,9 +264,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         """Update edge position from source and target node following Node::itemChange."""
         self.prepareGeometryChange()
         source_pos = self._source.pos()
-        # source_pos = self._source.boundingRect().center() + self._source.pos()
         target_pos = self._target.pos()
-        # target_pos = self._target.boundingRect().center() + self._target.pos()
         target_bounds = self._target.boundingRect()
 
         source_on_left = self._is_cycle or (self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x())
@@ -288,9 +278,7 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         if not is_target_plugged:
             line = QtCore.QLineF(source_point, target_point)
-            self._intersection_line = line
-            if not self._spline_path and self._bidirectional_shift and source_point != target_point:
-                # offset in case of bidirectional connections when we are not using splines (as lines would overlap)
+            if self._bidirectional_shift and source_point != target_point:  # offset in case of bidirectional connections
                 line = _parallel_line(line, distance=self._bidirectional_shift, head_offset=0)
 
             # Check if there is an intersection on the target node to know where to draw the arrow
@@ -310,9 +298,6 @@ class _Edge(QtWidgets.QGraphicsItem):
                 intersection, intersection_point = intersect_method(each)
                 if intersection == bounded_intersection:
                     target_point = intersection_point
-                    self._intersection_point.setBrush(self._brush)
-                    self._intersection_point.setPos(intersection_point)
-                    self._intersection_point.setVisible(True)
                     break
             else:
                 target_point = line.p2()
@@ -374,12 +359,7 @@ class _Edge(QtWidgets.QGraphicsItem):
             self._pen.setColor(main_color)
             painter.setPen(self._pen)
             self._draw_arrow_head(painter, arrow_head_start_point, arrow_head_end_point)
-            if self._intersection_line:
-                # self._pen.setColor("black")
-                # painter.setPen(self._pen)
-                painter.drawLine(self._intersection_line)
-                self._pen.setColor(main_color)
-                painter.setPen(self._pen)
+
     def _paint_cyclic_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
         center_x, center_y = source_pos.toTuple()
 
@@ -670,8 +650,6 @@ class GraphView(_GraphicsViewport):
                 kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
-            if edge._intersection_point:
-                self.scene().addItem(edge._intersection_point)
 
 
 class _Dot2SvgSignals(QtCore.QObject):
