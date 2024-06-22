@@ -6,6 +6,8 @@ import logging
 import functools
 import contextlib
 
+import numpy as np
+
 from itertools import chain
 from collections import abc
 
@@ -356,6 +358,31 @@ def _format_prim_hierarchy(prims, include_descendants=True, predicate=Usd.PrimDe
 
     with _prim_tree_printer(predicate, set(prims) if not include_descendants else set()) as printer:
         return "\n".join(printer.ftree(prim) for prim in prims_to_tree)
+
+
+# add other mesh creation utilities here?
+def _make_plane(mesh, width, depth):
+    # https://github.com/marcomusy/vedo/issues/86
+    # https://blender.stackexchange.com/questions/230534/fastest-way-to-skin-a-grid
+    x_ = np.linspace(-(width / 2), width / 2, width)
+    z_ = np.linspace(depth / 2, - depth / 2, depth)
+    X, Z = np.meshgrid(x_, z_)
+    x = X.ravel()
+    z = Z.ravel()
+    y = np.zeros_like(x)
+    points = np.stack((x, y, z), axis=1)
+    xmax = x_.size
+    zmax = z_.size
+    faceVertexIndices = np.array([
+        (i + j * xmax, i + j * xmax + 1, i + 1 + (j + 1) * xmax, i + (j + 1) * xmax)
+        for j in range(zmax - 1) for i in range(xmax - 1)
+    ])
+
+    faceVertexCounts = np.full(len(faceVertexIndices), 4)
+    with Sdf.ChangeBlock():
+        mesh.GetPointsAttr().Set(points)
+        mesh.GetFaceVertexCountsAttr().Set(faceVertexCounts)
+        mesh.GetFaceVertexIndicesAttr().Set(faceVertexIndices)
 
 
 class _GeomPrimvarInfo(enum.Enum):  # TODO: find a better name
