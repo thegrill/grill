@@ -91,7 +91,13 @@ def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), outp
     with tempfile.TemporaryDirectory() as target_dir:
         name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
         path = Path(target_dir) / f"{name}.usd"
-        layer.Export(str(path))
+        try:
+            layer.Export(str(path))
+        except Tf.ErrorException:
+            # Prefer crate export for performance, although it could fail to export non-standard layers.
+            # When that fails, try export with original file format.
+            path = path.with_suffix(f".{layer.fileExtension}")
+            layer.Export(str(path))
         path_args = ("-p", "|".join(re.escape(str(p)) for p in paths)) if paths else tuple()
         if output_type == "usdtree":
             args = [_which("usdtree"), "-a", "-m", str(path)]
