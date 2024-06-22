@@ -71,6 +71,7 @@ def _color_spectrum(start: QtGui.QColor, end: QtGui.QColor, amount):
 class _DisplayColorEditor(QtWidgets.QFrame):
     # TODO: support alpha update
     # TODO: still experimental
+    # TODO: nicer color controls, broken in Qt6.7
     def __init__(self, primvar: UsdGeom.Primvar, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._primvar = primvar
