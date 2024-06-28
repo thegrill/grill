@@ -71,16 +71,18 @@ def _color_spectrum(start: QtGui.QColor, end: QtGui.QColor, amount):
 class _DisplayColorEditor(QtWidgets.QFrame):
     # TODO: support alpha update
     # TODO: still experimental
-    # TODO: nicer color controls, broken in Qt6.7
     def __init__(self, primvar: UsdGeom.Primvar, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._primvar = primvar
+
+        def setColorStyle(qobj, color):
+            qobj.setStyleSheet(f"background-color: rgb{color.getRgb()[:3]}")  # don't want alpha
 
         def _pick_color(parent, launcher):
             result = QtWidgets.QColorDialog.getColor(launcher._color, parent, options=QtWidgets.QColorDialog.ShowAlphaChannel)
             if result.isValid():
                 launcher._color = result
-                launcher.setStyleSheet(f"background-color: rgb{result.getRgb()}")
+                setColorStyle(launcher, result)
                 self._update_value()
 
         layout = QtWidgets.QVBoxLayout()
@@ -132,7 +134,7 @@ class _DisplayColorEditor(QtWidgets.QFrame):
                 launcher = QtWidgets.QPushButton()
                 _color_launchers[label].append(launcher)
                 launcher._color = color
-                launcher.setStyleSheet(f"background-color: rgb{color.getRgb()}")
+                setColorStyle(launcher, color)
                 launcher.clicked.connect(partial(_pick_color, self, launcher))
                 range_layout.addWidget(launcher)
             range_frame = QtWidgets.QFrame()
