@@ -228,17 +228,27 @@ class _ValueEditor(QtWidgets.QDialog):
         supported_primvars = {"displayColor"}
         for attr in attributes:
             print(attr)
+            type_name = attr.GetTypeName()
             if (primvar:= UsdGeom.Primvar(attr)) and primvar.GetPrimvarName() in supported_primvars:
                 editor = _attributes._DisplayColorEditor(primvar)
                 layout.addRow(primvar.GetPrimvarName(), editor)
-            elif attr.GetTypeName() == Sdf.ValueTypeNames.Double:
+            elif type_name == Sdf.ValueTypeNames.Token:
+                tokens = attr.GetMetadata('allowedTokens')
+                def update(what, value):
+                    what.Set(value)
+                editor = QtWidgets.QComboBox(self)
+                editor.addItems(tokens)
+                editor.setCurrentText(attr.Get())
+                layout.addRow(attr.GetName(), editor)
+                editor.currentTextChanged.connect(partial(update, attr))
+            elif type_name == Sdf.ValueTypeNames.Double:
                 def update(what, value):
                     what.Set(value)
                 editor = QtWidgets.QDoubleSpinBox(self)
                 editor.setValue(attr.Get())
                 layout.addRow(attr.GetName(), editor)
                 editor.valueChanged.connect(partial(update, attr))
-            elif attr.GetTypeName() == Sdf.ValueTypeNames.Bool:
+            elif type_name == Sdf.ValueTypeNames.Bool:
                 editor = QtWidgets.QCheckBox(self)
                 editor.setChecked(attr.Get())
                 layout.addRow(attr.GetName(), editor)
@@ -246,7 +256,7 @@ class _ValueEditor(QtWidgets.QDialog):
                     what.Set(ed.isChecked())
                 editor.stateChanged.connect(partial(update, editor, attr))
             else:
-                print(f"Don't know how to edit {attr}")
+                print(f"Don't know how to edit {attr} of type {type_name}")
 
 
 class GrillPlugin(plugin.PluginContainer):
