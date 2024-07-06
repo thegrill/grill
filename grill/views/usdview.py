@@ -26,19 +26,24 @@ def _addAction(self, *args, **kwargs):
         # primContextMenu.PrimContextMenu calls addAction(menuItem.GetText(), menuItem.RunCommand)
         # This will break as soon as it's called differently, but it's a risk worth to take for now.
         path, method = args
-        if inspect.ismethod(method) and isinstance(method.__self__, _GrillPrimContextMenuItem):
+        if inspect.ismethod(method) and isinstance(method.__self__, (_GrillPrimContextMenuItem, GrillAttributeEditorMenuItem)):
             path_segments = path.split("|")
             if len(path_segments) > 2:
                 raise RuntimeError(f"Don't know how to handle submenus larger than 2: {path_segments}")
             if len(path_segments) == 2:
                 submenu, action_text = path_segments
                 child_menu = _findOrCreateMenu(self, submenu)
+                if action_text == "...":
+                    for text, runner in method.__self__._GetSubCommands():
+                        child_menu.addAction(text, runner)
+                    return
                 return child_menu.addAction(action_text, method)
 
     return super(type(self), self).addAction(*args, **kwargs)
 
 
 primContextMenu.PrimContextMenu.addAction = _addAction
+attributeViewContextMenu.AttributeViewContextMenu.addAction = _addAction
 
 
 def _stage_on_widget(widget_creator):
@@ -199,13 +204,18 @@ class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContext
         return [i for i in self._dataModel.selection.getProps() if isinstance(i, Usd.Attribute)]
 
     def ShouldDisplay(self):
-        return self._role == attributeViewContextMenu.PropertyViewDataRoles.ATTRIBUTE
+        return (
+            self._role == attributeViewContextMenu.PropertyViewDataRoles.ATTRIBUTE and
+            attr.GetMetadata('allowedTokens') if len(self._attributes) == 1 and (attr := self._attributes[0]).GetTypeName() == Sdf.ValueTypeNames.Token else True
+        )
 
     def IsEnabled(self):
         return self._item and self._attributes
 
     def GetText(self):
-        return f"Edit Value{'s' if len(self._attributes)>1 else ''}"
+        if (selected := len(self._attributes)) == 1 and self._attributes[0].GetTypeName() in {Sdf.ValueTypeNames.Bool, Sdf.ValueTypeNames.Token}:
+            return "Set Value|..."
+        return f"Edit Value{'s' if selected > 1 else ''}"
 
     def RunCommand(self):
         if attributes:=self._attributes:
@@ -213,6 +223,15 @@ class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContext
             editor.setAttributes(attributes)
             editor.show()
 
+    def _GetSubCommands(self):
+        """Collect value options to provide as menu actions when an attribute of a supported types is selected."""
+        attribute, = self._attributes
+        type_name = attribute.GetTypeName()
+        if type_name == Sdf.ValueTypeNames.Bool:
+            return [(str(value), partial(attribute.Set, value)) for value in (True, False)]
+        elif type_name == Sdf.ValueTypeNames.Token:
+            tokens = attribute.GetMetadata('allowedTokens')
+            return [(value, partial(attribute.Set, value)) for value in tokens]
 
 class _ValueEditor(QtWidgets.QDialog):
     def __init__(self, *args, **kwargs):
