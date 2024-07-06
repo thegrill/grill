@@ -62,8 +62,7 @@ def prim_composition(usdviewApi):
     widget = _description.PrimComposition(parent=usdviewApi.qMainWindow)
 
     def primChanged(new_paths, __):
-        new_path = next(iter(new_paths), None)
-        widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path)) if new_path else widget.clear()
+        widget.setPrim(next(map(usdviewApi.stage.GetPrimAtPath, new_paths), None))
 
     usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
     if usdviewApi.prim:
@@ -75,8 +74,7 @@ def _connection_viewer(usdviewApi):
     widget = _description._ConnectableAPIViewer(parent=usdviewApi.qMainWindow)
 
     def primChanged(new_paths, __):
-        new_path = next(iter(new_paths), None)
-        widget.setPrim(usdviewApi.stage.GetPrimAtPath(new_path) if new_path else None)
+        widget.setPrim(next(map(usdviewApi.stage.GetPrimAtPath, new_paths), None))
 
     usdviewApi.dataModel.selection.signalPrimSelectionChanged.connect(primChanged)
     if usdviewApi.prim:
@@ -233,15 +231,28 @@ class _ValueEditor(QtWidgets.QDialog):
                 editor = _attributes._DisplayColorEditor(primvar)
                 layout.addRow(primvar.GetPrimvarName(), editor)
             elif type_name == Sdf.ValueTypeNames.Token:
-                tokens = attr.GetMetadata('allowedTokens')
+                tokens = attr.GetMetadata('allowedTokens') or []  # unregistered tokens could return a None value
                 def update(what, value):
                     what.Set(value)
                 editor = QtWidgets.QComboBox(self)
                 editor.addItems(tokens)
-                editor.setCurrentText(attr.Get())
+                if (current := attr.Get()) in set(tokens):
+                    editor.setCurrentText(current)
+                elif not tokens:
+                    msg = "No 'allowedTokens' registered"
+                    editor.addItems([msg])
+                    editor.setCurrentText(msg)
+                    editor.setEnabled(False)
                 layout.addRow(attr.GetName(), editor)
                 editor.currentTextChanged.connect(partial(update, attr))
-            elif type_name == Sdf.ValueTypeNames.Double:
+            elif type_name == Sdf.ValueTypeNames.String:
+                def update(what, editor):
+                    what.Set(editor.text())
+                editor = QtWidgets.QLineEdit(self)
+                editor.setText(attr.Get() or "")
+                layout.addRow(attr.GetName(), editor)
+                editor.returnPressed.connect(partial(update, attr, editor))
+            elif type_name in {Sdf.ValueTypeNames.Double, Sdf.ValueTypeNames.Float}:
                 def update(what, value):
                     what.Set(value)
                 editor = QtWidgets.QDoubleSpinBox(self)
