@@ -673,6 +673,9 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 with QtCore.QSignalBlocker(browser):
                     _ensure_highligther(highlighters.get(format_choice, _Highlighter))
                     error, text = _format_layer_contents(layer_, format_combo.currentText(), paths, output_args)
+                    line_count = len(text.split("\n"))
+                    line_counter.setText("\n".join(chain(map(str, range(1, line_count)), ["\n"] * 5)))
+                    line_counter.setFixedWidth(12 + (len(str(line_count)) * 8))
                     browser.setText(error if error else text)
 
             populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
@@ -755,7 +758,24 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_line_filter.textChanged.connect(_find)
             browser_line_filter.returnPressed.connect(lambda: _find(browser_line_filter.text()))
 
-            browser_layout.addWidget(browser)
+            line_counter = QtWidgets.QTextBrowser()
+            line_counter.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            line_counter.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            line_count = len(text.split("\n"))
+            line_counter.setText("\n".join(chain(map(str, range(1, line_count)), ["\n"]*5)))
+            line_counter.setFixedWidth(12 + (len(str(line_count))*8))
+            line_counter.setEnabled(False)
+            vertical_scrollbar = line_counter.verticalScrollBar()
+
+            browser.verticalScrollBar().valueChanged.connect(vertical_scrollbar.setValue)
+
+            browser_combined_layout = QtWidgets.QHBoxLayout()
+            browser_combined_layout.addWidget(line_counter)
+            browser_combined_layout.setSpacing(0)
+            browser_combined_layout.setContentsMargins(0,0,0,0)
+            browser_combined_layout.addWidget(browser)
+
+            browser_layout.addLayout(browser_combined_layout)
 
             tab_idx = self.addTab(focus_widget, _layer_label(layer))
             self._tab_layer_by_idx.append(layer_ref)
