@@ -583,10 +583,15 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
         self._tab_layer_by_idx = list()  # [tab_idx: Sdf.Layer]
         self._addLayerTab(layer, paths)
+        self._resolved_layers = {layer}
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
     def tabRemoved(self, index: int) -> None:
+        item = self._tab_layer_by_idx[index]
+        if isinstance(item, (Sdf.Layer, weakref.ref)):
+            item = item.__repr__.__self__
+            self._resolved_layers.discard(item)
         del self._browsers_by_layer[self._tab_layer_by_idx.pop(index)]
 
     def mousePressEvent(self, event):
@@ -596,7 +601,6 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     QtWidgets.QApplication.instance().clipboard().setText(content)
 
                 widget = self.widget(tab_index)
-
                 copy_identifier = QtGui.QAction("Copy Identifier", self)
                 copy_identifier.triggered.connect(partial(_copy, widget._identifier))
                 copy_resolved_path = QtGui.QAction("Copy Resolved Path", self)
@@ -605,9 +609,22 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 menu = QtWidgets.QMenu(self)
                 menu.addAction(copy_identifier)
                 menu.addAction(copy_resolved_path)
+                menu.addSeparator()
+                if tab_index < (max_tab_idx:=len(self._tab_layer_by_idx))-1:
+                    close_right_tabs = QtGui.QAction("Close Tabs to the Right", self)
+                    close_right_tabs.triggered.connect(partial(self._close_many, range(tab_index+1, max_tab_idx+1)))
+                    menu.addAction(close_right_tabs)
+                if tab_index > 0:
+                    close_left_tabs = QtGui.QAction("Close Tabs to the Left", self)
+                    close_left_tabs.triggered.connect(partial(self._close_many, range(tab_index)))
+                    menu.addAction(close_left_tabs)
                 menu.exec(event.globalPos())
 
         super().mousePressEvent(event)
+
+    def _close_many(self, indices: range):
+        for index in reversed(indices):
+            self.tabCloseRequested.emit(index)
 
     @_core.wait()
     def _addImageTab(self, path, *, identifier):
@@ -671,6 +688,25 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             outline_model = QtGui.QStandardItemModel()
             outline_tree = _Tree(outline_model, outliner_columns, _core._ColumnOptions.SEARCH)
             outline_tree.setSelectionMode(outline_tree.SelectionMode.ExtendedSelection)
+            outline_tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+
+            def print_outline_selected_items():
+                content = "\n".join(str(index.data(QtCore.Qt.UserRole)) for index in outline_tree.selectedIndexes() if index.isValid())
+                QtWidgets.QApplication.instance().clipboard().setText(content)
+
+            def show_outline_tree_context_menu(*args):
+                selected_indexes = outline_tree.selectedIndexes()
+                if not selected_indexes:
+                    return
+
+                menu = QtWidgets.QMenu(outline_tree)
+                copy_paths = QtGui.QAction("Copy Paths", outline_tree)
+                copy_paths.triggered.connect(print_outline_selected_items)
+                menu.addAction(copy_paths)
+                menu.exec(QtGui.QCursor.pos())
+
+            outline_tree.customContextMenuRequested.connect(show_outline_tree_context_menu)
+
             outline_model.setHorizontalHeaderLabels([""] * len(outliner_columns))
             root_item = outline_model.invisibleRootItem()
 
@@ -869,6 +905,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             else:
                 if layer:
                     self._addLayerTab(layer, identifier=identifier)
+                    self._resolved_layers.add(layer)
                     return
                 title = "Layer Not Found"
                 text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context} with {anchor=}"
