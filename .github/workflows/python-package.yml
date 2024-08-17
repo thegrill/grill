@@ -14,11 +14,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11"]
+        python-version: ["3.9", "3.12"]
         include:
           - python-version: "3.9"
             install-arguments: ". PySide2 usd-core==22.5 PyOpenGL pygraphviz"
-          - python-version: "3.11"
+          - python-version: "3.12"
             install-arguments: ".[full]"
     steps:
       - uses: actions/checkout@v3
@@ -30,7 +30,7 @@ jobs:
         uses: ts-graphviz/setup-graphviz@v1
       - name: Install Required Libraries
         # Needed for PySide6 CI only: https://stackoverflow.com/questions/75907862/pyside6-wsl2-importerror-libegl-so-1
-        if: "matrix.python-version == '3.11'"
+        if: "matrix.python-version == '3.12'"
         run: |
           sudo apt-get install -y libegl1
       - name: Install
