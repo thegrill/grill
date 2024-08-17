@@ -70,7 +70,6 @@ def _connections_viewer():
                 break
         else:
             widget.setPrim(None)
-            # widget.clear()
 
     om.MEventMessage.addEventCallback("UFESelectionChanged", selection_changed)
     selection_changed()
