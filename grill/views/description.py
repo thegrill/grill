@@ -581,17 +581,75 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         super().__init__(*args, **kwargs)
         self._resolver_context = resolver_context
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
-        self._tab_layer_by_idx = list()  # {tab_idx: Sdf.Layer}
+        self._tab_layer_by_idx = list()  # [tab_idx: Sdf.Layer]
         self._addLayerTab(layer, paths)
-        self._resolved_layers = {layer}
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
     def tabRemoved(self, index: int) -> None:
         del self._browsers_by_layer[self._tab_layer_by_idx.pop(index)]
 
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton:
+            if (tab_index:=self.tabBar().tabAt(event.pos())) != -1:
+                def _copy(content):
+                    QtWidgets.QApplication.instance().clipboard().setText(content)
+
+                widget = self.widget(tab_index)
+
+                copy_identifier = QtGui.QAction("Copy Identifier", self)
+                copy_identifier.triggered.connect(partial(_copy, widget._identifier))
+                copy_resolved_path = QtGui.QAction("Copy Resolved Path", self)
+                copy_resolved_path.triggered.connect(partial(_copy, widget._resolved_path))
+
+                menu = QtWidgets.QMenu(self)
+                menu.addAction(copy_identifier)
+                menu.addAction(copy_resolved_path)
+                menu.exec(event.globalPos())
+
+        super().mousePressEvent(event)
+
     @_core.wait()
-    def _addLayerTab(self, layer, paths=tuple()):
+    def _addImageTab(self, path, *, identifier):
+        try:
+            focus_widget = self._browsers_by_layer[path]
+        except KeyError:
+            pixmap = QtGui.QPixmap(path)
+            if pixmap.isNull():
+                QtWidgets.QMessageBox.warning(self, "Error Opening Contents", f"Could not load {path}")
+                return
+            image_label = QtWidgets.QLabel(parent=self)
+            image_label.setAlignment(QtCore.Qt.AlignCenter)
+            image_label.resize(pixmap.size())
+            image_label.setPixmap(pixmap)
+
+            focus_widget = QtWidgets.QFrame(parent=self)
+            focus_layout = QtWidgets.QHBoxLayout()
+            focus_layout.setContentsMargins(0, 0, 0, 0)
+
+            image_item = QtWidgets.QGraphicsPixmapItem(pixmap)
+            viewport = _graph._GraphicsViewport(parent=self)
+            scene = QtWidgets.QGraphicsScene()
+            scene.addItem(image_item)
+            viewport.setScene(scene)
+
+            focus_layout.addWidget(viewport)
+            focus_widget.setLayout(focus_layout)
+
+            tab_idx = self.addTab(focus_widget, Path(path).name)
+
+            focus_widget._resolved_path = path
+            focus_widget._identifier = identifier
+            self.setTabToolTip(tab_idx, path)
+
+            self._tab_layer_by_idx.append(path)
+            assert len(self._tab_layer_by_idx) == (tab_idx + 1)
+            self._browsers_by_layer[path] = focus_widget
+
+        self.setCurrentWidget(focus_widget)
+
+    @_core.wait()
+    def _addLayerTab(self, layer, paths=tuple(), *, identifier=None):
         layer_ref = weakref.ref(layer)
         try:
             focus_widget = self._browsers_by_layer[layer_ref]
@@ -759,15 +817,23 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_line_filter.returnPressed.connect(lambda: _find(browser_line_filter.text()))
 
             line_counter = QtWidgets.QTextBrowser()
+            line_counter.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
             line_counter.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             line_counter.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            line_count = len(text.split("\n"))
-            line_counter.setText("\n".join(chain(map(str, range(1, line_count)), ["\n"]*5)))
-            line_counter.setFixedWidth(12 + (len(str(line_count))*8))
-            line_counter.setEnabled(False)
-            vertical_scrollbar = line_counter.verticalScrollBar()
 
-            browser.verticalScrollBar().valueChanged.connect(vertical_scrollbar.setValue)
+            line_counter_doc = line_counter.document()
+            line_text_option = line_counter_doc.defaultTextOption()
+            line_text_option.setAlignment(QtCore.Qt.AlignRight)
+            line_counter_doc.setDefaultTextOption(line_text_option)
+
+            line_count = len(text.split("\n"))
+            line_counter.setFixedWidth(12 + (len(str(line_count)) * 8))
+            line_counter.setText("\n".join(chain(map(str, range(1, line_count)), ["\n"]*5)))
+            line_counter.setEnabled(False)
+
+            line_scrollbar = line_counter.verticalScrollBar()
+            browser.verticalScrollBar().valueChanged.connect(line_scrollbar.setValue)
+            browser._line_counter = line_counter
 
             browser_combined_layout = QtWidgets.QHBoxLayout()
             browser_combined_layout.addWidget(line_counter)
@@ -778,6 +844,10 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_layout.addLayout(browser_combined_layout)
 
             tab_idx = self.addTab(focus_widget, _layer_label(layer))
+            focus_widget._resolved_path = str(layer.resolvedPath)
+            focus_widget._identifier = identifier or layer.identifier
+            self.setTabToolTip(tab_idx, str(layer.resolvedPath))
+
             self._tab_layer_by_idx.append(layer_ref)
             assert len(self._tab_layer_by_idx) == (tab_idx+1)
             self._browsers_by_layer[layer_ref] = focus_widget
@@ -790,17 +860,23 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 if not (layer := Sdf.Layer.FindOrOpen(identifier)):
                     layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier)
             except Tf.ErrorException as exc:
+                resolved_path = str(Ar.GetResolver().Resolve(identifier)) or anchor.ComputeAbsolutePath(identifier)
+                if resolved_path and Path(resolved_path).suffix[1:] in _image_formats_to_browse():
+                    self._addImageTab(resolved_path, identifier=identifier)
+                    return
                 title = "Error Opening File"
                 text = str(exc.args[0])
             else:
                 if layer:
-                    self._addLayerTab(layer)
-                    self._resolved_layers.add(layer)
+                    self._addLayerTab(layer, identifier=identifier)
                     return
                 title = "Layer Not Found"
                 text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context} with {anchor=}"
             QtWidgets.QMessageBox.warning(self, title, text)
 
+@cache
+def _image_formats_to_browse():
+    return frozenset(fmt.toStdString() for fmt in QtGui.QImageReader.supportedImageFormats())
 
 class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
     # See: https://doc.qt.io/qt-5/qtextbrowser.html#navigation
@@ -811,6 +887,7 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
     # https://stackoverflow.com/questions/66931106/make-all-matches-links-by-pattern
     # https://fossies.org/dox/CuteMarkEd-0.11.3/markdownhighlighter_8cpp_source.html
     identifier_requested = QtCore.Signal(str)
+    _line_counter = None
 
     def mousePressEvent(self, event):
         cursor = self.cursorForPosition(event.pos())
@@ -837,6 +914,19 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
             self._target = None
         else:
             super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        if event.modifiers() == QtCore.Qt.ControlModifier:
+            if event.angleDelta().y() > 0:
+                self.zoomIn()
+                if self._line_counter:
+                    self._line_counter.zoomIn()
+            else:
+                self.zoomOut()
+                if self._line_counter:
+                    self._line_counter.zoomOut()
+        else:
+            super().wheelEvent(event)
 
 
 class LayerStackComposition(QtWidgets.QDialog):
