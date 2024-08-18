@@ -592,7 +592,7 @@ class GraphView(_GraphicsViewport):
             return
 
         try:  # exit early if pygraphviz is not installed, needed for positions
-            positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+            positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
         except ImportError as exc:
             message = str(exc)
             print(message)
@@ -805,7 +805,7 @@ class _GraphSVGViewer(_DotViewer):
 
         fd, fp = tempfile.mkstemp()
         try:
-            nx.nx_agraph.write_dot(subgraph, fp)
+            nx.nx_pydot.write_dot(subgraph, fp)
         except ImportError as exc:
             error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
         else:
