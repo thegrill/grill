@@ -54,7 +54,7 @@ togglebutton_hint = " "
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
     'naming': ('https://naming.readthedocs.io/en/latest/', None),
-    'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
+    '👨‍🍳': ('https://grill-names.readthedocs.io/en/latest/', None)
 }
 hoverxref_auto_ref = True
 hoverxref_default_type = 'tooltip'
