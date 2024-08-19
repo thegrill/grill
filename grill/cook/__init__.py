@@ -383,7 +383,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
     return spawn_many(parent, child, [path or child.GetName()], [label])[0]
 
 
-def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = []):
+def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = ()):
     """Spawn many instances of a prim unit as descendants of another.
 
     * Both parent and child must be existing units in the catalogue.
