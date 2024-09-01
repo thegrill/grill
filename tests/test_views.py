@@ -647,9 +647,18 @@ class TestViews(unittest.TestCase):
             for child in dialog.findChildren(description._PseudoUSDBrowser):
                 child._resolved_layers.clear()
 
+            prim_index = parent.GetPrimIndex()
+            _, sourcepath = tempfile.mkstemp()
+            prim_index.DumpToDotGraph(sourcepath)
+            targetpath = f"{sourcepath}.png"
+            error, __ = _core._run([_core._which("dot"), sourcepath, "-Tpng", "-o", targetpath])
+            if error:
+                raise RuntimeError(error)
+            browser._addImageTab(targetpath, identifier=targetpath)
+
             invalid_crate_layer = Sdf.Layer.CreateAnonymous()
             invalid_crate_layer.ImportFromString(
-                # not valid in USD-24.05: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
+                # Not valid in USD-24.05: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
                 """#sdf 1.4.32
                 def GprimSphere "Sphere"
                 {
