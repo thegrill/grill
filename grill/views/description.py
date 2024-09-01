@@ -691,7 +691,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             outline_tree.setSelectionMode(outline_tree.SelectionMode.ExtendedSelection)
             outline_tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
 
-            def print_outline_selected_items():
+            def copy_outline_selection():
                 content = "\n".join(str(index.data(QtCore.Qt.UserRole)) for index in outline_tree.selectedIndexes() if index.isValid())
                 QtWidgets.QApplication.instance().clipboard().setText(content)
 
@@ -702,7 +702,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
                 menu = QtWidgets.QMenu(outline_tree)
                 copy_paths = QtGui.QAction("Copy Paths", outline_tree)
-                copy_paths.triggered.connect(print_outline_selected_items)
+                copy_paths.triggered.connect(copy_outline_selection)
                 menu.addAction(copy_paths)
                 menu.exec(QtGui.QCursor.pos())
 
