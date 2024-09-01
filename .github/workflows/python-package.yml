@@ -40,7 +40,9 @@ jobs:
           python -m pip install ${{ matrix.install-arguments }}
       - name: Test
         run: |
-          pytest --cov=./ --cov-report xml
-          codecov
+          pytest --cov .
+        # https://github.com/marketplace/actions/codecov
       - name: Codecov Report
         uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
