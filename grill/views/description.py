@@ -96,6 +96,7 @@ def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), outp
         except Tf.ErrorException:
             # Prefer crate export for performance, although it could fail to export non-standard layers.
             # When that fails, try export with original file format.
+            # E.g. content that fails to export: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
             path = path.with_suffix(f".{layer.fileExtension}")
             layer.Export(str(path))
         path_args = ("-p", "|".join(re.escape(str(p)) for p in paths)) if paths else tuple()

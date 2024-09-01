@@ -636,8 +636,9 @@ class TestViews(unittest.TestCase):
             browser = dialog.findChild(description._PseudoUSDBrowser)
             assert browser._browsers_by_layer.values()
             first_browser_widget, = browser._browsers_by_layer.values()
-            first_browser_widget._format_options.setCurrentIndex(0)
-            first_browser_widget._format_options.setCurrentIndex(1)
+            first_browser_widget._format_options.setCurrentIndex(0)  # pseudoLayer (through sdffilter)
+            first_browser_widget._format_options.setCurrentIndex(1)  # outline (through sdffilter)
+            first_browser_widget._format_options.setCurrentIndex(2)  # usdtree (through usdtree)
             first_browser_widget._format_options.setCurrentIndex(0)
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
@@ -645,6 +646,27 @@ class TestViews(unittest.TestCase):
             browser.tabCloseRequested.emit(0)  # request closing our first tab
             for child in dialog.findChildren(description._PseudoUSDBrowser):
                 child._resolved_layers.clear()
+
+            invalid_crate_layer = Sdf.Layer.CreateAnonymous()
+            invalid_crate_layer.ImportFromString(
+                # not valid in USD-24.05: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
+                """#sdf 1.4.32
+                def GprimSphere "Sphere"
+                {
+                    delete varying rel constraintTarget = </Pivot3>
+                    add varying rel constraintTarget = [
+                        </Pivot3>,
+                        </Pivot2>,
+                    ]
+                    reorder varying rel constraintTarget = [
+                        </Pivot2>,
+                        </Pivot>,
+                    ]
+                    varying rel constraintTarget.default = </Pivot>    
+                }
+                """
+            )
+            description._start_content_browser([invalid_crate_layer], None, stage.GetPathResolverContext(), ())
 
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = None
