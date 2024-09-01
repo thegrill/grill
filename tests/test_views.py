@@ -617,12 +617,16 @@ class TestViews(unittest.TestCase):
         with vset.GetVariantEditContext():
             stage.DefinePrim(child.GetPath().AppendChild("in_variant"))
         path_with_variant = child.GetPath().AppendVariantSelection(variant_set_name, variant_name)
+
+        _core_run = _core._run
         # sdffilter still not coming via pypi, so patch for now
         if not description._which("sdffilter"):
-            def _to_ascii(layer, *args, **kwargs):
-                return "", layer.ExportToString()
+            def _fake_run(run_args: list):
+                print(f"{run_args=}")
+                *_, path = run_args
+                return "", Sdf.Layer.FindOrOpen(path).ExportToString()
         else:
-            _to_ascii = description._format_layer_contents
+            _fake_run = _core_run
 
         layers = stage.GetLayerStack()
         args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned.GetPrim().GetPath(), path_with_variant)
@@ -631,8 +635,7 @@ class TestViews(unittest.TestCase):
         def _log(*args):
             print(args)
 
-        _core_run = _core._run
-        with mock.patch("grill.views.description._format_layer_contents", new=_to_ascii):
+        with mock.patch("grill.views.description._core._run", new=_fake_run):
             dialog = description._start_content_browser(*args)
             browser = dialog.findChild(description._PseudoUSDBrowser)
             assert browser._browsers_by_layer.values()
@@ -640,8 +643,6 @@ class TestViews(unittest.TestCase):
             first_browser_widget._format_options.setCurrentIndex(0)  # pseudoLayer (through sdffilter)
             first_browser_widget._format_options.setCurrentIndex(1)  # outline (through sdffilter)
             first_browser_widget._format_options.setCurrentIndex(2)  # usdtree (through usdtree)
-            import time
-            time.sleep(1)
             first_browser_widget._format_options.setCurrentIndex(0)
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
