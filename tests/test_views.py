@@ -618,16 +618,6 @@ class TestViews(unittest.TestCase):
             stage.DefinePrim(child.GetPath().AppendChild("in_variant"))
         path_with_variant = child.GetPath().AppendVariantSelection(variant_set_name, variant_name)
 
-        _core_run = _core._run
-        # sdffilter still not coming via pypi, so patch for now
-        if not description._which("sdffilter"):
-            def _fake_run(run_args: list):
-                print(f"{run_args=}")
-                *_, path = run_args
-                return "", Sdf.Layer.FindOrOpen(path).ExportToString()
-        else:
-            _fake_run = _core_run
-
         layers = stage.GetLayerStack()
         args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned.GetPrim().GetPath(), path_with_variant)
         anchor = layers[0]
@@ -635,7 +625,13 @@ class TestViews(unittest.TestCase):
         def _log(*args):
             print(args)
 
-        with mock.patch("grill.views.description._core._run", new=_fake_run):
+        _core_run = _core._run
+
+        def _fake_run(run_args: list):
+            return "", Sdf.Layer.FindOrOpen(run_args[-1]).ExportToString()
+
+        # sdffilter still not coming via pypi, so patch for now
+        with mock.patch("grill.views.description._core._run", new=_fake_run if not description._which("sdffilter") else _core_run):
             dialog = description._start_content_browser(*args)
             browser = dialog.findChild(description._PseudoUSDBrowser)
             assert browser._browsers_by_layer.values()
