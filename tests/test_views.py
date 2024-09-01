@@ -631,6 +631,7 @@ class TestViews(unittest.TestCase):
         def _log(*args):
             print(args)
 
+        _core_run = _core._run
         with mock.patch("grill.views.description._format_layer_contents", new=_to_ascii):
             dialog = description._start_content_browser(*args)
             browser = dialog.findChild(description._PseudoUSDBrowser)
@@ -651,7 +652,7 @@ class TestViews(unittest.TestCase):
             _, sourcepath = tempfile.mkstemp()
             prim_index.DumpToDotGraph(sourcepath)
             targetpath = f"{sourcepath}.png"
-            error, __ = _core._run([_core._which("dot"), sourcepath, "-Tpng", "-o", targetpath])
+            error, __ = _core_run([_core._which("dot"), sourcepath, "-Tpng", "-o", targetpath])
             if error:
                 raise RuntimeError(error)
             browser._addImageTab(targetpath, identifier=targetpath)
