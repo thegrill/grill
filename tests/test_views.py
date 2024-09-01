@@ -640,6 +640,8 @@ class TestViews(unittest.TestCase):
             first_browser_widget._format_options.setCurrentIndex(0)  # pseudoLayer (through sdffilter)
             first_browser_widget._format_options.setCurrentIndex(1)  # outline (through sdffilter)
             first_browser_widget._format_options.setCurrentIndex(2)  # usdtree (through usdtree)
+            import time
+            time.sleep(1)
             first_browser_widget._format_options.setCurrentIndex(0)
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
