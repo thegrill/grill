@@ -633,7 +633,7 @@ class TestViews(unittest.TestCase):
         # sdffilter still not coming via pypi, so patch for now
         with mock.patch("grill.views.description._core._run", new=_fake_run if not description._which("sdffilter") else _core_run):
             dialog = description._start_content_browser(*args)
-            browser = dialog.findChild(description._PseudoUSDBrowser)
+            browser: description._PseudoUSDBrowser = dialog.findChild(description._PseudoUSDBrowser)
             assert browser._browsers_by_layer.values()
             first_browser_widget, = browser._browsers_by_layer.values()
             first_browser_widget._format_options.setCurrentIndex(0)  # pseudoLayer (through sdffilter)
@@ -643,6 +643,10 @@ class TestViews(unittest.TestCase):
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
+
+            menu = browser._menu_for_tab(0)
+            self.assertTrue(bool(menu.actions()))
+
             browser.tabCloseRequested.emit(0)  # request closing our first tab
             for child in dialog.findChildren(description._PseudoUSDBrowser):
                 child._resolved_layers.clear()
@@ -651,10 +655,9 @@ class TestViews(unittest.TestCase):
             _, sourcepath = tempfile.mkstemp()
             prim_index.DumpToDotGraph(sourcepath)
             targetpath = f"{sourcepath}.png"
-            error, __ = _core_run([_core._which("dot"), sourcepath, "-Tpng", "-o", targetpath])
-            if error:
-                raise RuntimeError(error)
-            browser._addImageTab(targetpath, identifier=targetpath)
+            # create a temporary file loadable by our image tab
+            _core_run([_core._which("dot"), sourcepath, "-Tpng", "-o", targetpath])
+            browser._on_identifier_requested(anchor, targetpath)
 
             invalid_crate_layer = Sdf.Layer.CreateAnonymous()
             invalid_crate_layer.ImportFromString(

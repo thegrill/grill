@@ -596,32 +596,23 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         del self._browsers_by_layer[self._tab_layer_by_idx.pop(index)]
 
     def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.RightButton:
-            if (tab_index:=self.tabBar().tabAt(event.pos())) != -1:
-                def _copy(content):
-                    QtWidgets.QApplication.instance().clipboard().setText(content)
-
-                widget = self.widget(tab_index)
-                copy_identifier = QtGui.QAction("Copy Identifier", self)
-                copy_identifier.triggered.connect(partial(_copy, widget._identifier))
-                copy_resolved_path = QtGui.QAction("Copy Resolved Path", self)
-                copy_resolved_path.triggered.connect(partial(_copy, widget._resolved_path))
-
-                menu = QtWidgets.QMenu(self)
-                menu.addAction(copy_identifier)
-                menu.addAction(copy_resolved_path)
-                menu.addSeparator()
-                if tab_index < (max_tab_idx:=len(self._tab_layer_by_idx))-1:
-                    close_right_tabs = QtGui.QAction("Close Tabs to the Right", self)
-                    close_right_tabs.triggered.connect(partial(self._close_many, range(tab_index+1, max_tab_idx+1)))
-                    menu.addAction(close_right_tabs)
-                if tab_index > 0:
-                    close_left_tabs = QtGui.QAction("Close Tabs to the Left", self)
-                    close_left_tabs.triggered.connect(partial(self._close_many, range(tab_index)))
-                    menu.addAction(close_left_tabs)
-                menu.exec(event.globalPos())
+        if event.button() == QtCore.Qt.RightButton and (tab_index := self.tabBar().tabAt(event.pos())) != -1:
+            self._menu_for_tab(tab_index).exec(event.globalPos())
 
         super().mousePressEvent(event)
+
+    def _menu_for_tab(self, tab_index):
+        widget = self.widget(tab_index)
+        clipboard = QtWidgets.QApplication.instance().clipboard()
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Copy Identifier", partial(clipboard.setText, widget._identifier))
+        menu.addAction("Copy Resolved Path", partial(clipboard.setText, widget._resolved_path))
+        menu.addSeparator()
+        if tab_index < (max_tab_idx := len(self._tab_layer_by_idx)) - 1:
+            menu.addAction("Close Tabs to the Right", partial(self._close_many, range(tab_index + 1, max_tab_idx + 1)))
+        if tab_index > 0:
+            menu.addAction("Close Tabs to the Left", partial(self._close_many, range(tab_index)))
+        return menu
 
     def _close_many(self, indices: range):
         for index in reversed(indices):
