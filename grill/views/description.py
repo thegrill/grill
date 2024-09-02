@@ -905,7 +905,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
 @cache
 def _image_formats_to_browse():
-    return frozenset(fmt.toStdString() for fmt in QtGui.QImageReader.supportedImageFormats())
+    return frozenset(str(fmt, 'utf-8') for fmt in QtGui.QImageReader.supportedImageFormats())
 
 class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
     # See: https://doc.qt.io/qt-5/qtextbrowser.html#navigation
