@@ -445,7 +445,8 @@ class TestViews(unittest.TestCase):
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
 
         if isinstance(widget._graph_view, _graph.GraphView):
-            sender = next(iter(widget._graph_view._nodes_map.values()))
+            sender = next(iter(widget._graph_view._nodes_map.values()), None)
+            self.assertIsNotNone(sender, msg=f"Expected sender to be an actual object of type {_graph._Node}. Got None, check pygraphviz / pydot requirements")
             sender.linkActivated.emit("")
         else:
             valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{existing[-1].GetName()}")
