@@ -640,14 +640,39 @@ class TestViews(unittest.TestCase):
             first_browser_widget._format_options.setCurrentIndex(1)  # outline (through sdffilter)
             first_browser_widget._format_options.setCurrentIndex(2)  # usdtree (through usdtree)
             first_browser_widget._format_options.setCurrentIndex(0)
+
+            browser_tab: description._PseudoUSDTabBrowser = first_browser_widget.findChild(description._PseudoUSDTabBrowser)
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
+                _, empty_png = tempfile.mkstemp(suffix=".png")
+                browser._on_identifier_requested(anchor, empty_png)
+                _, empty_usd = tempfile.mkstemp(suffix=".usda")
+                browser._on_identifier_requested(anchor, empty_usd)
 
             menu = browser._menu_for_tab(0)
             self.assertTrue(bool(menu.actions()))
 
-            browser.tabCloseRequested.emit(0)  # request closing our first tab
+            position = QtCore.QPoint(10, 10)
+            pixelDelta = QtCore.QPoint(0, 0)
+            angleDelta_zoomIn = QtCore.QPoint(0, 120)
+            buttons = QtCore.Qt.NoButton
+            modifiers = QtCore.Qt.ControlModifier
+            phase = QtCore.Qt.NoScrollPhase
+            inverted = False
+
+            # ZOOM IN
+            event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomIn, buttons, modifiers, phase, inverted)
+            browser_tab.wheelEvent(event)
+
+            # Assert that the scale has changed according to the zoom logic
+            angleDelta_zoomOut = QtCore.QPoint(-120, 0)
+
+            # ZOOM OUT
+            event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomOut, buttons, modifiers, phase, inverted)
+            browser_tab.wheelEvent(event)
+
+            browser._close_many(range(len(browser._tab_layer_by_idx)))
             for child in dialog.findChildren(description._PseudoUSDBrowser):
                 child._resolved_layers.clear()
 
