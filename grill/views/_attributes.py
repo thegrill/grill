@@ -75,11 +75,14 @@ class _DisplayColorEditor(QtWidgets.QFrame):
         super().__init__(*args, **kwargs)
         self._primvar = primvar
 
+        def setColorStyle(qobj, color):
+            qobj.setStyleSheet(f"background-color: rgb{color.getRgb()[:3]}")  # don't want alpha
+
         def _pick_color(parent, launcher):
             result = QtWidgets.QColorDialog.getColor(launcher._color, parent, options=QtWidgets.QColorDialog.ShowAlphaChannel)
             if result.isValid():
                 launcher._color = result
-                launcher.setStyleSheet(f"background-color: rgb{result.getRgb()}")
+                setColorStyle(launcher, result)
                 self._update_value()
 
         layout = QtWidgets.QVBoxLayout()
@@ -131,7 +134,7 @@ class _DisplayColorEditor(QtWidgets.QFrame):
                 launcher = QtWidgets.QPushButton()
                 _color_launchers[label].append(launcher)
                 launcher._color = color
-                launcher.setStyleSheet(f"background-color: rgb{color.getRgb()}")
+                setColorStyle(launcher, color)
                 launcher.clicked.connect(partial(_pick_color, self, launcher))
                 range_layout.addWidget(launcher)
             range_frame = QtWidgets.QFrame()

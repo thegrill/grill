@@ -59,7 +59,7 @@ _HIGHLIGHT_COLORS = MappingProxyType(
     )}
 )
 _HIGHLIGHT_PATTERN = re.compile(
-    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload|references)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
 )
 
 _OUTLINE_SDF_PATTERN = re.compile(  # this is a very minimal draft to have colors on the outline sdffilter mode.
@@ -91,7 +91,14 @@ def _format_layer_contents(layer, output_type="pseudoLayer", paths=tuple(), outp
     with tempfile.TemporaryDirectory() as target_dir:
         name = Path(layer.realPath).stem if layer.realPath else "".join(c if c.isalnum() else "_" for c in layer.identifier)
         path = Path(target_dir) / f"{name}.usd"
-        layer.Export(str(path))
+        try:
+            layer.Export(str(path))
+        except Tf.ErrorException:
+            # Prefer crate export for performance, although it could fail to export non-standard layers.
+            # When that fails, try export with original file format.
+            # E.g. content that fails to export: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
+            path = path.with_suffix(f".{layer.fileExtension}")
+            layer.Export(str(path))
         path_args = ("-p", "|".join(re.escape(str(p)) for p in paths)) if paths else tuple()
         if output_type == "usdtree":
             args = [_which("usdtree"), "-a", "-m", str(path)]
@@ -575,17 +582,83 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
         super().__init__(*args, **kwargs)
         self._resolver_context = resolver_context
         self._browsers_by_layer = dict()  # {Sdf.Layer: _PseudoUSDTabBrowser}
-        self._tab_layer_by_idx = list()  # {tab_idx: Sdf.Layer}
+        self._tab_layer_by_idx = list()  # [tab_idx: Sdf.Layer]
         self._addLayerTab(layer, paths)
         self._resolved_layers = {layer}
         self.setTabsClosable(True)
         self.tabCloseRequested.connect(lambda idx: self.removeTab(idx))
 
     def tabRemoved(self, index: int) -> None:
+        item = self._tab_layer_by_idx[index]
+        if isinstance(item, (Sdf.Layer, weakref.ref)):
+            item = item.__repr__.__self__
+            self._resolved_layers.discard(item)
         del self._browsers_by_layer[self._tab_layer_by_idx.pop(index)]
 
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton and (tab_index := self.tabBar().tabAt(event.pos())) != -1:
+            self._menu_for_tab(tab_index).exec_(event.globalPos())
+
+        super().mousePressEvent(event)
+
+    def _menu_for_tab(self, tab_index):
+        widget = self.widget(tab_index)
+        clipboard = QtWidgets.QApplication.instance().clipboard()
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Copy Identifier", partial(clipboard.setText, widget._identifier))
+        menu.addAction("Copy Resolved Path", partial(clipboard.setText, widget._resolved_path))
+        menu.addSeparator()
+        if tab_index < (max_tab_idx := len(self._tab_layer_by_idx)) - 1:
+            menu.addAction("Close Tabs to the Right", partial(self._close_many, range(tab_index + 1, max_tab_idx + 1)))
+        if tab_index > 0:
+            menu.addAction("Close Tabs to the Left", partial(self._close_many, range(tab_index)))
+        return menu
+
+    def _close_many(self, indices: range):
+        for index in reversed(indices):
+            self.tabCloseRequested.emit(index)
+
     @_core.wait()
-    def _addLayerTab(self, layer, paths=tuple()):
+    def _addImageTab(self, path, *, identifier):
+        try:
+            focus_widget = self._browsers_by_layer[path]
+        except KeyError:
+            pixmap = QtGui.QPixmap(path)
+            if pixmap.isNull():
+                QtWidgets.QMessageBox.warning(self, "Error Opening Contents", f"Could not load {path}")
+                return
+            image_label = QtWidgets.QLabel(parent=self)
+            image_label.setAlignment(QtCore.Qt.AlignCenter)
+            image_label.resize(pixmap.size())
+            image_label.setPixmap(pixmap)
+
+            focus_widget = QtWidgets.QFrame(parent=self)
+            focus_layout = QtWidgets.QHBoxLayout()
+            focus_layout.setContentsMargins(0, 0, 0, 0)
+
+            image_item = QtWidgets.QGraphicsPixmapItem(pixmap)
+            viewport = _graph._GraphicsViewport(parent=self)
+            scene = QtWidgets.QGraphicsScene()
+            scene.addItem(image_item)
+            viewport.setScene(scene)
+
+            focus_layout.addWidget(viewport)
+            focus_widget.setLayout(focus_layout)
+
+            tab_idx = self.addTab(focus_widget, Path(path).name)
+
+            focus_widget._resolved_path = path
+            focus_widget._identifier = identifier
+            self.setTabToolTip(tab_idx, path)
+
+            self._tab_layer_by_idx.append(path)
+            assert len(self._tab_layer_by_idx) == (tab_idx + 1)
+            self._browsers_by_layer[path] = focus_widget
+
+        self.setCurrentWidget(focus_widget)
+
+    @_core.wait()
+    def _addLayerTab(self, layer, paths=tuple(), *, identifier=None):
         layer_ref = weakref.ref(layer)
         try:
             focus_widget = self._browsers_by_layer[layer_ref]
@@ -607,6 +680,17 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             outline_model = QtGui.QStandardItemModel()
             outline_tree = _Tree(outline_model, outliner_columns, _core._ColumnOptions.SEARCH)
             outline_tree.setSelectionMode(outline_tree.SelectionMode.ExtendedSelection)
+            outline_tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+
+            def show_outline_tree_context_menu(*args):
+                if selected_indexes:= outline_tree.selectedIndexes():
+                    content = "\n".join(str(index.data(QtCore.Qt.UserRole)) for index in selected_indexes if index.isValid())
+                    menu = QtWidgets.QMenu(outline_tree)
+                    menu.addAction("Copy Paths", partial(QtWidgets.QApplication.instance().clipboard().setText, content))
+                    menu.exec_(QtGui.QCursor.pos())
+
+            outline_tree.customContextMenuRequested.connect(show_outline_tree_context_menu)
+
             outline_model.setHorizontalHeaderLabels([""] * len(outliner_columns))
             root_item = outline_model.invisibleRootItem()
 
@@ -667,6 +751,9 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 with QtCore.QSignalBlocker(browser):
                     _ensure_highligther(highlighters.get(format_choice, _Highlighter))
                     error, text = _format_layer_contents(layer_, format_combo.currentText(), paths, output_args)
+                    line_count = len(text.split("\n"))
+                    line_counter.setText("\n".join(chain(map(str, range(1, line_count)), ["\n"] * 5)))
+                    line_counter.setFixedWidth(12 + (len(str(line_count)) * 8))
                     browser.setText(error if error else text)
 
             populate(sorted(content_paths))  # Sdf.Layer.Traverse collects paths from deepest -> highest. Sort from high -> deep
@@ -749,9 +836,38 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             browser_line_filter.textChanged.connect(_find)
             browser_line_filter.returnPressed.connect(lambda: _find(browser_line_filter.text()))
 
-            browser_layout.addWidget(browser)
+            line_counter = QtWidgets.QTextBrowser()
+            line_counter.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
+            line_counter.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            line_counter.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+            line_counter_doc = line_counter.document()
+            line_text_option = line_counter_doc.defaultTextOption()
+            line_text_option.setAlignment(QtCore.Qt.AlignRight)
+            line_counter_doc.setDefaultTextOption(line_text_option)
+
+            line_count = len(text.split("\n"))
+            line_counter.setFixedWidth(12 + (len(str(line_count)) * 8))
+            line_counter.setText("\n".join(chain(map(str, range(1, line_count)), ["\n"]*5)))
+            line_counter.setEnabled(False)
+
+            line_scrollbar = line_counter.verticalScrollBar()
+            browser.verticalScrollBar().valueChanged.connect(line_scrollbar.setValue)
+            browser._line_counter = line_counter
+
+            browser_combined_layout = QtWidgets.QHBoxLayout()
+            browser_combined_layout.addWidget(line_counter)
+            browser_combined_layout.setSpacing(0)
+            browser_combined_layout.setContentsMargins(0,0,0,0)
+            browser_combined_layout.addWidget(browser)
+
+            browser_layout.addLayout(browser_combined_layout)
 
             tab_idx = self.addTab(focus_widget, _layer_label(layer))
+            focus_widget._resolved_path = str(layer.resolvedPath)
+            focus_widget._identifier = identifier or layer.identifier
+            self.setTabToolTip(tab_idx, str(layer.resolvedPath))
+
             self._tab_layer_by_idx.append(layer_ref)
             assert len(self._tab_layer_by_idx) == (tab_idx+1)
             self._browsers_by_layer[layer_ref] = focus_widget
@@ -764,17 +880,24 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                 if not (layer := Sdf.Layer.FindOrOpen(identifier)):
                     layer = Sdf.Layer.FindOrOpenRelativeToLayer(anchor, identifier)
             except Tf.ErrorException as exc:
+                resolved_path = str(Ar.GetResolver().Resolve(identifier)) or anchor.ComputeAbsolutePath(identifier)
+                if resolved_path and Path(resolved_path).suffix[1:] in _image_formats_to_browse():
+                    self._addImageTab(resolved_path, identifier=identifier)
+                    return
                 title = "Error Opening File"
                 text = str(exc.args[0])
             else:
                 if layer:
-                    self._addLayerTab(layer)
+                    self._addLayerTab(layer, identifier=identifier)
                     self._resolved_layers.add(layer)
                     return
                 title = "Layer Not Found"
                 text = f"Could not find layer with {identifier=} under resolver context {self._resolver_context} with {anchor=}"
             QtWidgets.QMessageBox.warning(self, title, text)
 
+@cache
+def _image_formats_to_browse():
+    return frozenset(str(fmt, 'utf-8') for fmt in QtGui.QImageReader.supportedImageFormats())
 
 class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
     # See: https://doc.qt.io/qt-5/qtextbrowser.html#navigation
@@ -785,6 +908,7 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
     # https://stackoverflow.com/questions/66931106/make-all-matches-links-by-pattern
     # https://fossies.org/dox/CuteMarkEd-0.11.3/markdownhighlighter_8cpp_source.html
     identifier_requested = QtCore.Signal(str)
+    _line_counter = None
 
     def mousePressEvent(self, event):
         cursor = self.cursorForPosition(event.pos())
@@ -811,6 +935,15 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
             self._target = None
         else:
             super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        if event.modifiers() == QtCore.Qt.ControlModifier:
+            method = operator.methodcaller("zoomIn" if event.angleDelta().y() > 0 else "zoomOut")
+            method(self)
+            if self._line_counter:
+                method(self._line_counter)
+        else:
+            super().wheelEvent(event)
 
 
 class LayerStackComposition(QtWidgets.QDialog):

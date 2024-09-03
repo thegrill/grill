@@ -445,7 +445,8 @@ class TestViews(unittest.TestCase):
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
 
         if isinstance(widget._graph_view, _graph.GraphView):
-            sender = next(iter(widget._graph_view._nodes_map.values()))
+            sender = next(iter(widget._graph_view._nodes_map.values()), None)
+            self.assertIsNotNone(sender, msg=f"Expected sender to be an actual object of type {_graph._Node}. Got None, check pygraphviz / pydot requirements")
             sender.linkActivated.emit("")
         else:
             valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{existing[-1].GetName()}")
@@ -617,12 +618,6 @@ class TestViews(unittest.TestCase):
         with vset.GetVariantEditContext():
             stage.DefinePrim(child.GetPath().AppendChild("in_variant"))
         path_with_variant = child.GetPath().AppendVariantSelection(variant_set_name, variant_name)
-        # sdffilter still not coming via pypi, so patch for now
-        if not description._which("sdffilter"):
-            def _to_ascii(layer, *args, **kwargs):
-                return "", layer.ExportToString()
-        else:
-            _to_ascii = description._format_layer_contents
 
         layers = stage.GetLayerStack()
         args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned.GetPrim().GetPath(), path_with_variant)
@@ -631,20 +626,85 @@ class TestViews(unittest.TestCase):
         def _log(*args):
             print(args)
 
-        with mock.patch("grill.views.description._format_layer_contents", new=_to_ascii):
+        _core_run = _core._run
+
+        def _fake_run(run_args: list):
+            return "", Sdf.Layer.FindOrOpen(run_args[-1]).ExportToString()
+
+        # sdffilter still not coming via pypi, so patch for now
+        with mock.patch("grill.views.description._core._run", new=_fake_run if not description._which("sdffilter") else _core_run):
             dialog = description._start_content_browser(*args)
-            browser = dialog.findChild(description._PseudoUSDBrowser)
+            browser: description._PseudoUSDBrowser = dialog.findChild(description._PseudoUSDBrowser)
             assert browser._browsers_by_layer.values()
             first_browser_widget, = browser._browsers_by_layer.values()
+            first_browser_widget._format_options.setCurrentIndex(0)  # pseudoLayer (through sdffilter)
+            first_browser_widget._format_options.setCurrentIndex(1)  # outline (through sdffilter)
+            first_browser_widget._format_options.setCurrentIndex(2)  # usdtree (through usdtree)
             first_browser_widget._format_options.setCurrentIndex(0)
-            first_browser_widget._format_options.setCurrentIndex(1)
-            first_browser_widget._format_options.setCurrentIndex(0)
+
+            browser_tab: description._PseudoUSDTabBrowser = first_browser_widget.findChild(description._PseudoUSDTabBrowser)
             browser._on_identifier_requested(anchor, layers[1].identifier)
             with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
-            browser.tabCloseRequested.emit(0)  # request closing our first tab
+                _, empty_png = tempfile.mkstemp(suffix=".png")
+                browser._on_identifier_requested(anchor, empty_png)
+                _, empty_usd = tempfile.mkstemp(suffix=".usda")
+                browser._on_identifier_requested(anchor, empty_usd)
+
+            menu = browser._menu_for_tab(0)
+            self.assertTrue(bool(menu.actions()))
+
+            position = QtCore.QPoint(10, 10)
+            pixelDelta = QtCore.QPoint(0, 0)
+            angleDelta_zoomIn = QtCore.QPoint(0, 120)
+            buttons = QtCore.Qt.NoButton
+            modifiers = QtCore.Qt.ControlModifier
+            phase = QtCore.Qt.NoScrollPhase
+            inverted = False
+
+            # ZOOM IN
+            event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomIn, buttons, modifiers, phase, inverted)
+            browser_tab.wheelEvent(event)
+
+            # Assert that the scale has changed according to the zoom logic
+            angleDelta_zoomOut = QtCore.QPoint(-120, 0)
+
+            # ZOOM OUT
+            event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomOut, buttons, modifiers, phase, inverted)
+            browser_tab.wheelEvent(event)
+
+            browser._close_many(range(len(browser._tab_layer_by_idx)))
             for child in dialog.findChildren(description._PseudoUSDBrowser):
                 child._resolved_layers.clear()
+
+            prim_index = parent.GetPrimIndex()
+            _, sourcepath = tempfile.mkstemp()
+            prim_index.DumpToDotGraph(sourcepath)
+            targetpath = f"{sourcepath}.png"
+            # create a temporary file loadable by our image tab
+            _core_run([_core._which("dot"), sourcepath, "-Tpng", "-o", targetpath])
+            browser._on_identifier_requested(anchor, targetpath)
+
+            invalid_crate_layer = Sdf.Layer.CreateAnonymous()
+            invalid_crate_layer.ImportFromString(
+                # Not valid in USD-24.05: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
+                """#sdf 1.4.32
+                def GprimSphere "Sphere"
+                {
+                    delete varying rel constraintTarget = </Pivot3>
+                    add varying rel constraintTarget = [
+                        </Pivot3>,
+                        </Pivot2>,
+                    ]
+                    reorder varying rel constraintTarget = [
+                        </Pivot2>,
+                        </Pivot>,
+                    ]
+                    varying rel constraintTarget.default = </Pivot>    
+                }
+                """
+            )
+            description._start_content_browser([invalid_crate_layer], None, stage.GetPathResolverContext(), ())
 
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = None

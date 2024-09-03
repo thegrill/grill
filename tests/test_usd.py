@@ -80,3 +80,13 @@ class TestUSD(unittest.TestCase):
         self.assertEqual('┐to', gusd._format_prim_hierarchy([child1.GetParent()], include_descendants=False))
         self.assertEqual('┐/\n└── path\n    └── to\n        ├── child1\n        └── child02', gusd._format_prim_hierarchy([stage.GetPseudoRoot()]))
         self.assertEqual('┐/', gusd._format_prim_hierarchy([stage.GetPseudoRoot()], include_descendants=False))
+
+    def test_make_plane(self):
+        """Not a public API yet"""
+        stage = Usd.Stage.CreateInMemory()
+        width, depth = 10, 8
+        mesh = UsdGeom.Mesh.Define(stage, "/m")
+        gusd._make_plane(mesh, width, depth)
+        self.assertEqual(80, len(mesh.GetPointsAttr().Get()))
+        self.assertEqual(252, len(mesh.GetFaceVertexIndicesAttr().Get()))
+        self.assertEqual(63, len(mesh.GetFaceVertexCountsAttr().Get()))
