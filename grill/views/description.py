@@ -682,20 +682,12 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
             outline_tree.setSelectionMode(outline_tree.SelectionMode.ExtendedSelection)
             outline_tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
 
-            def copy_outline_selection():
-                content = "\n".join(str(index.data(QtCore.Qt.UserRole)) for index in outline_tree.selectedIndexes() if index.isValid())
-                QtWidgets.QApplication.instance().clipboard().setText(content)
-
             def show_outline_tree_context_menu(*args):
-                selected_indexes = outline_tree.selectedIndexes()
-                if not selected_indexes:
-                    return
-
-                menu = QtWidgets.QMenu(outline_tree)
-                copy_paths = QtGui.QAction("Copy Paths", outline_tree)
-                copy_paths.triggered.connect(copy_outline_selection)
-                menu.addAction(copy_paths)
-                menu.exec(QtGui.QCursor.pos())
+                if selected_indexes:= outline_tree.selectedIndexes():
+                    content = "\n".join(str(index.data(QtCore.Qt.UserRole)) for index in selected_indexes if index.isValid())
+                    menu = QtWidgets.QMenu(outline_tree)
+                    menu.addAction("Copy Paths", partial(QtWidgets.QApplication.instance().clipboard().setText, content))
+                    menu.exec(QtGui.QCursor.pos())
 
             outline_tree.customContextMenuRequested.connect(show_outline_tree_context_menu)
 
@@ -946,14 +938,10 @@ class _PseudoUSDTabBrowser(QtWidgets.QTextBrowser):
 
     def wheelEvent(self, event):
         if event.modifiers() == QtCore.Qt.ControlModifier:
-            if event.angleDelta().y() > 0:
-                self.zoomIn()
-                if self._line_counter:
-                    self._line_counter.zoomIn()
-            else:
-                self.zoomOut()
-                if self._line_counter:
-                    self._line_counter.zoomOut()
+            method = operator.methodcaller("zoomIn" if event.angleDelta().y() > 0 else "zoomOut")
+            method(self)
+            if self._line_counter:
+                method(self._line_counter)
         else:
             super().wheelEvent(event)
 
