@@ -597,7 +597,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.RightButton and (tab_index := self.tabBar().tabAt(event.pos())) != -1:
-            self._menu_for_tab(tab_index).exec(event.globalPos())
+            self._menu_for_tab(tab_index).exec_(event.globalPos())
 
         super().mousePressEvent(event)
 
@@ -687,7 +687,7 @@ class _PseudoUSDBrowser(QtWidgets.QTabWidget):
                     content = "\n".join(str(index.data(QtCore.Qt.UserRole)) for index in selected_indexes if index.isValid())
                     menu = QtWidgets.QMenu(outline_tree)
                     menu.addAction("Copy Paths", partial(QtWidgets.QApplication.instance().clipboard().setText, content))
-                    menu.exec(QtGui.QCursor.pos())
+                    menu.exec_(QtGui.QCursor.pos())
 
             outline_tree.customContextMenuRequested.connect(show_outline_tree_context_menu)
 
