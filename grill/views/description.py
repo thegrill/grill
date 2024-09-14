@@ -214,6 +214,32 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         for affected_by_idx in _compute_composition(UsdUtils.GetPrimAtPathWithForwarding(prim.GetStage(), prim_path)):
             paths_by_node_idx[affected_by_idx].add(prim_path)
 
+    """
+    nodes_info = {
+    1: dict(
+        label="{<0>x:y:z|<1>z}",
+        tooltip=r"Stack:&#10;0: x:y:z&#10;1: b:\...\z.ext&#10;2: b:\...\z.ext",
+        style="rounded,filled",
+        shape="record",
+    ),
+    2: dict(
+        label="{<0>a|<1>b}",
+        tooltip=r"Stack:&#10;0: b:\...\a.ext&#10;1: b:\...\b.ext",
+        style="rounded,filled",
+        shape="record",
+    ),
+    }
+    edges_info = (
+        (1, 1, dict(color="sienna:crimson:orange")),
+        (1, 2, dict(color='crimson')),
+    )
+    """
+    print("nodes_info")
+    from pprint import pp
+    pp({k: dict(v) for k, v in all_nodes.items()})
+    print("edges_info")
+    from pprint import pp
+    pp(tuple((k, dict()) for k, v in all_edges.items()))
     return _GraphInfo(
         edges=MappingProxyType(all_edges),
         nodes=MappingProxyType(all_nodes),
@@ -1098,8 +1124,13 @@ class LayerStackComposition(QtWidgets.QDialog):
         # https://stackoverflow.com/questions/33262913/networkx-move-edges-in-nx-multidigraph-plot
         graph = nx.MultiDiGraph()
         graph.graph['graph'] = dict(tooltip="LayerStack Composition")
-        graph.add_nodes_from(self._computed_graph_info.nodes.items())
-        graph.add_edges_from(self._iedges(graph_info))
+        nodes = tuple(self._computed_graph_info.nodes.items())
+        from pprint import pp
+        pp(nodes)
+        graph.add_nodes_from(nodes)
+        edges = tuple((a,b, dict(color=c['color']) if c.get('color') else {}) for a, b, c in self._iedges(graph_info))
+        pp(edges)
+        graph.add_edges_from(edges)
         self._graph_view._graph = graph
         self._graph_view.sticky_nodes.extend(graph_info.sticky_nodes)
         self._layers.model.setLayers(graph_info.ids_by_layers)
