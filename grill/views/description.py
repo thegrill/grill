@@ -31,6 +31,7 @@ _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
     Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
     Pcp.ArcTypeVariant: _color_attrs('orange'),
+    Pcp.ArcTypeRelocate: _color_attrs('indigo'),  # ~indigo
     Pcp.ArcTypeReference: _color_attrs('crimson'),  # ~red
     Pcp.ArcTypePayload: _color_attrs('#9370db'),  # ~purple
     Pcp.ArcTypeSpecialize: _color_attrs('sienna'),  # ~brown
