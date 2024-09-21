@@ -1,7 +1,7 @@
 import './emHdBindings.js';
 
 export const usd = await globalThis["NEEDLE:USD:GET"]({
-  mainScriptUrlOrBlob: "/emHdBindings.js",
+  mainScriptUrlOrBlob: "./emHdBindings.js",
   debug: true
 });
 console.log('loaded usd');
