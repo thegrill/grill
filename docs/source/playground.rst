@@ -4,4 +4,4 @@ Playground
 USD playground.
 
 .. raw:: html
-   :file: _static/usdweb/index.html
+    <iframe src="_static/usdweb/index.html" height="720px" width="1280"></iframe>
