@@ -34,7 +34,7 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
 
     .. tab:: Maya
 
-        Visit the `official docs <https://help.autodesk.com/view/MAYAUL/2022/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_ for more details.
+        Visit the `official docs <https://help.autodesk.com/view/MAYAUL/2025/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_ for more details.
 
         .. code-block:: bash
 
