@@ -394,6 +394,8 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
       2. Ensuring intermediate prims between ``parent`` and spawned children are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
       3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
 
+    Spawned prims and ancestors are `defined <https://openusd.org/release/glossary.html#def>`_.
+
     .. seealso:: :func:`spawn_unit` and :func:`create_unit`
     """
     if parent == child:
@@ -415,6 +417,7 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
     except ValueError:
         raise ValueError(f"Could not extract identifier from {child} to spawn under {parent}.")
     parent_stage = parent.GetStage()
+    # Ensure prims are defined to spawn units unto (paths might be deep e.g. /world/parent/nested/path/for/child)
     spawned = [parent_stage.DefinePrim(path) for path in paths_to_create]
     child_is_model = child.IsModel()
     with Sdf.ChangeBlock():
