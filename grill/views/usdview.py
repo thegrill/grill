@@ -198,19 +198,32 @@ class SelectedHierarchyTextMenuItem(AllHierarchyTextMenuItem):
     _subtitle = "Selection Only"
 
 
-class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
+class _GrillAttributeViewContextMenuItem(attributeViewContextMenu.AttributeViewContextMenuItem):
+    """A prim context menu item class that allows special Grill behavior like being added to submenus."""
+    _items = []
+
+    def __init_subclass__(cls, **kwargs):
+        # _GetContextMenuItems(item, dataModel) signature is inverse than AttributeViewContextMenuItem(dataModel, item)
+        _GrillAttributeViewContextMenuItem._items.append(lambda *args: cls(*reversed(args)))
+
     @property
     def _attributes(self):
         return [i for i in self._dataModel.selection.getProps() if isinstance(i, Usd.Attribute)]
 
     def ShouldDisplay(self):
-        return (
-            self._role == attributeViewContextMenu.PropertyViewDataRoles.ATTRIBUTE and
-            attr.GetMetadata('allowedTokens') if len(self._attributes) == 1 and (attr := self._attributes[0]).GetTypeName() == Sdf.ValueTypeNames.Token else True
-        )
+        return self._role == attributeViewContextMenu.PropertyViewDataRoles.ATTRIBUTE
 
     def IsEnabled(self):
         return self._item and self._attributes
+
+
+class GrillAttributeEditorMenuItem(_GrillAttributeViewContextMenuItem):
+
+    def ShouldDisplay(self):
+        return (
+            super().ShouldDisplay() and
+            attr.GetMetadata('allowedTokens') if len(self._attributes) == 1 and (attr := self._attributes[0]).GetTypeName() == Sdf.ValueTypeNames.Token else True
+        )
 
     def GetText(self):
         if (selected := len(self._attributes)) == 1 and self._attributes[0].GetTypeName() in {Sdf.ValueTypeNames.Bool, Sdf.ValueTypeNames.Token}:
@@ -232,6 +245,35 @@ class GrillAttributeEditorMenuItem(attributeViewContextMenu.AttributeViewContext
         elif type_name == Sdf.ValueTypeNames.Token:
             tokens = attribute.GetMetadata('allowedTokens')
             return [(value, partial(attribute.Set, value)) for value in tokens]
+
+
+class GrillAttributeClearMenuItem(_GrillAttributeViewContextMenuItem):
+
+    def GetText(self):
+        return f"Clear Value{'s' if len(self._attributes) > 1 else ''}"
+
+    def RunCommand(self):
+        with Sdf.ChangeBlock():
+            for attribute in self._attributes:
+                assert attribute.Clear()
+
+    def IsEnabled(self):
+        return super().IsEnabled() and any(attr.HasAuthoredValue() for attr in self._attributes)
+
+
+class GrillAttributeBlockMenuItem(_GrillAttributeViewContextMenuItem):
+
+    def GetText(self):
+        return f"Block Value{'s' if len(self._attributes) > 1 else ''}"
+
+    def RunCommand(self):
+        with Sdf.ChangeBlock():
+            for attribute in self._attributes:
+                attribute.Block()
+
+    def IsEnabled(self):
+        return super().IsEnabled() and any(attr.HasAuthoredValue() for attr in self._attributes)
+
 
 class _ValueEditor(QtWidgets.QDialog):
     def __init__(self, *args, **kwargs):
@@ -346,8 +388,7 @@ def _extend_menu(_extender, original, *args):
 for module, member_name, extender in (
         (primContextMenuItems, "_GetContextMenuItems", _GrillPrimContextMenuItem._items),
         (layerStackContextMenu, "_GetContextMenuItems", (GrillContentBrowserLayerMenuItem,)),
-        # _GetContextMenuItems(item, dataModel) signature is inverse than GrillAttributeEditorMenuItem(dataModel, item)
-        (attributeViewContextMenu, "_GetContextMenuItems", (lambda *args: GrillAttributeEditorMenuItem(*reversed(args)),))
+        (attributeViewContextMenu, "_GetContextMenuItems", _GrillAttributeViewContextMenuItem._items),
 ):
     setattr(module, member_name, partial(_extend_menu, extender, getattr(module, member_name)))
 
