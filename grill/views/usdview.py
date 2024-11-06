@@ -258,7 +258,11 @@ class GrillAttributeClearMenuItem(_GrillAttributeViewContextMenuItem):
                 assert attribute.Clear()
 
     def IsEnabled(self):
-        return super().IsEnabled() and any(attr.HasAuthoredValue() for attr in self._attributes)
+        # Usd.Attribute.Clear operates only on specs with an existing authored default value at the current edit target
+        return super().IsEnabled() and any(
+            (spec := attr.GetStage().GetEditTarget().GetAttributeSpecForScenePath(attr.GetPath())) and spec.default
+            for attr in self._attributes
+        )
 
 
 class GrillAttributeBlockMenuItem(_GrillAttributeViewContextMenuItem):
