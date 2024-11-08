@@ -215,6 +215,13 @@ class TestCook(unittest.TestCase):
         taxon = cook.define_taxon(stage, "Anon")
         cook.create_many(taxon, ("first", "second"))
 
+    def test_create_many_in_memory(self):
+        stage = Usd.Stage.CreateInMemory()
+        # Root_asset is an empty anonymous asset with a pipeline compliant identifier. Sublayer its resolvedPath
+        stage.GetRootLayer().subLayerPaths.append(cook.fetch_stage(self.root_asset).GetRootLayer().resolvedPath)
+        taxon = cook.define_taxon(stage, "Anon")
+        cook.create_many(taxon, ("first", "second"))
+
     def test_spawn_unit(self):
         stage = cook.fetch_stage(self.root_asset)
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
