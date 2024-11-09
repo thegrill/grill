@@ -5,9 +5,9 @@ import tempfile
 
 from pathlib import Path
 
-from pxr import Usd, UsdGeom, Sdf, Ar, UsdUtils, Tf
+from pxr import Usd, UsdGeom, Sdf, Ar, Tf
 
-from grill import cook, names, usd as gusd, tokens
+from grill import cook, names, tokens
 
 logger = logging.getLogger(__name__)
 
@@ -15,34 +15,15 @@ logger = logging.getLogger(__name__)
 # python -m unittest --durations 0 test_cook
 # Slowest test durations
 # ----------------------------------------------------------------------
-# 0.050s     test_define_taxon (test_cook.TestCook.test_define_taxon)
-# 0.049s     test_inherited_and_specialized_contexts (test_cook.TestCook.test_inherited_and_specialized_contexts)
-# 0.039s     test_asset_unit (test_cook.TestCook.test_asset_unit)
-# 0.036s     test_create_on_previous_stage (test_cook.TestCook.test_create_on_previous_stage)
-# 0.031s     test_spawn_unit (test_cook.TestCook.test_spawn_unit)
-# 0.028s     test_create_many_in_memory (test_cook.TestCook.test_create_many_in_memory)
-# 0.028s     test_spawn_unit_with_absolute_paths (test_cook.TestCook.test_spawn_unit_with_absolute_paths)
-# 0.027s     test_spawn_many (test_cook.TestCook.test_spawn_many)
-# 0.026s     test_create_many (test_cook.TestCook.test_create_many)
-# 0.020s     test_fetch_stage (test_cook.TestCook.test_fetch_stage)
-# 0.006s     test_match (test_cook.TestCook.test_match)
-# 0.005s     test_edit_context (test_cook.TestCook.test_edit_context)
-# 0.001s     test_spawn_many_invalid (test_cook.TestCook.test_spawn_many_invalid)
+# 0.044s     test_inherited_and_specialized_contexts (test_cook.TestCook.test_inherited_and_specialized_contexts)
+# 0.036s     test_asset_unit (test_cook.TestCook.test_asset_unit)
+# 0.024s     test_spawn_many (test_cook.TestCook.test_spawn_many)
+# 0.024s     test_create_many_in_memory (test_cook.TestCook.test_create_many_in_memory)
+# 0.014s     test_taxonomy (test_cook.TestCook.test_taxonomy)
+# 0.010s     test_fetch_stage (test_cook.TestCook.test_fetch_stage)
 #
 # ----------------------------------------------------------------------
-# Ran 13 tests in 0.347s
-
-# empty test:
-# Ran 13 tests in 0.012s
-
-# fetchin layers as recently created:
-# Ran 13 tests in 0.056s
-
-# fetching stage:
-# Ran 13 tests in 0.065s
-
-# fetchin layers as recently created:
-# Ran 14 tests in 0.059s
+# Ran 6 tests in 0.152s
 
 
 class TestCook(unittest.TestCase):
@@ -57,9 +38,8 @@ class TestCook(unittest.TestCase):
 
     def test_fetch_stage(self):
         root_asset = self.root_asset
-
-        # TODO: cleanup this test. fetch_stage used to keep stages in a cache but not anymore.
         root_stage = cook.fetch_stage(root_asset)
+
         # fetching stage outside of AR _context should resolve to same stage
         self.assertEqual(cook.asset_identifier(root_stage.GetRootLayer().identifier), root_asset.name)
 
@@ -87,18 +67,6 @@ class TestCook(unittest.TestCase):
         with self.assertRaises(ValueError):
             # a stage with an empty resolver that fetches a valid identifier should fail.
             cook.fetch_stage(from_memory, context=in_memory.GetPathResolverContext())
-
-    # def test_match(self):
-    #     root_stage = cook.fetch_stage(self.root_asset)
-    #     return
-    #     with self.assertRaises(ValueError):
-    #         cook._find_layer_matching(dict(missing='tokens'), root_stage.GetLayerStack())
-
-    # def test_edit_context(self):
-    #     cook.fetch_stage(self.root_asset)
-    #     # return
-    #     with self.assertRaises(TypeError):
-    #         gusd.edit_context(object(), cook.fetch_stage(self.root_asset))
 
     def test_taxonomy(self):
         stage = Usd.Stage.CreateInMemory()
@@ -152,8 +120,6 @@ class TestCook(unittest.TestCase):
         # idempotent call should keep previously created prim
         self.assertEqual(first, cook.define_taxon(stage, "first"))
 
-        # with cook.taxonomy_context(stage):
-        #     first.CreateAttribute("label", Sdf.ValueTypeNames.String)
         second = cook.define_taxon(stage, "second", references=(first,))
         self.assertTrue(second.IsValid())
 
@@ -169,53 +135,12 @@ class TestCook(unittest.TestCase):
         first_successors = set(graph_from_stage.successors(first.GetName()))
         self.assertEqual(first_successors, {second.GetName(), third.GetName()})
         self.assertEqual(set(cook.taxonomy_graph(stage, "").nodes), set(graph_from_stage.nodes))
-        # breakpoint()
-        # found_taxa = len(graph_from_stage.nodes)
-        # self.assertEqual(found_taxa, 3)
-        # self.assertEqual(len(cook.taxonomy_graph(stage, "").nodes), found_taxa)
-        return
-        # emil = cook.create_unit(person, "EmilSinclair", label="Emil Sinclair")
-        # self.assertEqual(emil, cook.create_unit(person, "EmilSinclair"))
-        #
-        # with cook.unit_context(emil):
-        #     emil.GetVariantSet("Transport").SetVariantSelection("HorseDrawnCarriage")
-        # return
-        # hero = cook.define_taxon(stage, "Hero", references=(person,))
-        # batman = cook.create_unit(hero, "Batman")
-        # expected_people = [emil, batman]  # batman is also a person
-        # expected_heroes = [batman]
-        # stage_prims = root_stage.Traverse()
-        # self.assertEqual(expected_people, list(cook.itaxa(stage_prims, person)))
-        # self.assertEqual(expected_heroes, list(cook.itaxa(stage_prims, hero)))
-
-    # def test_create_on_previous_stage(self):
-    #     """Confirm that creating assets on a previously saved stage works.
-    #
-    #     The default behavior from layer identifiers that are relative to the resolver search path is to be absolute
-    #     when a stage using them is re-opened, so:
-    #         original_identifier.usda
-    #             becomes
-    #         /absolute/path/original_identifier.usda
-    #     """
-    #     root_asset = names.UsdAsset.get_anonymous()
-    #     root_stage = cook.fetch_stage(root_asset)
-    #     # return
-    #     # creates taxonomy.usda and adds it to the stage layer stack
-    #     cook.define_taxon(root_stage, "FirstTaxon")
-    #     root_stage.Save()
-    #     del root_stage
-    #
-    #     reopened_stage = cook.fetch_stage(root_asset)
-    #     # the taxonomy.usda now has as identifier /absolute/path/taxonomy.usda, so confirm we can use it still
-    #     cook.create_many(cook.define_taxon(reopened_stage, "SecondTaxon"), ["A", "B"])
 
     def test_asset_unit(self):
         stage = cook.fetch_stage(self.root_asset)
-        root_layer = stage.GetRootLayer().realPath
         taxon_name = "taxon"
         unit_name = "unit"
         unit = cook.create_unit(cook.define_taxon(stage, "taxon"), "unit")
-        unit_path = unit.GetPath()
         unit_asset = cook.unit_asset(unit)
         unit_id = names.UsdAsset(cook.asset_identifier(unit_asset.identifier))
         self.assertEqual(unit_name, getattr(unit_id, cook._UNIT_UNIQUE_ID.name))
@@ -224,45 +149,6 @@ class TestCook(unittest.TestCase):
         # When asset identifier is empty or non existing, the fallback inspection of the prim itself should get the same result
         Usd.ModelAPI(unit).SetAssetIdentifier("")
         self.assertEqual(cook.unit_asset(unit).identifier, unit_asset.identifier)
-        # # del unit
-        # # del stage
-        # return
-        # new_stage = Usd.Stage.Open(root_layer)
-        # unit_prim = new_stage.GetPrimAtPath(unit_path)
-        # self.assertTrue(unit_prim.IsValid())
-        # unit_id = names.UsdAsset(cook.asset_identifier(cook.unit_asset(unit_prim).identifier))
-        # return
-        # taxon_name = "Person"
-        # person = cook.define_taxon(stage, taxon_name)
-        # unit_name = "EmilSinclair"
-        # emil = cook.create_unit(person, unit_name, label="Emil Sinclair")
-        # unit_asset = cook.unit_asset(emil)
-        # unit_id = names.UsdAsset(unit_asset.identifier)
-        # self.assertEqual(unit_name, getattr(unit_id, cook._UNIT_UNIQUE_ID.name))
-        # self.assertEqual(taxon_name, getattr(unit_id, cook._TAXONOMY_UNIQUE_ID.name))
-        #
-        # not_a_unit = stage.DefinePrim(emil.GetPath().AppendChild("not_a_unit"))
-        # with self.assertRaisesRegex(ValueError, "Missing or empty"):
-        #     cook.unit_asset(not_a_unit)
-        #
-        # layer = Sdf.Layer.CreateAnonymous()
-        # with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-        #     gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer == layer)
-        #
-        # # break the unit model API
-        # Usd.ModelAPI(emil).SetAssetIdentifier("")
-        # without_modelapi = cook.unit_asset(emil)
-        # self.assertEqual(unit_asset, without_modelapi)  # we should get the same result
-        #
-        # Usd.ModelAPI(emil).SetAssetName("not_emil")
-        # with self.assertRaisesRegex(ValueError, "Could not find layer matching"):
-        #     cook.unit_asset(emil)
-
-    # def test_create_many(self):
-    #     stage = cook.fetch_stage(self.root_asset)
-    #     return
-    #     taxon = cook.define_taxon(stage, "Anon")
-    #     cook.create_many(taxon, ("first", "second"))
 
     def test_create_many_in_memory(self):
         stage = Usd.Stage.CreateInMemory()
@@ -271,53 +157,24 @@ class TestCook(unittest.TestCase):
         stage.GetRootLayer().subLayerPaths.append(anon_pipeline.identifier)
         cook.create_many(cook.define_taxon(stage, "Anon"), ("first", "second"))
 
-    # def test_spawn_unit(self):
-    #     stage = cook.fetch_stage(self.root_asset)
-    #     return
-    #     id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
-    #     taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-    #     parent, child = cook.create_many(taxon, ['A', 'B'])
-    #     with cook.unit_context(parent):
-    #         for path, value in (
-    #                 ("", (2, 15, 6)),
-    #                 ("Deeper/Nested/Golden1", (-4, 5, 1)),
-    #                 ("Deeper/Nested/Golden2", (-4, -10, 1)),
-    #                 ("Deeper/Nested/Golden3", (0, 10, -2)),
-    #         ):
-    #             cook.spawn_unit(parent, child, path)
-
-    # def test_spawn_unit_with_absolute_paths(self):
-    #     stage = cook.fetch_stage(self.root_asset)
-    #     # return
-    #     id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
-    #     taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-    #     parent, child = cook.create_many(taxon, ['A', 'B'])
-
-
     def test_spawn_many(self):
         stage = cook.fetch_stage(self.root_asset)
-        # return
-        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
-        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-        parent, child = cook.create_many(taxon, ['A', 'B'])
-        cook.spawn_many(parent, child, ["b"], labels=["1", "2"])
-        self.assertEqual(len(parent.GetChildren()), 1)
-        # valid_path = parent.GetPath().AppendPath("Deeper/Nested/Golden1")
-        # self.assertTrue(cook.spawn_unit(parent, child, valid_path))
 
-    def test_spawn_many_invalid(self):
-        stage = Usd.Stage.CreateInMemory()
-        # return
         parent = stage.DefinePrim("/a")
         with self.assertRaisesRegex(ValueError, "Can not spawn .* to itself."):
             cook.spawn_many(parent, parent, ["impossible"])
         child = stage.DefinePrim("/b")  # child needs to be a grill unit
         with self.assertRaisesRegex(ValueError, "Could not extract identifier from"):
             cook.spawn_many(parent, child, ["b"])
-
         invalid_path = "/invalid/path"
         with self.assertRaisesRegex(ValueError, "needs to be a child path of parent path"):
             cook.spawn_unit(parent, child, invalid_path)
+
+        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        cook.spawn_many(parent, child, ["b"], labels=["1", "2"])
+        self.assertEqual(len(parent.GetChildren()), 1)
 
     def test_inherited_and_specialized_contexts(self):
         stage = cook.fetch_stage(self.root_asset)
@@ -368,14 +225,3 @@ class TestCook(unittest.TestCase):
         ):
             with self.subTest(target_asset=str(target_asset), target_prim=str(target_prim), broadcast_type=str(broadcast_type)):
                 _check_broadcasted_invisibility(cook.unit_asset(target_asset), target_prim, broadcast_type)
-
-    # def test_taxonomy_graph(self):
-    #     return
-    #     stage = cook.fetch_stage(self.root_asset)
-    #     a = cook.define_taxon(stage, "a")
-    #     b = cook.define_taxon(stage, "b")
-    #     cook.define_taxon(stage, "c", references=(a, b))
-    #     graph = cook.taxonomy_graph(cook.i_taxa(stage), "")
-    #     found_taxa = len(graph.nodes)
-    #     self.assertEqual(found_taxa, 3)
-    #     self.assertEqual(len(cook.taxonomy_graph(stage, "").nodes), found_taxa)
