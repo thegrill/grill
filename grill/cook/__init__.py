@@ -513,8 +513,8 @@ def _inherit_or_specialize_unit(method, context_unit):
         raise ValueError(f"{target_prim} is not a valid unit in the catalogue.")
 
     context_unit = context_unit or target_prim
-    if not Usd.ModelAPI(context_unit).GetAssetName():
-        raise ValueError(f"{context_unit=} needs to be a valid unit in the catalogue.")
+    if not (modelAPI:=Usd.ModelAPI(context_unit)).GetAssetName():
+        raise ValueError(f"{context_unit=} needs to be a valid unit in the catalogue. Currently it has a kind of '{modelAPI.GetKind()}' and asset info of {modelAPI.GetAssetInfo()}")
 
     broadcast_method = type(method)
     if not target_prim.GetPath().HasPrefix(context_unit.GetPath()):
@@ -527,7 +527,7 @@ def _inherit_or_specialize_unit(method, context_unit):
     except ValueError as exc:
         raise ValueError(
             f"Could not find an appropriate edit target node for a {broadcast_method.__name__}'s arc targeting {target_path} for {target_prim}. "
-            f"""Is there a composition arc bringing "{target_prim.GetName()}"'s unit into "{context_unit.GetName()}"'s layer stack at {context_asset}?"""
+            f"""Is there a composition arc bringing "{target_prim.GetName()}"'s prim unit into "{context_unit.GetName()}"'s layer stack at {context_asset}?"""
         ) from exc
 
 
