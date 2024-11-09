@@ -162,6 +162,9 @@ class TestCook(unittest.TestCase):
         found_taxa = set(cook.itaxa(stage))
         self.assertSetEqual(set(found_taxa), {first, second, third})
 
+        with self.assertRaisesRegex(ValueError, "is not a taxon."):
+            cook.taxonomy_graph([first.GetParent()], "")
+
         graph_from_stage = cook.taxonomy_graph(found_taxa, "")
         first_successors = set(graph_from_stage.successors(first.GetName()))
         self.assertEqual(first_successors, {second.GetName(), third.GetName()})
@@ -185,55 +188,75 @@ class TestCook(unittest.TestCase):
         # self.assertEqual(expected_people, list(cook.itaxa(stage_prims, person)))
         # self.assertEqual(expected_heroes, list(cook.itaxa(stage_prims, hero)))
 
-    def test_create_on_previous_stage(self):
-        """Confirm that creating assets on a previously saved stage works.
-
-        The default behavior from layer identifiers that are relative to the resolver search path is to be absolute
-        when a stage using them is re-opened, so:
-            original_identifier.usda
-                becomes
-            /absolute/path/original_identifier.usda
-        """
-        root_asset = names.UsdAsset.get_anonymous()
-        root_stage = cook.fetch_stage(root_asset)
-        return
-        # creates taxonomy.usda and adds it to the stage layer stack
-        cook.define_taxon(root_stage, "FirstTaxon")
-        root_stage.Save()
-        del root_stage
-
-        reopened_stage = cook.fetch_stage(root_asset)
-        # the taxonomy.usda now has as identifier /absolute/path/taxonomy.usda, so confirm we can use it still
-        cook.create_many(cook.define_taxon(reopened_stage, "SecondTaxon"), ["A", "B"])
+    # def test_create_on_previous_stage(self):
+    #     """Confirm that creating assets on a previously saved stage works.
+    #
+    #     The default behavior from layer identifiers that are relative to the resolver search path is to be absolute
+    #     when a stage using them is re-opened, so:
+    #         original_identifier.usda
+    #             becomes
+    #         /absolute/path/original_identifier.usda
+    #     """
+    #     root_asset = names.UsdAsset.get_anonymous()
+    #     root_stage = cook.fetch_stage(root_asset)
+    #     # return
+    #     # creates taxonomy.usda and adds it to the stage layer stack
+    #     cook.define_taxon(root_stage, "FirstTaxon")
+    #     root_stage.Save()
+    #     del root_stage
+    #
+    #     reopened_stage = cook.fetch_stage(root_asset)
+    #     # the taxonomy.usda now has as identifier /absolute/path/taxonomy.usda, so confirm we can use it still
+    #     cook.create_many(cook.define_taxon(reopened_stage, "SecondTaxon"), ["A", "B"])
 
     def test_asset_unit(self):
         stage = cook.fetch_stage(self.root_asset)
-        return
-        taxon_name = "Person"
-        person = cook.define_taxon(stage, taxon_name)
-        unit_name = "EmilSinclair"
-        emil = cook.create_unit(person, unit_name, label="Emil Sinclair")
-        unit_asset = cook.unit_asset(emil)
-        unit_id = names.UsdAsset(unit_asset.identifier)
+        root_layer = stage.GetRootLayer().realPath
+        taxon_name = "taxon"
+        unit_name = "unit"
+        unit = cook.create_unit(cook.define_taxon(stage, "taxon"), "unit")
+        unit_path = unit.GetPath()
+        unit_asset = cook.unit_asset(unit)
+        unit_id = names.UsdAsset(cook.asset_identifier(unit_asset.identifier))
         self.assertEqual(unit_name, getattr(unit_id, cook._UNIT_UNIQUE_ID.name))
         self.assertEqual(taxon_name, getattr(unit_id, cook._TAXONOMY_UNIQUE_ID.name))
 
-        not_a_unit = stage.DefinePrim(emil.GetPath().AppendChild("not_a_unit"))
-        with self.assertRaisesRegex(ValueError, "Missing or empty"):
-            cook.unit_asset(not_a_unit)
-
-        layer = Sdf.Layer.CreateAnonymous()
-        with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
-            gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer == layer)
-
-        # break the unit model API
-        Usd.ModelAPI(emil).SetAssetIdentifier("")
-        without_modelapi = cook.unit_asset(emil)
-        self.assertEqual(unit_asset, without_modelapi)  # we should get the same result
-
-        Usd.ModelAPI(emil).SetAssetName("not_emil")
-        with self.assertRaisesRegex(ValueError, "Could not find layer matching"):
-            cook.unit_asset(emil)
+        # When asset identifier is empty or non existing, the fallback inspection of the prim itself should get the same result
+        Usd.ModelAPI(unit).SetAssetIdentifier("")
+        self.assertEqual(cook.unit_asset(unit).identifier, unit_asset.identifier)
+        # # del unit
+        # # del stage
+        # return
+        # new_stage = Usd.Stage.Open(root_layer)
+        # unit_prim = new_stage.GetPrimAtPath(unit_path)
+        # self.assertTrue(unit_prim.IsValid())
+        # unit_id = names.UsdAsset(cook.asset_identifier(cook.unit_asset(unit_prim).identifier))
+        # return
+        # taxon_name = "Person"
+        # person = cook.define_taxon(stage, taxon_name)
+        # unit_name = "EmilSinclair"
+        # emil = cook.create_unit(person, unit_name, label="Emil Sinclair")
+        # unit_asset = cook.unit_asset(emil)
+        # unit_id = names.UsdAsset(unit_asset.identifier)
+        # self.assertEqual(unit_name, getattr(unit_id, cook._UNIT_UNIQUE_ID.name))
+        # self.assertEqual(taxon_name, getattr(unit_id, cook._TAXONOMY_UNIQUE_ID.name))
+        #
+        # not_a_unit = stage.DefinePrim(emil.GetPath().AppendChild("not_a_unit"))
+        # with self.assertRaisesRegex(ValueError, "Missing or empty"):
+        #     cook.unit_asset(not_a_unit)
+        #
+        # layer = Sdf.Layer.CreateAnonymous()
+        # with self.assertRaisesRegex(ValueError, "Could not find appropriate node for edit target"):
+        #     gusd.edit_context(not_a_unit, Usd.PrimCompositionQuery.Filter(), lambda arc: arc.GetTargetNode().layerStack.identifier.rootLayer == layer)
+        #
+        # # break the unit model API
+        # Usd.ModelAPI(emil).SetAssetIdentifier("")
+        # without_modelapi = cook.unit_asset(emil)
+        # self.assertEqual(unit_asset, without_modelapi)  # we should get the same result
+        #
+        # Usd.ModelAPI(emil).SetAssetName("not_emil")
+        # with self.assertRaisesRegex(ValueError, "Could not find layer matching"):
+        #     cook.unit_asset(emil)
 
     # def test_create_many(self):
     #     stage = cook.fetch_stage(self.root_asset)
@@ -248,20 +271,20 @@ class TestCook(unittest.TestCase):
         stage.GetRootLayer().subLayerPaths.append(anon_pipeline.identifier)
         cook.create_many(cook.define_taxon(stage, "Anon"), ("first", "second"))
 
-    def test_spawn_unit(self):
-        stage = cook.fetch_stage(self.root_asset)
-        return
-        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
-        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-        parent, child = cook.create_many(taxon, ['A', 'B'])
-        with cook.unit_context(parent):
-            for path, value in (
-                    ("", (2, 15, 6)),
-                    ("Deeper/Nested/Golden1", (-4, 5, 1)),
-                    ("Deeper/Nested/Golden2", (-4, -10, 1)),
-                    ("Deeper/Nested/Golden3", (0, 10, -2)),
-            ):
-                cook.spawn_unit(parent, child, path)
+    # def test_spawn_unit(self):
+    #     stage = cook.fetch_stage(self.root_asset)
+    #     return
+    #     id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+    #     taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+    #     parent, child = cook.create_many(taxon, ['A', 'B'])
+    #     with cook.unit_context(parent):
+    #         for path, value in (
+    #                 ("", (2, 15, 6)),
+    #                 ("Deeper/Nested/Golden1", (-4, 5, 1)),
+    #                 ("Deeper/Nested/Golden2", (-4, -10, 1)),
+    #                 ("Deeper/Nested/Golden3", (0, 10, -2)),
+    #         ):
+    #             cook.spawn_unit(parent, child, path)
 
     # def test_spawn_unit_with_absolute_paths(self):
     #     stage = cook.fetch_stage(self.root_asset)
