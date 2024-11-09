@@ -235,19 +235,18 @@ class TestCook(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Could not find layer matching"):
             cook.unit_asset(emil)
 
-    def test_create_many(self):
-        stage = cook.fetch_stage(self.root_asset)
-        return
-        taxon = cook.define_taxon(stage, "Anon")
-        cook.create_many(taxon, ("first", "second"))
+    # def test_create_many(self):
+    #     stage = cook.fetch_stage(self.root_asset)
+    #     return
+    #     taxon = cook.define_taxon(stage, "Anon")
+    #     cook.create_many(taxon, ("first", "second"))
 
     def test_create_many_in_memory(self):
         stage = Usd.Stage.CreateInMemory()
-        return
-        # Root_asset is an empty anonymous asset with a pipeline compliant identifier. Sublayer its resolvedPath
-        stage.GetRootLayer().subLayerPaths.append(cook.fetch_stage(self.root_asset).GetRootLayer().resolvedPath)
-        taxon = cook.define_taxon(stage, "Anon")
-        cook.create_many(taxon, ("first", "second"))
+        # Root_asset is an empty anonymous asset with a pipeline compliant identifier. Create and sublayer it
+        anon_pipeline = Sdf.Layer.CreateNew(str(cook.Repository.get() / self.root_asset.name))
+        stage.GetRootLayer().subLayerPaths.append(anon_pipeline.identifier)
+        cook.create_many(cook.define_taxon(stage, "Anon"), ("first", "second"))
 
     def test_spawn_unit(self):
         stage = cook.fetch_stage(self.root_asset)
@@ -264,30 +263,28 @@ class TestCook(unittest.TestCase):
             ):
                 cook.spawn_unit(parent, child, path)
 
-    def test_spawn_unit_with_absolute_paths(self):
-        stage = cook.fetch_stage(self.root_asset)
-        return
-        id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
-        taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-        parent, child = cook.create_many(taxon, ['A', 'B'])
-        valid_path = parent.GetPath().AppendPath("Deeper/Nested/Golden1")
-        invalid_path = "/invalid/path"
-        self.assertTrue(cook.spawn_unit(parent, child, valid_path))
-        with self.assertRaisesRegex(ValueError, "needs to be a child path of parent path"):
-            cook.spawn_unit(parent, child, invalid_path)
+    # def test_spawn_unit_with_absolute_paths(self):
+    #     stage = cook.fetch_stage(self.root_asset)
+    #     # return
+    #     id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
+    #     taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
+    #     parent, child = cook.create_many(taxon, ['A', 'B'])
+
 
     def test_spawn_many(self):
         stage = cook.fetch_stage(self.root_asset)
-        return
+        # return
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
         taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
         parent, child = cook.create_many(taxon, ['A', 'B'])
         cook.spawn_many(parent, child, ["b"], labels=["1", "2"])
         self.assertEqual(len(parent.GetChildren()), 1)
+        # valid_path = parent.GetPath().AppendPath("Deeper/Nested/Golden1")
+        # self.assertTrue(cook.spawn_unit(parent, child, valid_path))
 
     def test_spawn_many_invalid(self):
         stage = Usd.Stage.CreateInMemory()
-        return
+        # return
         parent = stage.DefinePrim("/a")
         with self.assertRaisesRegex(ValueError, "Can not spawn .* to itself."):
             cook.spawn_many(parent, parent, ["impossible"])
@@ -295,40 +292,45 @@ class TestCook(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Could not extract identifier from"):
             cook.spawn_many(parent, child, ["b"])
 
+        invalid_path = "/invalid/path"
+        with self.assertRaisesRegex(ValueError, "needs to be a child path of parent path"):
+            cook.spawn_unit(parent, child, invalid_path)
+
     def test_inherited_and_specialized_contexts(self):
         stage = cook.fetch_stage(self.root_asset)
-        return
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
         taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-        parent, via_s, via_i, not_under_context = cook.create_many(taxon, ['parent', 'via_s', 'via_i', 'not_under_context'])
+        parent_unit, to_be_specialized, to_be_inherited, not_under_context = cook.create_many(
+            taxon, ['parent_unit', 'to_be_specialized', 'to_be_inherited', 'not_under_context']
+        )
 
         not_a_unit = stage.DefinePrim("/vanilla_prim")
+
         with self.assertRaisesRegex(ValueError, "is not a valid unit"):
             cook.specialized_context(not_a_unit)
-
         with self.assertRaisesRegex(ValueError, "needs to be a valid unit"):
-            cook.specialized_context(via_s, via_s.GetParent())
+            # current parent prim is not a valid unit in the catalogue (it's just a group)
+            cook.specialized_context(to_be_specialized, to_be_specialized.GetParent())
 
         with self.assertRaisesRegex(ValueError, "is not a descendant"):
-            cook.specialized_context(parent, via_s)
+            cook.specialized_context(parent_unit, to_be_specialized)
+        # return
+        spawned_invalid = cook.spawn_unit(parent_unit, not_under_context)
 
-        spawned_invalid = cook.spawn_unit(parent, not_under_context)
         with self.assertRaisesRegex(ValueError, "Is there a composition arc bringing"):
             # TODO: find a more meaningful message (higher level) than the edit target context one.
-            cook.specialized_context(spawned_invalid, parent)
+            cook.specialized_context(spawned_invalid, parent_unit)
 
-        with cook.unit_context(parent):
-            via_s_spawned = cook.spawn_unit(parent, via_s)
-            via_i_spawned = cook.spawn_unit(parent, via_i)
+        with cook.unit_context(parent_unit):
+            specialized_spawned = cook.spawn_unit(parent_unit, to_be_specialized)
+            inherited_spawned = cook.spawn_unit(parent_unit, to_be_inherited)
 
-        with cook.inherited_context(not_under_context):
-            UsdGeom.Gprim(not_under_context).MakeInvisible()
-
-        with cook.specialized_context(via_s_spawned, parent):
-            UsdGeom.Gprim(via_s_spawned).MakeInvisible()
-
-        with cook.inherited_context(via_i_spawned):
-            UsdGeom.Gprim(via_i_spawned).MakeInvisible()
+        with cook.inherited_context(parent_unit):
+            UsdGeom.Gprim(parent_unit).MakeInvisible()
+        with cook.specialized_context(specialized_spawned, parent_unit):
+            UsdGeom.Gprim(specialized_spawned).MakeInvisible()
+        with cook.inherited_context(inherited_spawned):
+            UsdGeom.Gprim(inherited_spawned).MakeInvisible()
 
         def _check_broadcasted_invisibility(asset, prim, method):
             target_stage = Usd.Stage.Open(asset)
@@ -337,9 +339,9 @@ class TestCook(unittest.TestCase):
             self.assertEqual(authored, 'invisible')
 
         for target_asset, target_prim, broadcast_type in (
-                (not_under_context, not_under_context, Usd.Inherits),  # non-referenced, no context, asset unit is the target
-                (via_i_spawned, via_i_spawned, Usd.Inherits),  # referenced asset unit, no context, asset unit is the target
-                (parent, via_s_spawned, Usd.Specializes),  # referenced, context unit is the target
+                (parent_unit, parent_unit, Usd.Inherits),  # non-referenced, no context, asset unit is the target
+                (inherited_spawned, inherited_spawned, Usd.Inherits),  # referenced asset unit, no context, asset unit is the target
+                (parent_unit, specialized_spawned, Usd.Specializes),  # referenced, context unit is the target
         ):
             with self.subTest(target_asset=str(target_asset), target_prim=str(target_prim), broadcast_type=str(broadcast_type)):
                 _check_broadcasted_invisibility(cook.unit_asset(target_asset), target_prim, broadcast_type)
