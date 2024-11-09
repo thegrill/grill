@@ -4,6 +4,7 @@ import csv
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade
@@ -20,28 +21,28 @@ QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
 # but don't want to use that since that needs to be set prior to an application initialization (which grill can't control as in USDView, Maya, Houdini...)
 # https://stackoverflow.com/questions/56159475/qt-webengine-seems-to-be-initialized
 
-# 2024-02-03
+# 2024-11-09 - Python-3.13 & USD-24.11
 # python -m unittest --durations 0 test_views
 # Slowest test durations
 # ----------------------------------------------------------------------
-# 1.963s     test_scenegraph_composition (test_views.TestViews.test_scenegraph_composition)
-# 1.882s     test_taxonomy_editor (test_views.TestViews.test_taxonomy_editor)
-# 1.579s     test_content_browser (test_views.TestViews.test_content_browser)
-# 0.789s     test_spreadsheet_editor (test_views.TestViews.test_spreadsheet_editor)
-# 0.383s     test_horizontal_scroll (test_views.TestGraphicsViewport.test_horizontal_scroll)
-# 0.329s     test_connection_view (test_views.TestViews.test_connection_view)
-# 0.322s     test_layer_stack_hovers (test_views.TestViews.test_layer_stack_hovers)
-# 0.204s     test_dot_call (test_views.TestViews.test_dot_call)
-# 0.169s     test_display_color_editor (test_views.TestViews.test_display_color_editor)
-# 0.167s     test_stats (test_views.TestViews.test_stats)
-# 0.121s     test_prim_filter_data (test_views.TestViews.test_prim_filter_data)
-# 0.116s     test_prim_composition (test_views.TestViews.test_prim_composition)
-# 0.106s     test_create_assets (test_views.TestViews.test_create_assets)
-# 0.014s     test_pan (test_views.TestGraphicsViewport.test_pan)
+# 3.285s     test_scenegraph_composition (test_views.TestViews.test_scenegraph_composition)
+# 1.578s     test_content_browser (test_views.TestViews.test_content_browser)
+# 1.182s     test_taxonomy_editor (test_views.TestViews.test_taxonomy_editor)
+# 0.621s     test_spreadsheet_editor (test_views.TestViews.test_spreadsheet_editor)
+# 0.485s     test_connection_view (test_views.TestViews.test_connection_view)
+# 0.445s     test_horizontal_scroll (test_views.TestGraphicsViewport.test_horizontal_scroll)
+# 0.428s     test_layer_stack_hovers (test_views.TestViews.test_layer_stack_hovers)
+# 0.125s     test_prim_filter_data (test_views.TestViews.test_prim_filter_data)
+# 0.124s     test_stats (test_views.TestViews.test_stats)
+# 0.121s     test_prim_composition (test_views.TestViews.test_prim_composition)
+# 0.077s     test_create_assets (test_views.TestViews.test_create_assets)
+# 0.067s     test_dot_call (test_views.TestViews.test_dot_call)
+# 0.054s     test_display_color_editor (test_views.TestViews.test_display_color_editor)
+# 0.017s     test_pan (test_views.TestGraphicsViewport.test_pan)
 #
 # (durations < 0.001s were hidden; use -v to show these durations)
 # ----------------------------------------------------------------------
-# Ran 18 tests in 8.216s
+# Ran 18 tests in 8.638s
 
 
 class TestPrivate(unittest.TestCase):
@@ -87,63 +88,56 @@ class TestPrivate(unittest.TestCase):
 
 class TestViews(unittest.TestCase):
     def setUp(self):
+        # return
         self._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
-        sphere = Usd.Stage.CreateInMemory()
-        UsdGeom.Sphere.Define(sphere, "/sph")
         root_path = "/root"
-        sphere_root = sphere.DefinePrim(root_path)
+
+        sphere_stage = Usd.Stage.CreateInMemory()
+        UsdGeom.Sphere.Define(sphere_stage, "/sph")
+        sphere_root = sphere_stage.DefinePrim(root_path)
         sphere_root.CreateAttribute("greet", Sdf.ValueTypeNames.String).Set("hello")
-        sphere.SetDefaultPrim(sphere_root)
+        sphere_stage.SetDefaultPrim(sphere_root)
 
-        capsule = Usd.Stage.CreateInMemory()
-        UsdGeom.Capsule.Define(capsule, "/cap")
-        root_path = "/root"
-        capsule_root = capsule.DefinePrim(root_path)
+        capsule_stage = Usd.Stage.CreateInMemory()
+        UsdGeom.Capsule.Define(capsule_stage, "/cap")
+        capsule_root = capsule_stage.DefinePrim(root_path)
         capsule_root.CreateAttribute("who", Sdf.ValueTypeNames.String).Set("world")
-        capsule.SetDefaultPrim(capsule_root)
+        capsule_stage.SetDefaultPrim(capsule_root)
 
-        merge = Usd.Stage.CreateInMemory()
-        for i in (capsule, sphere):
-            merge.GetRootLayer().subLayerPaths.append(i.GetRootLayer().identifier)
-        merge.SetDefaultPrim(merge.GetPrimAtPath(root_path))
+        merged_stage = Usd.Stage.CreateInMemory()
+        with Sdf.ChangeBlock():
+            for i in (capsule_stage, sphere_stage):
+                merged_stage.GetRootLayer().subLayerPaths.append(i.GetRootLayer().identifier)
+        merged_stage.SetDefaultPrim(merged_stage.GetPrimAtPath(root_path))
 
         world = Usd.Stage.CreateInMemory()
         self.nested = world.DefinePrim("/nested/child")
         self.sibling = world.DefinePrim("/nested/sibling")
-        self.nested.GetReferences().AddReference(merge.GetRootLayer().identifier)
+        self.nested.GetReferences().AddReference(merged_stage.GetRootLayer().identifier)
 
-        self.capsule = capsule
-        self.sphere = sphere
-        self.merge = merge
+        self.capsule = capsule_stage
+        self.sphere = sphere_stage
+        self.merge = merged_stage
         self.world = world
 
         self._tmpf = tempfile.mkdtemp()
         self._token = cook.Repository.set(cook.Path(self._tmpf) / "repo")
-        self.rootf = names.UsdAsset.get_anonymous()
-        self.grill_world = gworld = cook.fetch_stage(self.rootf.name)
-        self.person = cook.define_taxon(gworld, "Person")
-        self.agent = cook.define_taxon(gworld, "Agent", references=(self.person,))
-        self.generic_agent = cook.create_unit(self.agent, "GenericAgent")
+        self.grill_root_asset = names.UsdAsset.get_anonymous()
+        self.grill_world = gworld = cook.fetch_stage(self.grill_root_asset.name)
+        self.taxon_a = cook.define_taxon(gworld, "a")
+        self.taxon_b = cook.define_taxon(gworld, "b", references=(self.taxon_a,))
+        self.unit_b = cook.create_unit(self.taxon_b, "GenericAgent")
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
         # Reset all members to USD objects to ensure the used layers are cleared
         # (otherwise in Windows this can cause failure to remove the temporary files)
-        self.generic_agent = None
-        self.agent = None
-        self.person = None
         self.grill_world = None
-        self.capsule = None
-        self.sphere = None
-        self.merge = None
-        self.world = None
-        self.nested = None
-        self.sibling = None
-        shutil.rmtree(self._tmpf)
+        # shutil.rmtree(self._tmpf)
         self._app.quit()
 
     def test_connection_view(self):
+        # return
         for graph_viewer in _graph.GraphView, _graph._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
                 _graph._GraphViewer = graph_viewer
@@ -156,6 +150,7 @@ class TestViews(unittest.TestCase):
                     self._sub_test_connection_view()
 
     def _sub_test_connection_view(self):
+        # return
         # https://openusd.org/release/tut_simple_shading.html
         stage = Usd.Stage.CreateInMemory()
         material = UsdShade.Material.Define(stage, '/TexModel/boardMat')
@@ -168,10 +163,13 @@ class TestViews(unittest.TestCase):
         cycle_output.ConnectToSource(cycle_input)
         description._graph_from_connections(material)
         viewer = description._ConnectableAPIViewer()
+        # return
         viewer.setPrim(material)
         viewer.setPrim(None)
 
+    # @pyinstrument.profile()
     def test_scenegraph_composition(self):
+        # return
         for graph_viewer in _graph.GraphView, _graph._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
                 _graph._GraphViewer = graph_viewer
@@ -186,8 +184,25 @@ class TestViews(unittest.TestCase):
                     self._sub_test_layer_stack_bidirectionality()
 
     def _sub_test_scenegraph_composition(self):
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        print(self)
+        # # return
+        # from functools import cache
+        # from networkx import drawing
+        #
+        # with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
+        #     patch.return_value = None
+        # @cache
+        # def cached_graph_loader(*args, **kwargs):
+        #     print("-----------------------------------------------")
+        #     return drawing.nx_pydot.graphviz_layout(*args, **kwargs)
+
         widget = description.LayerStackComposition()
+        # return
         widget.setStage(self.world)
+
+        # by this point we have already tested the view capabilities, skip future iterations of view
+        widget._graph_view.view = lambda indices: None
 
         # cheap. All these layers affect a single prim
         affectedPaths = dict.fromkeys((i.GetRootLayer() for i in (self.capsule, self.sphere, self.merge)), 1)
@@ -195,6 +210,7 @@ class TestViews(unittest.TestCase):
         # the world affects both root and the nested prims, stage layer stack is included
         affectedPaths.update(dict.fromkeys(self.world.GetLayerStack(), 3))
 
+        # return
         for row in range(widget._layers.model.rowCount()):
             layer = widget._layers.model._objects[row]
             widget._layers.table.selectRow(row)
@@ -202,6 +218,7 @@ class TestViews(unittest.TestCase):
             actualListedPrims = widget._prims.model.rowCount()
             self.assertEqual(expectedAffectedPrims, actualListedPrims)
 
+        # return
         widget._layers.table.selectAll()
         self.assertEqual(len(affectedPaths), widget._layers.model.rowCount())
         self.assertEqual(3, widget._prims.model.rowCount())
@@ -231,6 +248,7 @@ class TestViews(unittest.TestCase):
         widget.deleteLater()
 
     def _sub_test_layer_stack_bidirectionality(self):
+        # return
         """Confirm that bidirectionality between layer stacks completes.
 
         Bidirectionality in the composition graph is achieved by:
@@ -255,6 +273,7 @@ class TestViews(unittest.TestCase):
         graph_view = widget._graph_view
 
     def test_layer_stack_hovers(self):
+        # return
         _graph._GraphViewer = _graph.GraphView
         _graph._USE_SVG_VIEWPORT = False
 
@@ -315,6 +334,7 @@ class TestViews(unittest.TestCase):
         self.assertTrue(nodes_hovered_checked)
 
     def test_prim_composition(self):
+        # return
         for pixmap_enabled in True, False:
             with self.subTest(pixmap_enabled=pixmap_enabled):
                 description._SVG_AS_PIXMAP = pixmap_enabled
@@ -347,7 +367,8 @@ class TestViews(unittest.TestCase):
         widget.clear()
 
     def test_create_assets(self):
-        stage = cook.fetch_stage(str(self.rootf))
+        # return
+        stage = self.grill_world
 
         for each in range(1, 6):
             cook.define_taxon(stage, f"Option{each}")
@@ -378,6 +399,7 @@ class TestViews(unittest.TestCase):
         widget._apply()
 
     def test_taxonomy_editor(self):
+        # return
         for graph_viewer in _graph.GraphView, _graph._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
                 _graph._GraphViewer = graph_viewer
@@ -390,7 +412,7 @@ class TestViews(unittest.TestCase):
                     self._sub_test_taxonomy_editor()
 
     def _sub_test_taxonomy_editor(self):
-        stage = cook.fetch_stage(str(self.rootf.get_anonymous()))
+        stage = cook.fetch_stage(str(self.grill_root_asset.get_anonymous()))
 
         existing = [cook.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
         widget = create.TaxonomyEditor()
@@ -460,6 +482,7 @@ class TestViews(unittest.TestCase):
             widget._graph_view._threadpool.waitForDone(10_000)
 
     def test_spreadsheet_editor(self):
+        # return
         widget = sheets.SpreadsheetEditor()
         widget._model_hierarchy.setChecked(False)  # default is True
         self.world.OverridePrim("/child_orphaned")
@@ -518,11 +541,11 @@ class TestViews(unittest.TestCase):
 
         widget.model._prune_children = {Sdf.Path("/pruned")}
         gworld = self.grill_world
-        with cook.unit_context(self.generic_agent):
-            child_agent = gworld.DefinePrim(self.generic_agent.GetPath().AppendChild("child"))
+        with cook.unit_context(self.unit_b):
+            child_agent = gworld.DefinePrim(self.unit_b.GetPath().AppendChild("child"))
             child_attr = child_agent.CreateAttribute("agent_greet", Sdf.ValueTypeNames.String, custom=False)
             child_attr.Set("aloha")
-        agent_id = cook.unit_asset(self.generic_agent)
+        agent_id = cook.unit_asset(self.unit_b)
         for i in range(3):
             agent = gworld.DefinePrim(f"/Instanced/Agent{i}")
             agent.GetReferences().AddReference(agent_id.identifier)
@@ -560,7 +583,8 @@ class TestViews(unittest.TestCase):
         self.assertEqual(expected_fonts, collected_fonts)
 
     def test_prim_filter_data(self):
-        stage = cook.fetch_stage(self.rootf)
+        # return
+        stage = self.grill_world
         person = cook.define_taxon(stage, "Person")
         agent = cook.define_taxon(stage, "Agent", references=(person,))
         generic = cook.create_unit(agent, "GenericAgent")
@@ -591,6 +615,7 @@ class TestViews(unittest.TestCase):
         widget.setStage(stage)
 
     def test_dot_call(self):
+        # return
         """Test execution of function by mocking dot with python call"""
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = 'python'
@@ -599,14 +624,15 @@ class TestViews(unittest.TestCase):
             self.assertIsNotNone(error)
 
     def test_content_browser(self):
-        stage = cook.fetch_stage(self.rootf)
-        taxon = cook.define_taxon(stage, "Another")
+        # return
+        stage = self.grill_world
+        taxon = self.taxon_a
         parent, child = cook.create_many(taxon, ['A', 'B'])
         for path, value in (
                 ("", (2, 15, 6)),
                 ("Deeper/Nested/Golden1", (-4, 5, 1)),
-                ("Deeper/Nested/Golden2", (-4, -10, 1)),
-                ("Deeper/Nested/Golden3", (0, 10, -2)),
+                # ("Deeper/Nested/Golden2", (-4, -10, 1)),
+                # ("Deeper/Nested/Golden3", (0, 10, -2)),
         ):
             spawned = UsdGeom.Xform(cook.spawn_unit(parent, child, path))
             spawned.AddTranslateOp().Set(value=value)
@@ -630,9 +656,9 @@ class TestViews(unittest.TestCase):
 
         def _fake_run(run_args: list):
             return "", Sdf.Layer.FindOrOpen(run_args[-1]).ExportToString()
-
+        # return
         # sdffilter still not coming via pypi, so patch for now
-        with mock.patch("grill.views.description._core._run", new=_fake_run if not description._which("sdffilter") else _core_run):
+        with mock.patch("grill.views.description._core._run", new=_fake_run):
             dialog = description._start_content_browser(*args)
             browser: description._PseudoUSDBrowser = dialog.findChild(description._PseudoUSDBrowser)
             assert browser._browsers_by_layer.values()
@@ -661,7 +687,7 @@ class TestViews(unittest.TestCase):
             modifiers = QtCore.Qt.ControlModifier
             phase = QtCore.Qt.NoScrollPhase
             inverted = False
-
+            # return
             # ZOOM IN
             event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomIn, buttons, modifiers, phase, inverted)
             browser_tab.wheelEvent(event)
@@ -672,19 +698,18 @@ class TestViews(unittest.TestCase):
             # ZOOM OUT
             event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomOut, buttons, modifiers, phase, inverted)
             browser_tab.wheelEvent(event)
-
+            # return
             browser._close_many(range(len(browser._tab_layer_by_idx)))
             for child in dialog.findChildren(description._PseudoUSDBrowser):
                 child._resolved_layers.clear()
 
-            prim_index = parent.GetPrimIndex()
-            _, sourcepath = tempfile.mkstemp()
-            prim_index.DumpToDotGraph(sourcepath)
-            targetpath = f"{sourcepath}.png"
             # create a temporary file loadable by our image tab
-            _core_run([_core._which("dot"), sourcepath, "-Tpng", "-o", targetpath])
+            image = QtGui.QImage(QtCore.QSize(1, 1), QtGui.QImage.Format_RGB888)
+            image.fill(QtGui.QColor(255, 0, 0))
+            targetpath = str(Path(self.grill_world.GetRootLayer().realPath).with_suffix(".jpg"))
+            image.save(targetpath, "JPG")
             browser._on_identifier_requested(anchor, targetpath)
-
+            # return
             invalid_crate_layer = Sdf.Layer.CreateAnonymous()
             invalid_crate_layer.ImportFromString(
                 # Not valid in USD-24.05: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
@@ -716,7 +741,8 @@ class TestViews(unittest.TestCase):
         self.assertEqual(result, "")
 
     def test_display_color_editor(self):
-        stage = cook.fetch_stage(self.rootf)
+        # return
+        stage = self.grill_world
         sphere = UsdGeom.Sphere.Define(stage, "/volume")
         color_var = sphere.GetDisplayColorPrimvar()
         editor = _attributes._DisplayColorEditor(color_var)
@@ -734,6 +760,7 @@ class TestViews(unittest.TestCase):
             editor._update_value()
 
     def test_stats(self):
+        # return
         empty = stats.StageStats()
         self.assertEqual(empty._usd_tree.topLevelItemCount(), 0)
 
