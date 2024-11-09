@@ -25,24 +25,25 @@ QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
 # python -m unittest --durations 0 test_views
 # Slowest test durations
 # ----------------------------------------------------------------------
-# 3.285s     test_scenegraph_composition (test_views.TestViews.test_scenegraph_composition)
-# 1.578s     test_content_browser (test_views.TestViews.test_content_browser)
-# 1.182s     test_taxonomy_editor (test_views.TestViews.test_taxonomy_editor)
-# 0.621s     test_spreadsheet_editor (test_views.TestViews.test_spreadsheet_editor)
-# 0.485s     test_connection_view (test_views.TestViews.test_connection_view)
-# 0.445s     test_horizontal_scroll (test_views.TestGraphicsViewport.test_horizontal_scroll)
-# 0.428s     test_layer_stack_hovers (test_views.TestViews.test_layer_stack_hovers)
-# 0.125s     test_prim_filter_data (test_views.TestViews.test_prim_filter_data)
-# 0.124s     test_stats (test_views.TestViews.test_stats)
-# 0.121s     test_prim_composition (test_views.TestViews.test_prim_composition)
-# 0.077s     test_create_assets (test_views.TestViews.test_create_assets)
-# 0.067s     test_dot_call (test_views.TestViews.test_dot_call)
-# 0.054s     test_display_color_editor (test_views.TestViews.test_display_color_editor)
-# 0.017s     test_pan (test_views.TestGraphicsViewport.test_pan)
+# 0.755s     test_taxonomy_editor (test_views.TestViews.test_taxonomy_editor)
+# 0.445s     test_scenegraph_composition (test_views.TestViews.test_scenegraph_composition)
+# 0.408s     test_horizontal_scroll (test_views.TestGraphicsViewport.test_horizontal_scroll)
+# 0.390s     test_layer_stack_hovers (test_views.TestViews.test_layer_stack_hovers)
+# 0.389s     test_connection_view (test_views.TestViews.test_connection_view)
+# 0.292s     test_content_browser (test_views.TestViews.test_content_browser)
+# 0.143s     test_spreadsheet_editor (test_views.TestViews.test_spreadsheet_editor)
+# 0.112s     test_prim_composition (test_views.TestViews.test_prim_composition)
+# 0.098s     test_prim_filter_data (test_views.TestViews.test_prim_filter_data)
+# 0.062s     test_create_assets (test_views.TestViews.test_create_assets)
+# 0.061s     test_dot_call (test_views.TestViews.test_dot_call)
+# 0.047s     test_display_color_editor (test_views.TestViews.test_display_color_editor)
+# 0.040s     test_stats (test_views.TestViews.test_stats)
+# 0.016s     test_pan (test_views.TestGraphicsViewport.test_pan)
+# 0.002s     test_vertical_scroll (test_views.TestGraphicsViewport.test_vertical_scroll)
 #
 # (durations < 0.001s were hidden; use -v to show these durations)
 # ----------------------------------------------------------------------
-# Ran 18 tests in 8.638s
+# Ran 18 tests in 3.267s
 
 
 class TestPrivate(unittest.TestCase):
@@ -163,13 +164,30 @@ class TestViews(unittest.TestCase):
         cycle_output.ConnectToSource(cycle_input)
         description._graph_from_connections(material)
         viewer = description._ConnectableAPIViewer()
-        # return
+        # graph views is being tested elsewhere
+        viewer._graph_view.view = lambda indices: None
         viewer.setPrim(material)
+        # return
         viewer.setPrim(None)
 
-    # @pyinstrument.profile()
     def test_scenegraph_composition(self):
-        # return
+        """Confirm that bidirectionality between layer stacks completes.
+
+        Bidirectionality in the composition graph is achieved by:
+            - parent_stage -> child_stage via a reference, payload arcs
+            - child_stage -> parent_stage via a inherits, specializes arcs
+        """
+        parent_stage = self.world
+        child_stage = Usd.Stage.CreateInMemory()
+        prim = parent_stage.DefinePrim("/a/b")
+        child_prim = child_stage.DefinePrim("/child")
+        child_prim.GetInherits().AddInherit("/foo")
+        child_prim.GetSpecializes().AddSpecialize("/foo")
+        child_stage.SetDefaultPrim(child_prim)
+        child_identifier = child_stage.GetRootLayer().identifier
+        prim.GetReferences().AddReference(child_identifier)
+        prim.GetPayloads().AddPayload(child_identifier)
+
         for graph_viewer in _graph.GraphView, _graph._GraphSVGViewer:
             with self.subTest(graph_viewer=graph_viewer):
                 _graph._GraphViewer = graph_viewer
@@ -178,28 +196,13 @@ class TestViews(unittest.TestCase):
                         with self.subTest(pixmap_enabled=pixmap_enabled):
                             _graph._USE_SVG_VIEWPORT = pixmap_enabled
                             self._sub_test_scenegraph_composition()
-                            self._sub_test_layer_stack_bidirectionality()
                 else:
                     self._sub_test_scenegraph_composition()
-                    self._sub_test_layer_stack_bidirectionality()
 
     def _sub_test_scenegraph_composition(self):
-        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        print(self)
-        # # return
-        # from functools import cache
-        # from networkx import drawing
-        #
-        # with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
-        #     patch.return_value = None
-        # @cache
-        # def cached_graph_loader(*args, **kwargs):
-        #     print("-----------------------------------------------")
-        #     return drawing.nx_pydot.graphviz_layout(*args, **kwargs)
-
         widget = description.LayerStackComposition()
-        # return
         widget.setStage(self.world)
+        widget._layers.table.selectAll()
 
         # by this point we have already tested the view capabilities, skip future iterations of view
         widget._graph_view.view = lambda indices: None
@@ -208,20 +211,20 @@ class TestViews(unittest.TestCase):
         affectedPaths = dict.fromkeys((i.GetRootLayer() for i in (self.capsule, self.sphere, self.merge)), 1)
 
         # the world affects both root and the nested prims, stage layer stack is included
-        affectedPaths.update(dict.fromkeys(self.world.GetLayerStack(), 3))
-
-        # return
+        affectedPaths.update(dict.fromkeys(self.world.GetLayerStack(), 5))
         for row in range(widget._layers.model.rowCount()):
             layer = widget._layers.model._objects[row]
             widget._layers.table.selectRow(row)
+            if layer not in affectedPaths:
+                continue
             expectedAffectedPrims = affectedPaths[layer]
             actualListedPrims = widget._prims.model.rowCount()
             self.assertEqual(expectedAffectedPrims, actualListedPrims)
 
         # return
         widget._layers.table.selectAll()
-        self.assertEqual(len(affectedPaths), widget._layers.model.rowCount())
-        self.assertEqual(3, widget._prims.model.rowCount())
+        self.assertEqual(len(affectedPaths)+1, widget._layers.model.rowCount())
+        self.assertEqual(5, widget._prims.model.rowCount())
 
         widget.setPrimPaths({"/nested/sibling"})
         widget.setStage(self.world)
@@ -247,33 +250,7 @@ class TestViews(unittest.TestCase):
 
         widget.deleteLater()
 
-    def _sub_test_layer_stack_bidirectionality(self):
-        # return
-        """Confirm that bidirectionality between layer stacks completes.
-
-        Bidirectionality in the composition graph is achieved by:
-            - parent_stage -> child_stage via a reference, payload arcs
-            - child_stage -> parent_stage via a inherits, specializes arcs
-        """
-        parent_stage = Usd.Stage.CreateInMemory()
-        child_stage = Usd.Stage.CreateInMemory()
-        prim = parent_stage.DefinePrim("/a/b")
-        child_prim = child_stage.DefinePrim("/child")
-        child_prim.GetInherits().AddInherit("/foo")
-        child_prim.GetSpecializes().AddSpecialize("/foo")
-        child_stage.SetDefaultPrim(child_prim)
-        child_identifier = child_stage.GetRootLayer().identifier
-        prim.GetReferences().AddReference(child_identifier)
-        prim.GetPayloads().AddPayload(child_identifier)
-
-        widget = description.LayerStackComposition()
-        widget.setStage(parent_stage)
-        widget._layers.table.selectAll()
-
-        graph_view = widget._graph_view
-
     def test_layer_stack_hovers(self):
-        # return
         _graph._GraphViewer = _graph.GraphView
         _graph._USE_SVG_VIEWPORT = False
 
