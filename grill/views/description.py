@@ -163,9 +163,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             plugs.append(layer_index)
             label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_layer_label(layer)}"
         label += '}'
-        # attrs['plugs'] = dict(zip(plugs, range(len(plugs))))
         attrs['plugs'] = tuple(plugs)
-        attrs['active_plugs'] = set()  # all active connections, for GUI
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
 
@@ -182,7 +180,6 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
                 # arc.GetTargetNode().origin nor arc.GetTargetNode().GetOriginRootNode()
                 source_idx, source_layers = _add_node(arc.GetIntroducingNode())
                 source_port = source_layers[source_layer]
-                all_nodes[source_idx]['active_plugs'].add(source_port)  # all connections, for GUI
                 all_edges[source_idx, target_idx][source_port][arc.GetArcType()].update(
                     {func.__name__:  is_fun for func in _USD_COMPOSITION_ARC_QUERY_METHODS if (is_fun := func(arc))}
                 )
@@ -260,8 +257,6 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         node_id = _get_node_id(current_prim)
         label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
         label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
-        plugs = {"": 0}  # {graphviz port name: port index order}
-        active_plugs = set()
         for index, plug in enumerate(chain(api.GetInputs(), api.GetOutputs()), start=1):  # we start at 1 because index 0 is the node itself
             plug_name = plug.GetBaseName()
             sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
@@ -270,10 +265,8 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
             for source in sources:
                 _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
                 traverse(source.source)
-            plugs[plug_name] = index
-            active_plugs.add(plug_name)  # TODO: add only actual plugged properties, right now we're adding all of them
         label += '</table>>'
-        all_nodes[node_id] = dict(label=label, plugs=plugs, active_plugs=active_plugs)
+        all_nodes[node_id] = dict(label=label)
 
     traverse(connections_api)
 

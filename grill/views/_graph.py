@@ -10,6 +10,7 @@ import configparser
 import networkx as nx
 from itertools import chain
 from functools import cache
+from collections import ChainMap
 
 from networkx import drawing
 
@@ -34,8 +35,6 @@ _USE_SVG_VIEWPORT = _env_config.getboolean('graph_view', 'svg_as_pixmap')
 _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
-#   - Popup everytime a new graph is loaded in Houdini or Maya ( it's on _run_prog func line 1380 of agraph.py )
-#       https://github.com/pygraphviz/pygraphviz/pull/514
 #   - Should toggling "precise source layer" on LayerStack compostiion view preserve node position for _GraphViewer?
 #   - Tooltip on nodes for _GraphViewer
 #   - Context menu items
@@ -63,7 +62,6 @@ def _convert_graphviz_to_html_label(label):
         for index, field in enumerate(fields):
             port, text = field.strip("<>").split(">", 1)
             bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
-            # text = f'<font color="#3e4444">{text}</font>'
             text = f'<font color="#242828">{text}</font>'
             label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
         label += "</table>"
@@ -72,6 +70,13 @@ def _convert_graphviz_to_html_label(label):
         # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
         label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
     return label
+
+
+def _get_plugs_from_label(label):
+    if not label.startswith("{"):
+        raise ValueError(f"Label needs to start with '{{'. Got: {label}")
+    fields = label.strip("{}").split("|")
+    return dict(field.strip("<>").split(">", 1) for index, field in enumerate(fields))
 
 
 @cache
@@ -85,23 +90,13 @@ def _dot_2_svg(sourcepath):
 
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: tuple =None, active_plugs: set = frozenset(), visible=True):
+    # TODO: see if we can remove 'label', since we are already processing the graphviz one here, it might be cheaper to have label created only when we need it
+    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: tuple = (), visible=True):
         super().__init__(parent)
         self._edges = []
-        self._plugs = plugs = dict(zip(plugs, range(len(plugs)))) or {}  # {identifier: index}
-
-        plug_items = {}  # {index: (QEllipse, QEllipse)}
-        radius = 4
-        def _plug_item():
-            item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
-            item.setPen(_NO_PEN)
-            return item
-        self._active_plugs = active_plugs
+        self._plugs = dict(zip(plugs, range(len(plugs)))) or {}  # {identifier: index}
         self._active_plugs_by_side = dict()  # {index: {left[int]: {}, right[int]: {}}
-        for plug_index in active_plugs:
-            plug_items[plugs[plug_index]] = (_plug_item(), _plug_item())
-            self._active_plugs_by_side[plugs[plug_index]] = {0: dict(), 1: dict()}
-        self._plug_items = plug_items
+        self._plug_items = {}  # {index: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
         self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + _convert_graphviz_to_html_label(label))
@@ -170,7 +165,20 @@ class _Node(QtWidgets.QGraphicsTextItem):
     def _activatePlug(self, edge, plug_index, side, position):
         if plug_index is None:
             return  # we're at the center, nothing to draw nor activate
-        plugs_by_side = self._active_plugs_by_side[plug_index]  # {index: {left[int]: {}, right[int]: {}}
+        try:
+            plugs_by_side = self._active_plugs_by_side[plug_index]  # {index: {left[int]: {}, right[int]: {}}
+        except KeyError:  # first time we're activating a plug, so add a visual ellipse for it
+            radius = 4
+
+            def _add_plug_item():
+                item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
+                item.setPen(_NO_PEN)
+                self.scene().addItem(item)
+                return item
+
+            self._plug_items[plug_index] = (_add_plug_item(), _add_plug_item())
+            self._active_plugs_by_side[plug_index] = plugs_by_side = {0: dict(), 1: dict()}
+
         plugs_by_side[side][edge] = True
         other_side = bool(not side)
         inactive_plugs = plugs_by_side[other_side]
@@ -604,21 +612,25 @@ class GraphView(_GraphicsViewport):
         print("LOADING GRAPH")
         self._nodes_map.clear()
         edge_color = graph.graph.get('edge', {}).get("color", "")
+        graph_node_attrs = graph.graph.get('node', {})
 
         def _add_node(nx_node):
             node_data = graph.nodes[nx_node]
+            plugs = node_data.pop('plugs', ())
+            nodes_attrs = ChainMap(node_data, graph_node_attrs)
+            if nodes_attrs.get('shape') == 'record':
+                if plugs:
+                    raise ValueError(f"record 'shape' and 'plugs' are mutually exclusive, pick one for {nx_node}, {node_data=}")
+                plugs = _get_plugs_from_label(node_data['label'])
             item = _Node(
                 label=node_data.get('label', str(nx_node)),
-                color=graph.graph.get('node', {}).get("color", ""),
-                fillcolor=graph.graph.get('node', {}).get("fillcolor", "white"),
-                plugs=node_data.get('plugs', {}),
-                visible=node_data.get('style', "") != "invis",
-                active_plugs=node_data.get('active_plugs', set()),
+                color=nodes_attrs.get("color", ""),
+                fillcolor=nodes_attrs.get("fillcolor", "white"),
+                plugs=plugs,
+                visible=nodes_attrs.get('style', "") != "invis",
             )
             item.linkActivated.connect(self._graph_url_changed)
             self.scene().addItem(item)
-            for each_plug in chain.from_iterable(item._plug_items.values()):
-                self.scene().addItem(each_plug)
             return item
 
         max_y = max(pos[1] for pos in positions.values())
@@ -649,6 +661,7 @@ class GraphView(_GraphicsViewport):
             if source._plugs or target._plugs:
                 kwargs['target_plug'] = target._plugs[edge_data['headport']] if edge_data.get('headport') is not None else None
                 kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
+
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
 
@@ -680,6 +693,7 @@ class _SvgPixmapViewport(_GraphicsViewport):
         self.setScene(scene)
 
     def load(self, filepath):
+        filepath = filepath.toLocalFile() if isinstance(filepath, QtCore.QUrl) else filepath
         scene = self.scene()
         scene.clear()
 
