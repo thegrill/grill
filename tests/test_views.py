@@ -743,7 +743,7 @@ class TestViews(unittest.TestCase):
             shutil.copy(Path(__file__).parent / "test_data/_mini_graph.dot", fp)
 
         def _use_test_svg(self, filepath):
-            return self._on_dot_result(Path(__file__).parent / "test_data/_mini_graph.svg")
+            return self._on_dot_result(str(Path(__file__).parent / "test_data/_mini_graph.svg"))
 
         def _test_positions(graph, prog):
             return {
