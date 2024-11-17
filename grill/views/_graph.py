@@ -54,29 +54,30 @@ For more details on installing graphviz, visit https://pygraphviz.github.io/docu
 """
 
 
-def _convert_graphviz_to_html_label(label):
+def _adjust_graphviz_html_table_label(label):
     # TODO: these checks below rely on internals from the grill (layer stack composition uses record shapes, connection viewer uses html)
-    if label.startswith("{"):  # We're a record. Split the label into individual fields
-        fields = label.strip("{}").split("|")
-        label = '<table>'
-        for index, field in enumerate(fields):
-            port, text = field.strip("<>").split(">", 1)
-            bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
-            text = f'<font color="#242828">{text}</font>'
-            label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
-        label += "</table>"
-    elif label.startswith("<"):
+    if label.startswith("<"):
         # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internal to graphviz
         # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
         label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
     return label
 
 
-def _get_plugs_from_label(label):
-    if not label.startswith("{"):
+def _get_html_table_from_fields(**fields):
+    label = '<table>'
+    for index, (port, text) in enumerate(fields.items()):
+        bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
+        text = f'<font color="#242828">{text}</font>'
+        label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
+    label += "</table>"
+    return label
+
+
+def _get_plugs_from_label(label) -> dict[str, str]:
+    if not label.startswith("{"):  # Only for record labels.
         raise ValueError(f"Label needs to start with '{{'. Got: {label}")
     fields = label.strip("{}").split("|")
-    return dict(field.strip("<>").split(">", 1) for index, field in enumerate(fields))
+    return dict(field.strip("<>").split(">", 1) for field in fields)
 
 
 @cache
@@ -99,7 +100,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
         self._plug_items = {}  # {index: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
-        self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + _convert_graphviz_to_html_label(label))
+        self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
         # https://bugreports.qt.io/browse/QTBUG-89563
@@ -618,12 +619,22 @@ class GraphView(_GraphicsViewport):
             node_data = graph.nodes[nx_node]
             plugs = node_data.pop('plugs', ())
             nodes_attrs = ChainMap(node_data, graph_node_attrs)
-            if nodes_attrs.get('shape') == 'record':
+            if (shape := nodes_attrs.get('shape')) == 'record':
                 if plugs:
                     raise ValueError(f"record 'shape' and 'plugs' are mutually exclusive, pick one for {nx_node}, {node_data=}")
                 plugs = _get_plugs_from_label(node_data['label'])
+                label = _get_html_table_from_fields(**plugs)
+            else:
+                label = node_data.get('label')
+                if shape in {'none', 'plaintext'}:
+                    if not label:
+                        raise ValueError(f"A label must be provided for when using 'none' or 'plaintext' shapes for {nx_node}, {node_data=}")
+                    label = _adjust_graphviz_html_table_label(label)
+                elif not label:
+                    label = str(nx_node)
+
             item = _Node(
-                label=node_data.get('label', str(nx_node)),
+                label=label,
                 color=nodes_attrs.get("color", ""),
                 fillcolor=nodes_attrs.get("fillcolor", "white"),
                 plugs=plugs,
