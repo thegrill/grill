@@ -150,7 +150,6 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='rounded,filled', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        plugs = []
         label = '{'
         tooltip = 'LayerStack:'
         for layer, layer_index in sublayers.items():
@@ -160,10 +159,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # For new line: https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             # For Windows path sep: https://stackoverflow.com/questions/15094591/how-to-escape-forwardslash-character-in-html-but-have-it-passed-correctly-to-jav
             tooltip += f"&#10;{layer_index}: {(layer.realPath or layer.identifier)}".replace('\\', '&#47;')
-            plugs.append(layer_index)
             label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_layer_label(layer)}"
         label += '}'
-        attrs['plugs'] = tuple(plugs)
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
 
@@ -180,7 +177,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
                 # arc.GetTargetNode().origin nor arc.GetTargetNode().GetOriginRootNode()
                 source_idx, source_layers = _add_node(arc.GetIntroducingNode())
                 source_port = source_layers[source_layer]
-                all_edges[source_idx, target_idx][source_port][arc.GetArcType()].update(
+                # implementation detail: convert source_port to a string since it's serialized as the label in graphviz
+                all_edges[source_idx, target_idx][str(source_port)][arc.GetArcType()].update(
                     {func.__name__:  is_fun for func in _USD_COMPOSITION_ARC_QUERY_METHODS if (is_fun := func(arc))}
                 )
 
@@ -188,7 +186,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
 
     all_nodes = dict()  # {int: dict}
     all_edges = defaultdict(                            #   { (source_node: int, target_node: int):
-        lambda: defaultdict(                            #       { source_port: int:
+        lambda: defaultdict(                            #       { source_port: str:
             lambda: defaultdict(                        #           { Pcp.ArcType:
                 _USD_COMPOSITION_ARC_QUERY_DEFAULTS     #               { HasArcs: bool, IsImplicit: bool, ... }
             )                                           #           }
