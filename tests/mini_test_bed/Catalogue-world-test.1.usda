@@ -1,0 +1,73 @@
+#usda 1.0
+
+def "Catalogue" (
+    kind = "group"
+)
+{
+    def "Shade" (
+        kind = "group"
+    )
+    {
+        def "Color" (
+            kind = "group"
+        )
+        {
+            over "ModelDefault" (
+                prepend references = @Shade-Color-ModelDefault.1.usda@
+            )
+            {
+            }
+        }
+    }
+
+    def "Model" (
+        kind = "group"
+    )
+    {
+        def "Elements" (
+            kind = "group"
+        )
+        {
+            over "Apartment" (
+                prepend references = @Model-Elements-Apartment.1.usda@
+            )
+            {
+            }
+        }
+
+        def "Buildings" (
+            kind = "group"
+        )
+        {
+            over "Multi_Story_Building" (
+                prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+            )
+            {
+            }
+        }
+
+        def "Blocks" (
+            kind = "group"
+        )
+        {
+            over "Block_With_Inherited_Windows" (
+                prepend references = @Model-Blocks-Block_With_Inherited_Windows.1.usda@
+            )
+            {
+            }
+
+            over "Block_With_Specialized_Windows" (
+                prepend references = @Model-Blocks-Block_With_Specialized_Windows.1.usda@
+            )
+            {
+            }
+
+            over "Block" (
+                prepend references = @Model-Blocks-Block.1.usda@
+            )
+            {
+            }
+        }
+    }
+}
+

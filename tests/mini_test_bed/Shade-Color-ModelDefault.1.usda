@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "Origin"
+)
+
+def "Origin" (
+    prepend apiSchemas = ["GeomModelAPI"]
+    assetInfo = {
+        asset identifier = @Shade-Color-ModelDefault.1.usda@
+        string name = "ModelDefault"
+    }
+    displayName = "🎨 Model Default"
+    prepend inherits = </Inherited/Shade/Color/ModelDefault>
+    kind = "subcomponent"
+    prepend references = @main-Taxonomy-test.1.usda@</Taxonomy/Color>
+    prepend specializes = </Specialized/Shade/Color/ModelDefault>
+)
+{
+    color3f[] primvars:displayColor = [(0.6, 0.8, 0.9)]
+}
+
