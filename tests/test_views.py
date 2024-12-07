@@ -668,13 +668,13 @@ class TestViews(unittest.TestCase):
             ),
             2: dict(
                 label="{<0>a|<1>b}",
-                style='rounded,filled',
+                style='invis',
                 shape="record",
             ),
         }
         edges_info = (
             (1, 1, dict(color='sienna:crimson:orange')),
-            (1, 2, dict(color='crimson')),
+            (1, 2, dict(color='crimson', label='edge_label')),
             (2, 1, dict(color='green')),
         )
 
@@ -804,6 +804,8 @@ class TestViews(unittest.TestCase):
                                 self.assertEqual(item.cursor().shape(), QtGui.Qt.ClosedHandCursor)
                                 self.assertEqual(item.textInteractionFlags(), QtCore.Qt.NoTextInteraction)
                                 item.hoverLeaveEvent(event)
+
+                                item.itemChange(QtWidgets.QGraphicsItem.ItemPositionHasChanged, (1,1))
 
                         self.assertTrue(cycle_collected)
                         self.assertTrue(nodes_hovered_checked)
