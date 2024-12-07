@@ -504,7 +504,7 @@ class TestViews(unittest.TestCase):
         #     DEFAULT_SUFFIX = "usda"
         #
         # cook.UsdAsset = MiniAsset
-        stage = stage = Usd.Stage.Open(str(_test_bed))
+        stage = Usd.Stage.Open(str(_test_bed))
         # stage = self.grill_world
         # taxon = self.taxon_a
         # parent, child = cook.create_many(taxon, ['A', 'B'])
@@ -525,10 +525,11 @@ class TestViews(unittest.TestCase):
         #     stage.DefinePrim(child.GetPath().AppendChild("in_variant"))
         # path_with_variant = child.GetPath().AppendVariantSelection(variant_set_name, variant_name)
 
-        path_with_variant = Sdf.Path("/Catalogue/Model/Elements/Apartment")
+        path_with_variant = Sdf.Path("/Origin{color=blue}Geom/Floor.primvars:displayColor")
         spawned_path = Sdf.Path("/Catalogue/Model/Buildings/Multi_Story_Building/Windows/Apartment")
-        layers = stage.GetLayerStack()
-        args = stage.GetLayerStack(), None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned_path, path_with_variant)
+        apartments_layer = Sdf.Layer.FindOrOpen(str(_test_bed.parent / "Model-Elements-Apartment.1.usda"))
+        layers = stage.GetLayerStack() + [apartments_layer]
+        args = layers, None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned_path, path_with_variant)
         anchor = layers[0]
 
         def _log(*args):
