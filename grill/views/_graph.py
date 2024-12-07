@@ -16,7 +16,6 @@ from networkx import drawing
 
 from . import _core
 from ._qt import QtCore, QtGui, QtWidgets, QtSvg
-_core._ensure_dot()
 
 _logger = logging.getLogger(__name__)
 

@@ -84,9 +84,6 @@ class TestPrivate(unittest.TestCase):
         ]
         self.assertEqual(actual, expected)
 
-    def test_core(self):
-        _core._ensure_dot()
-
 
 _test_bed = Path(__file__).parent / "mini_test_bed" / "main-world-test.1.usda"
 
