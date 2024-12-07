@@ -631,7 +631,9 @@ class TestViews(unittest.TestCase):
         sphere = UsdGeom.Sphere.Define(stage, "/volume")
         color_var = sphere.GetDisplayColorPrimvar()
         editor = _attributes._DisplayColorEditor(color_var)
-        editor._update_value()
+
+        with mock.patch("grill.views._attributes.QtWidgets.QColorDialog.getColor", new=lambda *_, **__: QtGui.QColor(255, 255, 0)):
+            editor._color_launchers["Color"][0].click()
 
         color_var.SetInterpolation(UsdGeom.Tokens.vertex)
         editor = _attributes._DisplayColorEditor(color_var)
@@ -643,6 +645,9 @@ class TestViews(unittest.TestCase):
         editor = _attributes._DisplayColorEditor(primvar)
         with self.assertRaises(TypeError):  # atm some gprim types are not supported
             editor._update_value()
+
+        editor = _attributes._DisplayColorEditor(UsdGeom.Primvar())
+        self.assertEqual(len(editor._value), 1)
 
     def test_stats(self):
         # return
