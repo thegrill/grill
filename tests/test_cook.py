@@ -173,8 +173,8 @@ class TestCook(unittest.TestCase):
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
         taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
         parent, child = cook.create_many(taxon, ['A', 'B'])
-        cook.spawn_many(parent, child, ["b"], labels=["1", "2"])
-        self.assertEqual(len(parent.GetChildren()), 1)
+        cook.spawn_many(parent, child, ["b", "nested/c"], labels=["1", "2", "3"])
+        self.assertEqual(len(parent.GetChildren()), 2)
 
     def test_inherited_and_specialized_contexts(self):
         stage = cook.fetch_stage(self.root_asset)
