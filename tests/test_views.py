@@ -154,8 +154,6 @@ class TestViews(unittest.TestCase):
         widget._layers.table.selectAll()
         self.assertEqual(5, widget._layers.model.rowCount())
         self.assertEqual(1, widget._prims.model.rowCount())
-        # add_dll_directory only on Windows
-        os.add_dll_directory = lambda path: print(f"Added {path}") if not hasattr(os, "add_dll_directory") else os.add_dll_directory
 
         _core._which.cache_clear()
         with mock.patch("grill.views.description._which") as patch:  # simulate dot is not in the environment
@@ -163,7 +161,7 @@ class TestViews(unittest.TestCase):
             widget._graph_view.view([0,1])
 
         _core._which.cache_clear()
-        with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pygraphviz is not installed
+        with mock.patch("grill.views.description.nx.nx_agraph.write_dot") as patch:  # simulate pydot not installed
             patch.side_effect = ImportError
             widget._graph_view.view([0])
 

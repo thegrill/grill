@@ -49,7 +49,7 @@ the 'dot' command must be available on the current environment.
 
 Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
 
-For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
+For more details on installing graphviz, visit https://graphviz.org/download/ or https://grill.readthedocs.io/en/latest/install.html#conda-environment-example
 """
 
 
@@ -90,7 +90,7 @@ def _dot_2_svg(sourcepath):
 
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    # TODO: see if we can remove 'label', since we are already processing the graphviz one here, it might be cheaper to have label created only when we need it
+    # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
     def __init__(self, parent=None, label="", color="", fillcolor="", plugs: tuple = (), visible=True):
         super().__init__(parent)
         self._edges = []
@@ -599,7 +599,7 @@ class GraphView(_GraphicsViewport):
             self.scene().addItem(text_item)
             return
 
-        try:  # exit early if pygraphviz is not installed, needed for positions
+        try:  # exit early if pydot is not installed, needed for positions
             positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
         except ImportError as exc:
             message = str(exc)

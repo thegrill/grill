@@ -191,7 +191,8 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = t
     return prim
 
 
-def itaxa(stage):
+def itaxa(stage: Usd.Stage) -> typing.Generator[Usd.Prim]:
+    """For the given stage, iterate existing taxa under the taxonomy hierarchy."""
     return filter(
         lambda prim: prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY),
         _usd.iprims(stage, root_paths={_TAXONOMY_ROOT_PATH}, traverse_predicate=Usd.PrimAllPrimsPredicate)
@@ -532,10 +533,8 @@ def _inherit_or_specialize_unit(method, context_unit):
 
 
 @functools.singledispatch
-def taxonomy_graph(prims, url_id_prefix):
-    """
-    prims
-    """
+def taxonomy_graph(prims: Usd.Prim, url_id_prefix) -> nx.DiGraph:
+    """Get the hierarchical taxonomy representation of the given taxa prims."""
     graph = nx.DiGraph(tooltip="Taxonomy Graph")
     graph.graph.update(
         graph={'rankdir': 'LR'},

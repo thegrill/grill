@@ -50,7 +50,8 @@ class TestCook(unittest.TestCase):
         usd_opened = str(names.UsdAsset.get_anonymous(item='usd_opened'))
         Sdf.Layer.CreateNew(str(repo_path / usd_opened))
 
-        with self.assertRaises(Tf.ErrorException):
+        with self.assertRaisesRegex(Tf.ErrorException, "Failed to open layer"):
+            # no resolver context, so unable to open stage
             Usd.Stage.Open(usd_opened)
 
         with Ar.ResolverContextBinder(resolver_ctx):
