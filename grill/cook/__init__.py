@@ -106,46 +106,24 @@ def asset_identifier(path):
         return str(path.relative_to(Repository.get()))
 
 
-@typing.overload
-def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
-    ...
-
-
-@typing.overload
-def fetch_stage(identifier: UsdAsset, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
-    ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
-
-
-@functools.singledispatch
-def fetch_stage(identifier, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
+def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
-
-    If an open matching `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ is found on the `global cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_, return it.
-    Otherwise open it, populate the `cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_ and return it.
 
     .. attention::
         ``identifier`` must be a valid :class:`grill.names.UsdAsset` name.
 
     """
+    if isinstance(identifier, UsdAsset):
+        identifier = identifier.name
+
     if not context:
         context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
 
     with Ar.ResolverContextBinder(context):
         layer = _fetch_layer(identifier, context)
-        # return layer
         return Usd.Stage.Open(layer, load=load)
-
-
-@fetch_stage.register(UsdAsset)
-def _(identifier: UsdAsset, *args, **kwargs) -> Usd.Stage:
-    return fetch_stage.registry[object](identifier.name, *args, **kwargs)
-
-
-@fetch_stage.register(str)
-def _(identifier: str, *args, **kwargs) -> Usd.Stage:
-    return fetch_stage(UsdAsset(identifier), *args, **kwargs)
 
 
 def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
