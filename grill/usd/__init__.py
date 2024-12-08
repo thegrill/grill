@@ -76,7 +76,7 @@ def iprims(stage: Usd.Stage, root_paths: typing.Iterable[Sdf.Path] = tuple(), pr
 
 
 @functools.singledispatch
-def edit_context(prim: Usd.Prim, /, query_filter, arc_predicate) -> Usd.EditContext:
+def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: typing.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
     """Composition arcs target layer stacks. These functions help create EditTargets for the first matching node's root layer stack from prim's composition arcs.
 
     This allows for "chained" context switching while preserving the same stage objects.
@@ -219,7 +219,7 @@ def edit_context(prim: Usd.Prim, /, query_filter, arc_predicate) -> Usd.EditCont
 
 @edit_context.register(Sdf.Reference)
 @edit_context.register(Sdf.Payload)
-def _(arc, /, prim) -> Usd.EditContext:
+def _(arc, /, prim: Usd.Prim) -> Usd.EditContext:
     identifier = arc.assetPath
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
@@ -239,12 +239,12 @@ def _(arc, /, prim) -> Usd.EditContext:
 
 @edit_context.register(Usd.Inherits)
 @edit_context.register(Usd.Specializes)
-def _(arc, /, path, layer) -> Usd.EditContext:
+def _(arc, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
     return _edit_context_by_arc(arc.GetPrim(), type(arc), path, layer)
 
 
 @edit_context.register
-def _(variant_set: Usd.VariantSet, /, layer) -> Usd.EditContext:
+def _(variant_set: Usd.VariantSet, /, layer: Sdf.Layer) -> Usd.EditContext:
     with contextlib.suppress(Tf.ErrorException):
         return variant_set.GetVariantEditContext()
     # ----- From Pixar -----
