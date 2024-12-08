@@ -244,7 +244,7 @@ def _(arc, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
 
 
 @edit_context.register
-def _(variant_set: Usd.VariantSet, /, layer: Sdf.Layer) -> Usd.EditContext:
+def _(variant_set: Usd.VariantSet, /, layer) -> Usd.EditContext:
     with contextlib.suppress(Tf.ErrorException):
         return variant_set.GetVariantEditContext()
     # ----- From Pixar -----
