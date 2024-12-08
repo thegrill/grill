@@ -31,22 +31,23 @@ from datetime import datetime
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.autodoc',
-              'sphinx.ext.doctest',
-              'sphinx.ext.intersphinx',
-              'sphinx.ext.inheritance_diagram',
-              'sphinx.ext.todo',
-              'sphinx.ext.coverage',
-              'sphinx.ext.viewcode',
-              'sphinx.ext.graphviz',
-              "myst_parser",
-              'sphinx_copybutton',
-              'sphinx_toggleprompt',
-              'sphinx_togglebutton',
-              'sphinx_inline_tabs',
-              'hoverxref.extension',
-              'sphinx.ext.autosectionlabel',
-              'sphinx_autodoc_typehints']
+extensions = [
+    'sphinx.ext.autodoc',
+    'sphinx.ext.doctest',
+    'sphinx.ext.intersphinx',
+    'sphinx.ext.inheritance_diagram',
+    'sphinx.ext.todo',
+    'sphinx.ext.coverage',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.graphviz',
+    "myst_parser",
+    'sphinx_copybutton',
+    'sphinx_toggleprompt',
+    'sphinx_togglebutton',
+    'sphinx_inline_tabs',
+    'hoverxref.extension',
+    'sphinx.ext.autosectionlabel',
+]
 
 # Offset to play well with copybutton
 toggleprompt_offset_right = 35
