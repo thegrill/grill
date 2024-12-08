@@ -74,7 +74,7 @@ def _get_html_table_from_fields(**fields):
 
 def _get_plugs_from_label(label) -> dict[str, str]:
     if not label.startswith("{"):  # Only for record labels.
-        raise ValueError(f"Label needs to start with '{{'. Got: {label}")
+        raise ValueError(f"Label needs to start with '{{' to extract plugs from it, for example: '{{<plug1>item|<plug2>another_item}}'. Got label: '{label}'")
     fields = label.strip("{}").split("|")
     return dict(field.strip("<>").split(">", 1) for field in fields)
 
@@ -444,6 +444,7 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
         modifiers = event.modifiers()
 
         if modifiers == QtCore.Qt.ControlModifier:
+            raise RuntimeError
             zoom_factor = 1.2 if event.angleDelta().y() > 0 else 0.8
             self.scale(zoom_factor, zoom_factor)
         elif modifiers == QtCore.Qt.AltModifier:
@@ -536,6 +537,7 @@ class GraphView(_GraphicsViewport):
         self.url_id_prefix = ""
 
     def _graph_url_changed(self, *_, **__):
+        raise RuntimeError
         sender = self.sender()
         key = next((k for k, v in self._nodes_map.items() if v==sender), None)
         if key is None:
@@ -619,9 +621,16 @@ class GraphView(_GraphicsViewport):
             plugs = node_data.pop('plugs', ())
             nodes_attrs = ChainMap(node_data, graph_node_attrs)
             if (shape := nodes_attrs.get('shape')) == 'record':
+                try:
+                    label = node_data['label']
+                except KeyError:
+                    raise ValueError(f"'label' must be supplied when 'record' shape is set for node: '{nx_node}' with data: {node_data}")
                 if plugs:
-                    raise ValueError(f"record 'shape' and 'plugs' are mutually exclusive, pick one for {nx_node}, {node_data=}")
-                plugs = _get_plugs_from_label(node_data['label'])
+                    raise ValueError(f"record 'shape' and 'ports' are mutually exclusive, pick one for node: '{nx_node}' with data: {node_data}")
+                try:
+                    plugs = _get_plugs_from_label(label)
+                except ValueError as exc:
+                    raise ValueError(f"In order to use the 'record' shape, a record 'label' in the form of: '{{<port1>text1|<port2>text2}}' must be used") from exc
                 label = _get_html_table_from_fields(**plugs)
             else:
                 label = node_data.get('label')
@@ -763,6 +772,7 @@ class _DotViewer(QtWidgets.QFrame):
         self._threadpool.start(dot2svg)
 
     def _on_dot_error(self, message):
+        raise RuntimeError
         self._error_view.setVisible(True)
         self._graph_view.setVisible(False)
         self._error_view.setText(message)
@@ -804,6 +814,7 @@ class _GraphSVGViewer(_DotViewer):
         return "_node_id_"
 
     def _graph_url_changed(self, url: QtCore.QUrl):
+        raise RuntimeError
         node_uri = url.toString()
         node_uri_stem = node_uri.split("/")[-1]
         if node_uri_stem.startswith(self.url_id_prefix):

@@ -661,6 +661,23 @@ class TestViews(unittest.TestCase):
         _qt.QtCharts = current
 
     def test_graph_views(self):
+        viewer = _graph.GraphView()
+
+        for invalid_node_data, error_message in (
+                (dict(shape='record'), "'label' must be supplied"),
+                (dict(shape='record', label='no record'), "a record 'label' in the form of"),
+                (dict(shape='record', label='{1}'), "a record 'label' in the form of"),
+                (dict(shape='record', label='{<0>1}', plugs={'first': 1, 'second': 2}), "record 'shape' and 'ports' are mutually exclusive"),
+                (dict(shape='none'), "A label must be provided"),
+        ):
+            invalid_graph = _graph.nx.MultiDiGraph()
+            invalid_graph.add_nodes_from([(1, invalid_node_data)])
+            with self.assertRaisesRegex(ValueError, error_message):
+                viewer.graph = invalid_graph
+
+        viewer = _graph.GraphView()
+        viewer.view(tuple())
+
         nodes_info = {
             1: dict(
                 label="{<0>x:y:z|<1>z}",
@@ -669,14 +686,25 @@ class TestViews(unittest.TestCase):
             ),
             2: dict(
                 label="{<0>a|<1>b}",
-                style='invis',
+                style="rounded,filled",
                 shape="record",
+            ),
+            3: dict(
+                label="{<0>c|<1>d}",
+                style="rounded,filled",
+                shape="record",
+            ),
+            4: dict(
+                label="{<0>k}",
+                style="invis",
             ),
         }
         edges_info = (
             (1, 1, dict(color='sienna:crimson:orange')),
-            (1, 2, dict(color='crimson', label='edge_label')),
+            (1, 2, dict(color='crimson')),
             (2, 1, dict(color='green')),
+            (3, 2, dict(color='blue', tailport='0')),
+            (2, 4, dict(color='yellow', label='edge_label')),
         )
 
         graph = _graph.nx.MultiDiGraph()
@@ -750,10 +778,12 @@ class TestViews(unittest.TestCase):
 
         def _test_positions(graph, prog):
             return {
-                1: (40.0, 18.5),
-                2: (156.38, 18.5),
-                'ancestor': (156.38, 134.5),
-                'successor': (40.0, 101.5)
+                1: (40.0, 91.692),
+                2: (157.37, 91.692),
+                3: (40.0, 36.692),
+                4: (332.85, 91.692),
+                'ancestor': (157.37, 208.69),
+                'successor': (40.0, 174.69),
             }
 
         with (
@@ -765,7 +795,8 @@ class TestViews(unittest.TestCase):
                 for pixmap_enabled in ((True, False) if cls == _graph._GraphSVGViewer else (False,)):
                     _graph._USE_SVG_VIEWPORT = pixmap_enabled
                     child = cls(parent=widget)
-                    if cls == _graph._GraphSVGViewer:
+                    if cls == _graph._GraphSVGViewer and not pixmap_enabled:
+                        # QWebEngineView in use, no need to test its 'load' method
                         child._graph_view.load = lambda fp: None
                     child._graph = graph
                     child.view(graph.nodes)
@@ -810,6 +841,9 @@ class TestViews(unittest.TestCase):
 
                         self.assertTrue(cycle_collected)
                         self.assertTrue(nodes_hovered_checked)
+
+                    child.filter_edges = lambda src, tgt, port: src not in graph.nodes
+                    child.view(graph.nodes)
 
     def test_zoom(self):
         return
