@@ -70,10 +70,6 @@ class TestUSD(unittest.TestCase):
             layer = stage.GetRootLayer()
             self.assertIsNotNone(layer.GetPrimAtPath(f"{layer.defaultPrim}/inner/child{{color={variant_name}}}"))
 
-        with self.assertRaisesRegex(TypeError, "Not implemented"):
-            # only composition arcs on prims are supported, passing an attribute (or other objects) is not
-            gusd.edit_context(color)
-
     def test_missing_arc(self):
         stage = Usd.Stage.CreateInMemory()
         prim = stage.DefinePrim("/Referenced")

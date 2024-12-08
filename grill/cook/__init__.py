@@ -534,7 +534,7 @@ def _inherit_or_specialize_unit(method, context_unit):
 
 @functools.singledispatch
 def taxonomy_graph(prims: Usd.Prim, url_id_prefix) -> nx.DiGraph:
-    """Get the hierarchical taxonomy representation of the given taxa prims."""
+    """Get the hierarchical taxonomy representation of existing prims."""
     graph = nx.DiGraph(tooltip="Taxonomy Graph")
     graph.graph.update(
         graph={'rankdir': 'LR'},
@@ -556,7 +556,7 @@ def taxonomy_graph(prims: Usd.Prim, url_id_prefix) -> nx.DiGraph:
     return graph
 
 
-@taxonomy_graph.register
-def _(stage: Usd.Stage, url_id_prefix):
+@taxonomy_graph.register(Usd.Stage)
+def _(stage: Usd.Stage, url_id_prefix) -> nx.DiGraph:
     # Convenience for the stage
     return taxonomy_graph(itaxa(stage), url_id_prefix)

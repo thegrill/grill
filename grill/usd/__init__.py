@@ -75,38 +75,8 @@ def iprims(stage: Usd.Stage, root_paths: typing.Iterable[Sdf.Path] = tuple(), pr
     )
 
 
-@typing.overload
-def edit_context(payload: Sdf.Payload, /, prim: Usd.Prim) -> Usd.EditContext:
-    ...
-
-
-@typing.overload
-def edit_context(reference: Sdf.Reference, /, prim: Usd.Prim) -> Usd.EditContext:
-    ...
-
-
-@typing.overload
-def edit_context(inherits: Usd.Inherits, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
-    ...
-
-
-@typing.overload
-def edit_context(specializes: Usd.Specializes, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
-    ...
-
-
-@typing.overload
-def edit_context(variant: Usd.VariantSet, /, layer: Sdf.Layer) -> Usd.EditContext:
-    ...
-
-
-@typing.overload
-def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: typing.Callable) -> Usd.EditContext:
-    ...
-
-
 @functools.singledispatch
-def edit_context(obj, /, *args, **kwargs) -> Usd.EditContext:
+def edit_context(prim: Usd.Prim, /, query_filter, arc_predicate) -> Usd.EditContext:
     """Composition arcs target layer stacks. These functions help create EditTargets for the first matching node's root layer stack from prim's composition arcs.
 
     This allows for "chained" context switching while preserving the same stage objects.
@@ -232,11 +202,6 @@ def edit_context(obj, /, *args, **kwargs) -> Usd.EditContext:
         }
 
     """
-    raise TypeError(f"Not implemented: {locals()}")  # lazy
-
-
-@edit_context.register
-def _(prim: Usd.Prim, /, query_filter, arc_predicate):
     # https://blogs.mathworks.com/developer/2015/03/31/dont-get-in-too-deep/
     # with write.context(prim, dict(kingdom="assets")):
     #     prim.GetAttribute("abc").Set(True)
@@ -254,7 +219,7 @@ def _(prim: Usd.Prim, /, query_filter, arc_predicate):
 
 @edit_context.register(Sdf.Reference)
 @edit_context.register(Sdf.Payload)
-def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
+def _(arc, /, prim) -> Usd.EditContext:
     identifier = arc.assetPath
     with Ar.ResolverContextBinder(prim.GetStage().GetPathResolverContext()):
         # Use Layer.Find since layer should have been open for the prim to exist.
@@ -274,12 +239,12 @@ def _(arc: typing.Union[Sdf.Payload, Sdf.Reference], /, prim):
 
 @edit_context.register(Usd.Inherits)
 @edit_context.register(Usd.Specializes)
-def _(arc_type: typing.Union[Usd.Inherits, Usd.Specializes], /, path, layer):
-    return _edit_context_by_arc(arc_type.GetPrim(), type(arc_type), path, layer)
+def _(arc, /, path, layer) -> Usd.EditContext:
+    return _edit_context_by_arc(arc.GetPrim(), type(arc), path, layer)
 
 
 @edit_context.register
-def _(variant_set: Usd.VariantSet, /, layer):
+def _(variant_set: Usd.VariantSet, /, layer) -> Usd.EditContext:
     with contextlib.suppress(Tf.ErrorException):
         return variant_set.GetVariantEditContext()
     # ----- From Pixar -----
