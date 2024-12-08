@@ -95,54 +95,11 @@ class TestViews(unittest.TestCase):
         cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
     def setUp(self):
-        ...
-        # return
-
-        # self.grill_world = Usd.Stage.Open(str(_test_bed))
-
-        # root_path = "/root"
-        #
-        # sphere_stage = Usd.Stage.CreateInMemory()
-        # UsdGeom.Sphere.Define(sphere_stage, "/sph")
-        # sphere_root = sphere_stage.DefinePrim(root_path)
-        # sphere_root.CreateAttribute("greet", Sdf.ValueTypeNames.String).Set("hello")
-        # sphere_stage.SetDefaultPrim(sphere_root)
-        #
-        # capsule_stage = Usd.Stage.CreateInMemory()
-        # UsdGeom.Capsule.Define(capsule_stage, "/cap")
-        # capsule_root = capsule_stage.DefinePrim(root_path)
-        # capsule_root.CreateAttribute("who", Sdf.ValueTypeNames.String).Set("world")
-        # capsule_stage.SetDefaultPrim(capsule_root)
-        #
-        # merged_stage = Usd.Stage.CreateInMemory()
-        # with Sdf.ChangeBlock():
-        #     for i in (capsule_stage, sphere_stage):
-        #         merged_stage.GetRootLayer().subLayerPaths.append(i.GetRootLayer().identifier)
-        # merged_stage.SetDefaultPrim(merged_stage.GetPrimAtPath(root_path))
-        #
-        # world = Usd.Stage.CreateInMemory()
-        # self.nested = world.DefinePrim("/nested/child")
-        # self.sibling = world.DefinePrim("/nested/sibling")
-        # self.nested.GetReferences().AddReference(merged_stage.GetRootLayer().identifier)
-        #
-        # self.capsule = capsule_stage
-        # self.sphere = sphere_stage
-        # self.merge = merged_stage
-        # self.world = world
-        #
         self._tmpf = tempfile.mkdtemp()
         self._token = cook.Repository.set(cook.Path(self._tmpf) / "repo")
-        # self.grill_root_asset = names.UsdAsset.get_anonymous()
-        # self.grill_world = gworld = cook.fetch_stage(self.grill_root_asset.name)
-        # self.taxon_a = cook.define_taxon(gworld, "a")
-        # self.taxon_b = cook.define_taxon(gworld, "b", references=(self.taxon_a,))
-        # self.unit_b = cook.create_unit(self.taxon_b, "GenericAgent")
 
     def tearDown(self) -> None:
         cook.Repository.reset(self._token)
-        # Reset all members to USD objects to ensure the used layers are cleared
-        # (otherwise in Windows this can cause failure to remove the temporary files)
-        # self.grill_world = None
         shutil.rmtree(self._tmpf)
 
     @classmethod
@@ -278,9 +235,7 @@ class TestViews(unittest.TestCase):
 
         cook.UsdAsset = MiniAsset
         stage = Usd.Stage.Open(str(_test_bed))
-        # stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
         existing = list(cook.itaxa(stage))
-        # existing = [cook.define_taxon(stage, f"Option{each}") for each in range(1, 6)]
         widget = create.TaxonomyEditor()
         # GraphView capabilities are tested elsewhere, so mock 'view' here.
         widget._graph_view.view = lambda indices: None
@@ -327,39 +282,20 @@ class TestViews(unittest.TestCase):
         selected_items = widget._existing.table.selectedIndexes()
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
 
-        # if isinstance(widget._graph_view, _graph.GraphView):
-        #     sender = next(iter(widget._graph_view._nodes_map.values()), None)
-        #     self.assertIsNotNone(sender, msg=f"Expected sender to be an actual object of type {_graph._Node}. Got None, check pygraphviz / pydot requirements")
-        #     sender.linkActivated.emit("")
-        # else:
-        #     valid_url = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}{existing[-1].GetName()}")
-        #     widget._graph_view._graph_url_changed(valid_url)
-        #     # Nitpick, wait for dot 2 svg conversions to finish
-        #     # This does not crash the program but an exception is logged when race
-        #     # conditions apply (e.g. the object is deleted before the runnable completes).
-        #     # This logged exception comes in the form of:
-        #     # RuntimeError: Internal C++ object (_Dot2SvgSignals) already deleted.
-        #     # Solution seems to be to block and wait for all runnables to complete.
-        #     widget._graph_view._threadpool.waitForDone(10_000)
-
     def test_spreadsheet_editor(self):
-        # return
         widget = sheets.SpreadsheetEditor()
         widget._model_hierarchy.setChecked(False)  # default is True
         stage = Usd.Stage.Open(str(_test_bed))
-        stage.OverridePrim("/child_orphaned")
-        # self.nested.SetInstanceable(True)
+        stage.SetEditTarget(stage.GetSessionLayer())
+        with Sdf.ChangeBlock():
+            stage.OverridePrim("/child_orphaned")
+            stage.GetPrimAtPath("/Catalogue/Model/Blocks").SetActive(False)
         widget._orphaned.setChecked(True)
-        # assert self.nested.IsInstance()
         widget.setStage(stage)
         self.assertEqual(stage, widget.stage)
         widget.table.scrollContentsBy(10, 10)
 
         widget.table.selectAll()
-        # expected_rows = {0, 1, 2, 3}  # 3 prims from path: /nested, /nested/child, /nested/sibling, /child_orphaned
-        # expected_rows = set(range(len(list(Usd.PrimRange.Stage(stage, Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate))))))
-        # visible_rows = ({i.row() for i in widget.table.selectedIndexes()})
-        # self.assertEqual(expected_rows, visible_rows)
 
         widget.table.clearSelection()
         widget._column_options[0]._line_filter.setText("hade")
@@ -368,10 +304,8 @@ class TestViews(unittest.TestCase):
 
         widget.table.selectAll()
         expected_rows = {0, 1, 2}  # 1 prim from filtered name: /Catalogue/Shade /Catalogue/Shade/Color /Catalogue/Shade/Color/ModelDefault
-        # for each in widget.table.selectedIndexes():
-        #     print(each.data())
         visible_rows = ({i.row() for i in widget.table.selectedIndexes()})
-        self.assertEqual(expected_rows, visible_rows)
+        self.assertEqual(visible_rows, expected_rows)
 
         widget._copySelection()
         clip = QtWidgets.QApplication.instance().clipboard().text()
@@ -401,28 +335,11 @@ class TestViews(unittest.TestCase):
         widget._column_options[0]._line_filter.setText("")
         widget._model_hierarchy.click()  # disables model hierarchy, which we don't have any
         widget.table.selectAll()
-        _log = lambda *args: print(args)
-        with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
+        with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=lambda *args: print(args)):
             widget._pasteClipboard()
 
         widget.model._prune_children = {Sdf.Path("/pruned")}
-        # gworld = self.grill_world
 
-        # with cook.unit_context(self.unit_b):
-        #     child_agent = gworld.DefinePrim(self.unit_b.GetPath().AppendChild("child"))
-        #     child_attr = child_agent.CreateAttribute("agent_greet", Sdf.ValueTypeNames.String, custom=False)
-        #     child_attr.Set("aloha")
-        # agent_id = cook.unit_asset(self.unit_b)
-        # for i in range(3):
-        #     agent = gworld.DefinePrim(f"/Instanced/Agent{i}")
-        #     agent.GetReferences().AddReference(agent_id.identifier)
-        #     agent.SetInstanceable(True)
-        # agent.SetActive(False)
-        # gworld.OverridePrim("/non/existing/prim")
-        # gworld.DefinePrim("/pruned/prim")
-        # inactive = gworld.DefinePrim("/another_inactive")
-        # inactive.SetActive(False)
-        # gworld.GetRootLayer().subLayerPaths.append(self.world.GetRootLayer().identifier)
         widget._column_options[0]._line_filter.setText("")
         widget.table.clearSelection()
         widget._active.setChecked(False)
@@ -446,11 +363,9 @@ class TestViews(unittest.TestCase):
             expected_colors.pop(color_key, None)
             collected_fonts.add(font_key)
 
-        # self.assertEqual(expected_colors, dict())
         self.assertEqual(expected_fonts, collected_fonts)
 
     def test_prim_filter_data(self):
-        # return
         stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
         person = cook.define_taxon(stage, "Person")
         agent = cook.define_taxon(stage, "Agent", references=(person,))
@@ -482,7 +397,6 @@ class TestViews(unittest.TestCase):
         widget.setStage(stage)
 
     def test_dot_call(self):
-        # return
         """Test execution of function by mocking dot with python call"""
         with mock.patch("grill.views.description._which") as patch:
             patch.return_value = 'python'
@@ -491,32 +405,7 @@ class TestViews(unittest.TestCase):
             self.assertIsNotNone(error)
 
     def test_content_browser(self):
-        # return
-        # class MiniAsset(names.UsdAsset):
-        #     drop = ('code', 'media', 'area', 'stream', 'step', 'variant', 'part')
-        #     DEFAULT_SUFFIX = "usda"
-        #
-        # cook.UsdAsset = MiniAsset
         stage = Usd.Stage.Open(str(_test_bed))
-        # stage = self.grill_world
-        # taxon = self.taxon_a
-        # parent, child = cook.create_many(taxon, ['A', 'B'])
-        # for path, value in (
-        #         ("", (2, 15, 6)),
-        #         ("Deeper/Nested/Golden1", (-4, 5, 1)),
-        #         # ("Deeper/Nested/Golden2", (-4, -10, 1)),
-        #         # ("Deeper/Nested/Golden3", (0, 10, -2)),
-        # ):
-        #     spawned = UsdGeom.Xform(cook.spawn_unit(parent, child, path))
-        #     spawned.AddTranslateOp().Set(value=value)
-        # variant_set_name = "testset"
-        # variant_name = "testvar"
-        # vset = child.GetVariantSet(variant_set_name)
-        # vset.AddVariant(variant_name)
-        # vset.SetVariantSelection(variant_name)
-        # with vset.GetVariantEditContext():
-        #     stage.DefinePrim(child.GetPath().AppendChild("in_variant"))
-        # path_with_variant = child.GetPath().AppendVariantSelection(variant_set_name, variant_name)
 
         path_with_variant = Sdf.Path("/Origin{color=blue}Geom/Floor.primvars:displayColor")
         spawned_path = Sdf.Path("/Catalogue/Model/Buildings/Multi_Story_Building/Windows/Apartment")
@@ -525,14 +414,11 @@ class TestViews(unittest.TestCase):
         args = layers, None, stage.GetPathResolverContext(), (Sdf.Path("/"), spawned_path, path_with_variant)
         anchor = layers[0]
 
-        def _log(*args):
-            print(args)
-
         _core_run = _core._run
 
         def _fake_run(run_args: list):
             return "", Sdf.Layer.FindOrOpen(run_args[-1]).ExportToString()
-        # return
+
         # sdffilter still not coming via pypi, so patch for now
         with mock.patch("grill.views.description._core._run", new=_fake_run):
             dialog = description._start_content_browser(*args)
@@ -546,7 +432,7 @@ class TestViews(unittest.TestCase):
 
             browser_tab: description._PseudoUSDTabBrowser = first_browser_widget.findChild(description._PseudoUSDTabBrowser)
             browser._on_identifier_requested(anchor, layers[1].identifier)
-            with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=_log):
+            with mock.patch(f"{QtWidgets.__name__}.QMessageBox.warning", new=lambda *args: print(args)):
                 browser._on_identifier_requested(anchor, "/missing/file.usd")
                 _, empty_png = tempfile.mkstemp(suffix=".png")
                 browser._on_identifier_requested(anchor, empty_png)
@@ -563,7 +449,7 @@ class TestViews(unittest.TestCase):
             modifiers = QtCore.Qt.ControlModifier
             phase = QtCore.Qt.NoScrollPhase
             inverted = False
-            # return
+
             # ZOOM IN
             event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomIn, buttons, modifiers, phase, inverted)
             browser_tab.wheelEvent(event)
@@ -574,7 +460,7 @@ class TestViews(unittest.TestCase):
             # ZOOM OUT
             event = QtGui.QWheelEvent(position, position, pixelDelta, angleDelta_zoomOut, buttons, modifiers, phase, inverted)
             browser_tab.wheelEvent(event)
-            # return
+
             browser._close_many(range(len(browser._tab_layer_by_idx)))
             for child in dialog.findChildren(description._PseudoUSDBrowser):
                 child._resolved_layers.clear()
@@ -585,7 +471,7 @@ class TestViews(unittest.TestCase):
             targetpath = str(_test_bed.with_suffix(".jpg"))
             image.save(targetpath, "JPG")
             browser._on_identifier_requested(anchor, targetpath)
-            # return
+
             invalid_crate_layer = Sdf.Layer.CreateAnonymous()
             invalid_crate_layer.ImportFromString(
                 # Not valid in USD-24.05: https://github.com/PixarAnimationStudios/OpenUSD/blob/59992d2178afcebd89273759f2bddfe730e59aa8/pxr/usd/sdf/testenv/testSdfParsing.testenv/baseline/127_varyingRelationship.sdf#L9
@@ -617,7 +503,6 @@ class TestViews(unittest.TestCase):
         self.assertEqual(result, "")
 
     def test_display_color_editor(self):
-        # return
         stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
         sphere = UsdGeom.Sphere.Define(stage, "/volume")
         color_var = sphere.GetDisplayColorPrimvar()
@@ -641,7 +526,6 @@ class TestViews(unittest.TestCase):
         self.assertEqual(len(editor._value), 1)
 
     def test_stats(self):
-        # return
         empty = stats.StageStats()
         self.assertEqual(empty._usd_tree.topLevelItemCount(), 0)
 
