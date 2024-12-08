@@ -558,31 +558,38 @@ class TestViews(unittest.TestCase):
 
         nodes_info = {
             1: dict(
-                label="{<0>x:y:z|<1>z}",
-                style="rounded,filled",
+                label="{<one>x:y:z|<two>z}",
+                style="rounded",  # these can be set at the graph level
                 shape="record",
             ),
             2: dict(
-                label="{<0>a|<1>b}",
-                style="rounded,filled",
+                label="{<three>a|<four>b}",
+                style='rounded',
                 shape="record",
             ),
             3: dict(
-                label="{<0>c|<1>d}",
-                style="rounded,filled",
+                label="{<five>c|<six>d}",
+                style='rounded',
                 shape="record",
             ),
-            4: dict(
-                label="{<0>k}",
-                style="invis",
+            "parent": dict(
+                shape="box", fillcolor="#afd7ff", color="#1E90FF", style="filled,rounded"
+            ),
+            "child1": dict(
+                shape="box", fillcolor="#afd7ff", color="#1E90FF", style="filled,rounded"
+            ),
+            "child2": dict(
+                shape="box", fillcolor="#afd7ff", color="#1E90FF", style="invis"
             ),
         }
         edges_info = (
             (1, 1, dict(color='sienna:crimson:orange')),
             (1, 2, dict(color='crimson')),
-            (2, 1, dict(color='green')),
-            (3, 2, dict(color='blue', tailport='0')),
-            (2, 4, dict(color='yellow', label='edge_label')),
+            (2, 1, dict(color='seagreen')),
+            (3, 2, dict(color='steelblue', tailport='five')),
+            (3, 1, dict(color='hotpink', tailport='five')),
+            ("parent", "child1"),
+            ("parent", "child2", dict(label='invis')),
         )
 
         graph = _graph.nx.MultiDiGraph()
@@ -603,16 +610,14 @@ class TestViews(unittest.TestCase):
                     'cycle_out': 3,
                     'surface': 4
                 },
-                active_plugs={'cycle_in', 'cycle_out', 'roughness', 'surface'},
                 shape='none',
                 connections=dict(
                     surface=[('successor', 'surface')],
                     cycle_out=[('ancestor', 'cycle_in')],
-                )
+                ),
             ),
             successor=dict(
                 plugs={'': 0, 'surface': 1},
-                active_plugs={'surface'},
                 shape='none',
                 connections=dict(),
             )
@@ -637,10 +642,13 @@ class TestViews(unittest.TestCase):
                 # color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else background_color
                 label += table_row.format(port=plug_name, color=color, text=f'<font color="#242828">{plug_name}</font>')
                 for source_node, source_plug in sources:
-                    _add_edges(source_node, source_plug, node, plug_name)
+                    # node_id='ancestor', plug_name='cycle_out', ancestor, source.sourceName='cycle_in'
+                    # tooltip='/TexModel/boardMat/PBRShader.cycle_in -> /TexModel/boardMat/PBRShader.cycle_out'
+                    _add_edges(node, plug_name, source_node, source_plug)
 
             label += '</table>>'
             data['label'] = label
+            data.pop('connections', None)
 
         graph.add_nodes_from(connection_nodes.items())
         graph.add_edges_from(connection_edges)
@@ -656,12 +664,14 @@ class TestViews(unittest.TestCase):
 
         def _test_positions(graph, prog):
             return {
-                1: (40.0, 91.692),
-                2: (157.37, 91.692),
-                3: (40.0, 36.692),
-                4: (332.85, 91.692),
-                'ancestor': (157.37, 208.69),
-                'successor': (40.0, 174.69),
+                1: (218.75, 90.1),
+                2: (322.75, 90.1),
+                3: (76.125, 61.1),
+                'parent': (76.125, 190.1),
+                'child1': (218.75, 217.1),
+                'child2': (218.75, 163.1),
+                'ancestor': (76.125, 316.1),
+                'successor': (218.75, 282.1),
             }
 
         with (

@@ -44,12 +44,14 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
 
-_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
+_DOT_ENVIRONMENT_ERROR = """In order to display content in this graph view,
 the 'dot' command must be available on the current environment.
 
 Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
 
-For more details on installing graphviz, visit https://graphviz.org/download/ or https://grill.readthedocs.io/en/latest/install.html#conda-environment-example
+For more details on installing graphviz, visit:
+ - https://graphviz.org/download/ or 
+ - https://grill.readthedocs.io/en/latest/install.html#conda-environment-example
 """
 
 
@@ -591,21 +593,24 @@ class GraphView(_GraphicsViewport):
         self.scene().clear()
         self.viewport().update()
 
+        _default_text_interaction = QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction
+
         if not _core._which("dot"):  # dot has not been installed
             print(_DOT_ENVIRONMENT_ERROR)
             text_item = QtWidgets.QGraphicsTextItem()
             text_item.setPlainText(_DOT_ENVIRONMENT_ERROR)
-            text_item.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction)
+            text_item.setTextInteractionFlags(_default_text_interaction)
             self.scene().addItem(text_item)
             return
 
         try:  # exit early if pydot is not installed, needed for positions
             positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
         except ImportError as exc:
-            message = str(exc)
+            message = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
             print(message)
             text_item = QtWidgets.QGraphicsTextItem()
             text_item.setPlainText(message)
+            text_item.setTextInteractionFlags(_default_text_interaction)
             self.scene().addItem(text_item)
             return
 
@@ -752,6 +757,7 @@ class _DotViewer(QtWidgets.QFrame):
         layout.addWidget(self._error_view)
         layout.setContentsMargins(0, 0, 0, 0)
         self._error_view.setVisible(False)
+        self._error_view.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
         self.setLayout(layout)
         self._dot2svg = None
         self._threadpool = QtCore.QThreadPool()
