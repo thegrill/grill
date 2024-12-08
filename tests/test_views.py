@@ -284,14 +284,7 @@ class TestViews(unittest.TestCase):
         widget = create.TaxonomyEditor()
         # GraphView capabilities are tested elsewhere, so mock 'view' here.
         widget._graph_view.view = lambda indices: None
-        # if isinstance(widget._graph_view, _graph.GraphView):
-        #     with self.assertRaisesRegex(LookupError, "Could not find sender"):
-        #         invalid_uril = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}not_a_digit")
-        #         widget._graph_view._graph_url_changed(invalid_uril)
-        # else:
-        #     with self.assertRaisesRegex(RuntimeError, "'graph' attribute not set yet"):
-        #         invalid_uril = QtCore.QUrl(f"{widget._graph_view.url_id_prefix}not_a_digit")
-        #         widget._graph_view._graph_url_changed(invalid_uril)
+
         widget.setStage(stage)
 
         widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
@@ -663,17 +656,20 @@ class TestViews(unittest.TestCase):
     def test_graph_views(self):
         viewer = _graph.GraphView()
 
-        for invalid_node_data, error_message in (
-                (dict(shape='record'), "'label' must be supplied"),
-                (dict(shape='record', label='no record'), "a record 'label' in the form of"),
-                (dict(shape='record', label='{1}'), "a record 'label' in the form of"),
-                (dict(shape='record', label='{<0>1}', plugs={'first': 1, 'second': 2}), "record 'shape' and 'ports' are mutually exclusive"),
-                (dict(shape='none'), "A label must be provided"),
+        with (
+            mock.patch(f"grill.views._graph.drawing.nx_pydot.graphviz_layout", new=lambda graph, **__: dict.fromkeys(graph.nodes, (0,0))),
         ):
-            invalid_graph = _graph.nx.MultiDiGraph()
-            invalid_graph.add_nodes_from([(1, invalid_node_data)])
-            with self.assertRaisesRegex(ValueError, error_message):
-                viewer.graph = invalid_graph
+            for invalid_node_data, error_message in (
+                    (dict(shape='record'), "'label' must be supplied"),
+                    (dict(shape='record', label='no record'), "a record 'label' in the form of"),
+                    (dict(shape='record', label='{1}'), "a record 'label' in the form of"),
+                    (dict(shape='record', label='{<0>1}', plugs={'first': 1, 'second': 2}), "record 'shape' and 'ports' are mutually exclusive"),
+                    (dict(shape='none'), "A label must be provided"),
+            ):
+                invalid_graph = _graph.nx.MultiDiGraph()
+                invalid_graph.add_nodes_from([(1, invalid_node_data)])
+                with self.assertRaisesRegex(ValueError, error_message):
+                    viewer.graph = invalid_graph
 
         viewer = _graph.GraphView()
         viewer.view(tuple())
@@ -794,7 +790,19 @@ class TestViews(unittest.TestCase):
             for cls in _graph.GraphView, _graph._GraphSVGViewer:
                 for pixmap_enabled in ((True, False) if cls == _graph._GraphSVGViewer else (False,)):
                     _graph._USE_SVG_VIEWPORT = pixmap_enabled
+
                     child = cls(parent=widget)
+
+                    if isinstance(child, _graph.GraphView):
+                        with self.assertRaisesRegex(LookupError, "Could not find sender"):
+                            invalid_uril = QtCore.QUrl(f"{child.url_id_prefix}not_a_digit")
+                            child._graph_url_changed(invalid_uril)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "'graph' attribute not set yet"):
+                            invalid_uril = QtCore.QUrl(f"{child.url_id_prefix}not_a_digit")
+                            child._graph_url_changed(invalid_uril)
+                        child._on_dot_error("nothing set yet")
+
                     if cls == _graph._GraphSVGViewer and not pixmap_enabled:
                         # QWebEngineView in use, no need to test its 'load' method
                         child._graph_view.load = lambda fp: None
@@ -846,8 +854,6 @@ class TestViews(unittest.TestCase):
                     child.view(graph.nodes)
 
     def test_zoom(self):
-        return
-
         """Zoom is triggered by ctrl + mouse wheel"""
         view = _graph._GraphicsViewport()
 
@@ -869,6 +875,7 @@ class TestViews(unittest.TestCase):
 
         # Assert that the scale has changed according to the zoom logic
         self.assertGreater(zoomed_in_scale, initial_scale)
+
         angleDelta_zoomOut = QtCore.QPoint(-120, 0)
 
         # ZOOM OUT

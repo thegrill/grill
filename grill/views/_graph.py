@@ -444,7 +444,6 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
         modifiers = event.modifiers()
 
         if modifiers == QtCore.Qt.ControlModifier:
-            raise RuntimeError
             zoom_factor = 1.2 if event.angleDelta().y() > 0 else 0.8
             self.scale(zoom_factor, zoom_factor)
         elif modifiers == QtCore.Qt.AltModifier:
@@ -537,7 +536,6 @@ class GraphView(_GraphicsViewport):
         self.url_id_prefix = ""
 
     def _graph_url_changed(self, *_, **__):
-        raise RuntimeError
         sender = self.sender()
         key = next((k for k, v in self._nodes_map.items() if v==sender), None)
         if key is None:
@@ -772,7 +770,6 @@ class _DotViewer(QtWidgets.QFrame):
         self._threadpool.start(dot2svg)
 
     def _on_dot_error(self, message):
-        raise RuntimeError
         self._error_view.setVisible(True)
         self._graph_view.setVisible(False)
         self._error_view.setText(message)
@@ -814,7 +811,6 @@ class _GraphSVGViewer(_DotViewer):
         return "_node_id_"
 
     def _graph_url_changed(self, url: QtCore.QUrl):
-        raise RuntimeError
         node_uri = url.toString()
         node_uri_stem = node_uri.split("/")[-1]
         if node_uri_stem.startswith(self.url_id_prefix):
