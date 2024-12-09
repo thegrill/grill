@@ -17,7 +17,7 @@ jobs:
         python-version: ["3.9", "3.10", "3.12"]
         include:
           - python-version: "3.9"
-            install-arguments: ". PySide2 usd-core==21.8 PyOpenGL"
+            install-arguments: ". PySide2 usd-core==21.11 PyOpenGL"  # 21.11 enables AR-2.0 by default
           - python-version: "3.10"
             install-arguments: ". PySide2 usd-core==23.2 PyOpenGL"
           - python-version: "3.12"
