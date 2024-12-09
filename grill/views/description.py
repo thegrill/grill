@@ -318,7 +318,10 @@ def _nx_graph_edge_filter(*, has_specs=None, ancestral=None, implicit=None, intr
 class _ConnectableAPIViewer(QtWidgets.QDialog):
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        self._graph_view = _graph._GraphViewer(parent=self)
+        if nx.__version__.startswith("2"):
+            self._graph_view = _graph._GraphSVGViewer(parent=self)
+        else:
+            self._graph_view = _graph._GraphViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(self._graph_view)
         self.setFocusProxy(self._graph_view)
