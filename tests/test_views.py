@@ -117,7 +117,6 @@ class TestViews(unittest.TestCase):
         cycle_input = pbrShader.CreateInput("cycle_in", Sdf.ValueTypeNames.Float)
         cycle_output = pbrShader.CreateOutput("cycle_out", Sdf.ValueTypeNames.Float)
         cycle_input.ConnectToSource(cycle_output)
-        description._graph_from_connections(material)
         viewer = description._ConnectableAPIViewer()
         # GraphView capabilities are tested elsewhere, so mock 'view' here.
         viewer._graph_view.view = lambda indices: None

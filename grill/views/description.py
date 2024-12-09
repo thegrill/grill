@@ -255,6 +255,7 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         node_id = _get_node_id(current_prim)
         label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
         label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
+        plugs = {"": 0}  # {graphviz port name: port index order}
         for index, plug in enumerate(chain(api.GetInputs(), api.GetOutputs()), start=1):  # we start at 1 because index 0 is the node itself
             plug_name = plug.GetBaseName()
             sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
@@ -263,8 +264,9 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
             for source in sources:
                 _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
                 traverse(source.source)
+            plugs[plug_name] = index
         label += '</table>>'
-        all_nodes[node_id] = dict(label=label)
+        all_nodes[node_id] = dict(label=label, plugs=plugs)
 
     traverse(connections_api)
 
