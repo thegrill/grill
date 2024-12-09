@@ -1,5 +1,9 @@
 from maya import cmds
-from PySide2 import QtCore
+
+if cmds.about(qt=True).startswith("6"):
+    from PySide6 import QtCore
+else:
+    from PySide2 import QtCore
 
 
 def install():

@@ -1,0 +1,51 @@
+#usda 1.0
+(
+    defaultPrim = "Origin"
+)
+
+def "Origin" (
+    prepend apiSchemas = ["GeomModelAPI"]
+    assetInfo = {
+        asset identifier = @Model-Blocks-Block.1.usda@
+        string name = "Block"
+    }
+    displayName = "Block"
+    prepend inherits = </Inherited/Model/Blocks/Block>
+    kind = "assembly"
+    prepend references = @main-Taxonomy-test.1.usda@</Taxonomy/Blocks>
+    prepend specializes = </Specialized/Model/Blocks/Block>
+)
+{
+    def "Building1" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (-54, 126, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def "Building2" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (54, 126, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def "Building3" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (-54, -126, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def "Building4" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (54, -126, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+

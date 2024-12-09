@@ -150,7 +150,6 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
         ids_by_root_layer[root_layer] = index = len(all_nodes)
 
         attrs = dict(style='rounded,filled', shape='record', href=f"{url_prefix}{index}", fillcolor="white", color="darkslategray")
-        plugs = []
         label = '{'
         tooltip = 'LayerStack:'
         for layer, layer_index in sublayers.items():
@@ -160,12 +159,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
             # For new line: https://stackoverflow.com/questions/16671966/multiline-tooltip-for-pydot-graph
             # For Windows path sep: https://stackoverflow.com/questions/15094591/how-to-escape-forwardslash-character-in-html-but-have-it-passed-correctly-to-jav
             tooltip += f"&#10;{layer_index}: {(layer.realPath or layer.identifier)}".replace('\\', '&#47;')
-            plugs.append(layer_index)
             label += f"{'' if layer_index == 0 else '|'}<{layer_index}>{_layer_label(layer)}"
         label += '}'
-        # attrs['plugs'] = dict(zip(plugs, range(len(plugs))))
-        attrs['plugs'] = tuple(plugs)
-        attrs['active_plugs'] = set()  # all active connections, for GUI
         all_nodes[index] = dict(label=label, tooltip=tooltip, **attrs)
         return index, sublayers
 
@@ -182,8 +177,8 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
                 # arc.GetTargetNode().origin nor arc.GetTargetNode().GetOriginRootNode()
                 source_idx, source_layers = _add_node(arc.GetIntroducingNode())
                 source_port = source_layers[source_layer]
-                all_nodes[source_idx]['active_plugs'].add(source_port)  # all connections, for GUI
-                all_edges[source_idx, target_idx][source_port][arc.GetArcType()].update(
+                # implementation detail: convert source_port to a string since it's serialized as the label in graphviz
+                all_edges[source_idx, target_idx][str(source_port)][arc.GetArcType()].update(
                     {func.__name__:  is_fun for func in _USD_COMPOSITION_ARC_QUERY_METHODS if (is_fun := func(arc))}
                 )
 
@@ -191,7 +186,7 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
 
     all_nodes = dict()  # {int: dict}
     all_edges = defaultdict(                            #   { (source_node: int, target_node: int):
-        lambda: defaultdict(                            #       { source_port: int:
+        lambda: defaultdict(                            #       { source_port: str:
             lambda: defaultdict(                        #           { Pcp.ArcType:
                 _USD_COMPOSITION_ARC_QUERY_DEFAULTS     #               { HasArcs: bool, IsImplicit: bool, ... }
             )                                           #           }
@@ -261,7 +256,6 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
         label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
         plugs = {"": 0}  # {graphviz port name: port index order}
-        active_plugs = set()
         for index, plug in enumerate(chain(api.GetInputs(), api.GetOutputs()), start=1):  # we start at 1 because index 0 is the node itself
             plug_name = plug.GetBaseName()
             sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
@@ -271,9 +265,8 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
                 _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
                 traverse(source.source)
             plugs[plug_name] = index
-            active_plugs.add(plug_name)  # TODO: add only actual plugged properties, right now we're adding all of them
         label += '</table>>'
-        all_nodes[node_id] = dict(label=label, plugs=plugs, active_plugs=active_plugs)
+        all_nodes[node_id] = dict(label=label, plugs=plugs)
 
     traverse(connections_api)
 
@@ -327,7 +320,10 @@ def _nx_graph_edge_filter(*, has_specs=None, ancestral=None, implicit=None, intr
 class _ConnectableAPIViewer(QtWidgets.QDialog):
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
-        self._graph_view = _graph._GraphViewer(parent=self)
+        if nx.__version__.startswith("2"):
+            self._graph_view = _graph._GraphSVGViewer(parent=self)
+        else:
+            self._graph_view = _graph._GraphViewer(parent=self)
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(self._graph_view)
         self.setFocusProxy(self._graph_view)

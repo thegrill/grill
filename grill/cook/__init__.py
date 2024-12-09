@@ -86,15 +86,16 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
         # TODO: see how to make this repo_path better, seems very experimental atm.
         if context.IsEmpty():
             raise ValueError(f"Empty {context=} while fetching {identifier=}")
-
         repo_path = Path(context.Get()[0].GetSearchPath()[0])  # or just Repository.get()?
-        Sdf.Layer.CreateNew(str(repo_path / identifier))
-        if not (layer := Sdf.Layer.FindOrOpen(identifier)):
-            raise RuntimeError(f"Make sure a resolver context with statement is being used. {context=}, {identifier=}")
+        # CreateNew adds overhead vs CreateAnonymous but already provides an identifier and ability to call layer.Save()
+        return Sdf.Layer.CreateNew(str(repo_path / identifier))
+
     return layer
 
 
-def _asset_identifier(path):
+def asset_identifier(path):
+    """Since identifiers from relative paths can become absolute when opening existing assets, this function ensures to return the value expected to be authored in layers."""
+    # TODO: temporary public. mmm
     # Expect identifiers to not have folders in between.
     if not path:
         raise ValueError("Can not extract asset identifier from empty path.")
@@ -105,45 +106,24 @@ def _asset_identifier(path):
         return str(path.relative_to(Repository.get()))
 
 
-@typing.overload
-def fetch_stage(identifier: str, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
-    ...
-
-
-@typing.overload
-def fetch_stage(identifier: UsdAsset, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
-    ...  # TODO: evaluate if it's worth to keep this, or if identifier can be a relative path
-
-
-@functools.singledispatch
-def fetch_stage(identifier, context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
+def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
-
-    If an open matching `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ is found on the `global cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_, return it.
-    Otherwise open it, populate the `cache <https://graphics.pixar.com/usd/docs/api/class_usd_utils_stage_cache.html>`_ and return it.
 
     .. attention::
         ``identifier`` must be a valid :class:`grill.names.UsdAsset` name.
 
     """
+    if isinstance(identifier, UsdAsset):
+        identifier = identifier.name
+
     if not context:
         context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
 
     with Ar.ResolverContextBinder(context):
         layer = _fetch_layer(identifier, context)
         return Usd.Stage.Open(layer, load=load)
-
-
-@fetch_stage.register(UsdAsset)
-def _(identifier: UsdAsset, *args, **kwargs) -> Usd.Stage:
-    return fetch_stage.registry[object](identifier.name, *args, **kwargs)
-
-
-@fetch_stage.register(str)
-def _(identifier: str, *args, **kwargs) -> Usd.Stage:
-    return fetch_stage(UsdAsset(identifier), *args, **kwargs)
 
 
 def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
@@ -162,6 +142,8 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = t
         #  (e.g. Windows considers both the same but Linux does not)
         raise ValueError(f"Can not define a taxon with reserved name: '{_TAXONOMY_NAME}'.")
 
+    if not Sdf.Path.IsValidNamespacedIdentifier(name):
+        raise ValueError(f"{name=} must be a valid identifier for a prim")
     reserved_fields = {_TAXONOMY_UNIQUE_ID, _UNIT_UNIQUE_ID}
     reserved_fields.update([i.name for i in reserved_fields])
     if intersection:=reserved_fields.intersection(id_fields):
@@ -187,10 +169,12 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = t
     return prim
 
 
-def itaxa(prims, taxon, *taxa):
-    """Yields prims that are part of the given taxa."""
-    taxa_names = {i if isinstance(i, str) else i.GetName() for i in (taxon, *taxa)}
-    return (prim for prim in prims if taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}))
+def itaxa(stage: Usd.Stage) -> typing.Generator[Usd.Prim]:
+    """For the given stage, iterate existing taxa under the taxonomy hierarchy."""
+    return filter(
+        lambda prim: prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY),
+        _usd.iprims(stage, root_paths={_TAXONOMY_ROOT_PATH}, traverse_predicate=Usd.PrimAllPrimsPredicate)
+    )
 
 
 def _catalogue_path(taxon: Usd.Prim) -> Sdf.Path:
@@ -230,7 +214,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
 
     # existing = {i.GetName() for i in _iter_taxa(taxon.GetStage(), *taxon.GetCustomDataByKey(_ASSETINFO_TAXA_KEY))}
     taxonomy_layer = _find_layer_matching(_TAXONOMY_FIELDS, stage.GetLayerStack())
-    taxonomy_id = _asset_identifier(taxonomy_layer.identifier)
+    taxonomy_id = asset_identifier(taxonomy_layer.identifier)
     context = stage.GetPathResolverContext()
     if context.IsEmpty():  # Use a resolver context that is populated with the repository only when the context is empty.
         context = Ar.ResolverContext(Ar.DefaultResolverContext([str(Repository.get())]))
@@ -241,7 +225,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
         catalogue_asset = current_asset_name.get(**_CATALOGUE_FIELDS)
         with Ar.ResolverContextBinder(context):
             catalogue_layer = _fetch_layer(str(catalogue_asset), context)
-        catalogue_id = _asset_identifier(catalogue_layer.identifier)
+        catalogue_id = asset_identifier(catalogue_layer.identifier)
         root_layer.subLayerPaths.insert(0, catalogue_id)
         # TODO: try setting this on session layer?
 
@@ -281,7 +265,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
                 if not stage.GetPrimAtPath(path:=scope_path.AppendChild(name)):
                     stage.OverridePrim(path)
                 layer = _fetch_layer_for_unit(name)
-                layer_id = _asset_identifier(layer.identifier)
+                layer_id = asset_identifier(layer.identifier)
                 prims_info.append((name, label or name, path, layer, Sdf.Reference(layer_id)))
 
         prims_info = {stage.GetPrimAtPath(info[2]): info for info in prims_info}
@@ -295,7 +279,7 @@ def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
                     modelAPI = Usd.ModelAPI(prim)
                     modelAPI.SetKind(Kind.Tokens.component)
                     modelAPI.SetAssetName(name)
-                    modelAPI.SetAssetIdentifier(_asset_identifier(layer.identifier))
+                    modelAPI.SetAssetIdentifier(asset_identifier(layer.identifier))
 
     catalogue_layer.SetPermissionToEdit(current_permission)
     return list(prims_info)
@@ -333,7 +317,7 @@ def taxonomy_context(stage: Usd.Stage) -> Usd.EditContext:
             taxonomy_layer = _fetch_layer(str(taxonomy_asset), context)
         # Use paths relative to our repository to guarantee portability
         # taxonomy_id = str(Path(taxonomy_layer.realPath).relative_to(Repository.get()))
-        taxonomy_id = _asset_identifier(taxonomy_layer.identifier)
+        taxonomy_id = asset_identifier(taxonomy_layer.identifier)
         taxonomy_root = Sdf.CreatePrimInLayer(taxonomy_layer, _TAXONOMY_ROOT_PATH)
         taxonomy_root.specifier = Sdf.SpecifierClass
         taxonomy_layer.defaultPrim = taxonomy_root.name
@@ -383,7 +367,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
     return spawn_many(parent, child, [path or child.GetName()], [label])[0]
 
 
-def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = []):
+def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = ()):
     """Spawn many instances of a prim unit as descendants of another.
 
     * Both parent and child must be existing units in the catalogue.
@@ -393,6 +377,8 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
       1. Turning parent into an `assembly <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Assembly>`_ if ``child`` is a Model.
       2. Ensuring intermediate prims between ``parent`` and spawned children are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
       3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
+
+    Spawned prims and ancestors are `defined <https://openusd.org/release/glossary.html#def>`_.
 
     .. seealso:: :func:`spawn_unit` and :func:`create_unit`
     """
@@ -411,10 +397,11 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
         paths_to_create.append(path)
     labels = itertools.chain(labels, itertools.repeat(""))
     try:
-        reference = _asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path)
+        reference = asset_identifier(Usd.ModelAPI(child).GetAssetIdentifier().path)
     except ValueError:
         raise ValueError(f"Could not extract identifier from {child} to spawn under {parent}.")
     parent_stage = parent.GetStage()
+    # Ensure prims are defined to spawn units unto (paths might be deep e.g. /world/parent/nested/path/for/child)
     spawned = [parent_stage.DefinePrim(path) for path in paths_to_create]
     child_is_model = child.IsModel()
     with Sdf.ChangeBlock():
@@ -505,8 +492,8 @@ def _inherit_or_specialize_unit(method, context_unit):
         raise ValueError(f"{target_prim} is not a valid unit in the catalogue.")
 
     context_unit = context_unit or target_prim
-    if not Usd.ModelAPI(context_unit).GetAssetName():
-        raise ValueError(f"{context_unit=} needs to be a valid unit in the catalogue.")
+    if not (modelAPI:=Usd.ModelAPI(context_unit)).GetAssetName():
+        raise ValueError(f"{context_unit=} needs to be a valid unit in the catalogue. Currently it has a kind of '{modelAPI.GetKind()}' and asset info of {modelAPI.GetAssetInfo()}")
 
     broadcast_method = type(method)
     if not target_prim.GetPath().HasPrefix(context_unit.GetPath()):
@@ -519,11 +506,13 @@ def _inherit_or_specialize_unit(method, context_unit):
     except ValueError as exc:
         raise ValueError(
             f"Could not find an appropriate edit target node for a {broadcast_method.__name__}'s arc targeting {target_path} for {target_prim}. "
-            f"""Is there a composition arc bringing "{target_prim.GetName()}"'s unit into "{context_unit.GetName()}"'s layer stack at {context_asset}?"""
+            f"""Is there a composition arc bringing "{target_prim.GetName()}"'s prim unit into "{context_unit.GetName()}"'s layer stack at {context_asset}?"""
         ) from exc
 
 
-def taxonomy_graph(prims, url_id_prefix):
+@functools.singledispatch
+def taxonomy_graph(prims: Usd.Prim, url_id_prefix) -> nx.DiGraph:
+    """Get the hierarchical taxonomy representation of existing prims."""
     graph = nx.DiGraph(tooltip="Taxonomy Graph")
     graph.graph.update(
         graph={'rankdir': 'LR'},
@@ -537,8 +526,15 @@ def taxonomy_graph(prims, url_id_prefix):
 
     # TODO:
     #  - Guarantee taxa will be unique (no duplicated short names), raise here?
-    #  - Fail with clear error message when provided prims are not taxa
     for taxon in prims:
+        if not (taxa_key:=taxon.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY)):
+            raise ValueError(f"Prim {taxon} is not a taxon. Expected to find asset info in key '{_ASSETINFO_TAXA_KEY}' but found '{taxa_key}'. Complete prim's asset info: {taxon.GetAssetInfo()}")
         graph.add_node(taxon_name:=taxon.GetName(), tooltip=taxon.GetPath(), href=f"{url_id_prefix}{taxon_name}",)
         graph.add_edges_from(itertools.zip_longest(set(taxon.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY)) - {taxon_name}, (), fillvalue=taxon_name))
     return graph
+
+
+@taxonomy_graph.register(Usd.Stage)
+def _(stage: Usd.Stage, url_id_prefix) -> nx.DiGraph:
+    # Convenience for the stage
+    return taxonomy_graph(itaxa(stage), url_id_prefix)

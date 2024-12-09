@@ -3,7 +3,6 @@ import toolutils
 from functools import cache, lru_cache, partial
 from . import sheets as _sheets, description as _description, create as _create, stats as _stats, _core
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
-_core._ensure_dot()
 
 
 def _stage_on_widget(widget_creator, _cache=True):

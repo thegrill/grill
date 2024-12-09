@@ -10,12 +10,12 @@ import configparser
 import networkx as nx
 from itertools import chain
 from functools import cache
+from collections import ChainMap
 
 from networkx import drawing
 
 from . import _core
 from ._qt import QtCore, QtGui, QtWidgets, QtSvg
-_core._ensure_dot()
 
 _logger = logging.getLogger(__name__)
 
@@ -34,8 +34,6 @@ _USE_SVG_VIEWPORT = _env_config.getboolean('graph_view', 'svg_as_pixmap')
 _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
-#   - Popup everytime a new graph is loaded in Houdini or Maya ( it's on _run_prog func line 1380 of agraph.py )
-#       https://github.com/pygraphviz/pygraphviz/pull/514
 #   - Should toggling "precise source layer" on LayerStack compostiion view preserve node position for _GraphViewer?
 #   - Tooltip on nodes for _GraphViewer
 #   - Context menu items
@@ -46,32 +44,41 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
 
-_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
+_DOT_ENVIRONMENT_ERROR = """In order to display content in this graph view,
 the 'dot' command must be available on the current environment.
 
 Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
 
-For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
+For more details on installing graphviz, visit:
+ - https://graphviz.org/download/ or 
+ - https://grill.readthedocs.io/en/latest/install.html#conda-environment-example
 """
 
 
-def _convert_graphviz_to_html_label(label):
+def _adjust_graphviz_html_table_label(label):
     # TODO: these checks below rely on internals from the grill (layer stack composition uses record shapes, connection viewer uses html)
-    if label.startswith("{"):  # We're a record. Split the label into individual fields
-        fields = label.strip("{}").split("|")
-        label = '<table>'
-        for index, field in enumerate(fields):
-            port, text = field.strip("<>").split(">", 1)
-            bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
-            # text = f'<font color="#3e4444">{text}</font>'
-            text = f'<font color="#242828">{text}</font>'
-            label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
-        label += "</table>"
-    elif label.startswith("<"):
+    if label.startswith("<"):
         # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internal to graphviz
         # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
         label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
     return label
+
+
+def _get_html_table_from_fields(**fields):
+    label = '<table>'
+    for index, (port, text) in enumerate(fields.items()):
+        bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
+        text = f'<font color="#242828">{text}</font>'
+        label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
+    label += "</table>"
+    return label
+
+
+def _get_plugs_from_label(label) -> dict[str, str]:
+    if not label.startswith("{"):  # Only for record labels.
+        raise ValueError(f"Label needs to start with '{{' to extract plugs from it, for example: '{{<plug1>item|<plug2>another_item}}'. Got label: '{label}'")
+    fields = label.strip("{}").split("|")
+    return dict(field.strip("<>").split(">", 1) for field in fields)
 
 
 @cache
@@ -85,26 +92,16 @@ def _dot_2_svg(sourcepath):
 
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: tuple =None, active_plugs: set = frozenset(), visible=True):
+    # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
+    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: tuple = (), visible=True):
         super().__init__(parent)
         self._edges = []
-        self._plugs = plugs = dict(zip(plugs, range(len(plugs)))) or {}  # {identifier: index}
-
-        plug_items = {}  # {index: (QEllipse, QEllipse)}
-        radius = 4
-        def _plug_item():
-            item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
-            item.setPen(_NO_PEN)
-            return item
-        self._active_plugs = active_plugs
+        self._plugs = dict(zip(plugs, range(len(plugs)))) or {}  # {identifier: index}
         self._active_plugs_by_side = dict()  # {index: {left[int]: {}, right[int]: {}}
-        for plug_index in active_plugs:
-            plug_items[plugs[plug_index]] = (_plug_item(), _plug_item())
-            self._active_plugs_by_side[plugs[plug_index]] = {0: dict(), 1: dict()}
-        self._plug_items = plug_items
+        self._plug_items = {}  # {index: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
-        self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + _convert_graphviz_to_html_label(label))
+        self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
         # https://bugreports.qt.io/browse/QTBUG-89563
@@ -170,7 +167,20 @@ class _Node(QtWidgets.QGraphicsTextItem):
     def _activatePlug(self, edge, plug_index, side, position):
         if plug_index is None:
             return  # we're at the center, nothing to draw nor activate
-        plugs_by_side = self._active_plugs_by_side[plug_index]  # {index: {left[int]: {}, right[int]: {}}
+        try:
+            plugs_by_side = self._active_plugs_by_side[plug_index]  # {index: {left[int]: {}, right[int]: {}}
+        except KeyError:  # first time we're activating a plug, so add a visual ellipse for it
+            radius = 4
+
+            def _add_plug_item():
+                item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
+                item.setPen(_NO_PEN)
+                self.scene().addItem(item)
+                return item
+
+            self._plug_items[plug_index] = (_add_plug_item(), _add_plug_item())
+            self._active_plugs_by_side[plug_index] = plugs_by_side = {0: dict(), 1: dict()}
+
         plugs_by_side[side][edge] = True
         other_side = bool(not side)
         inactive_plugs = plugs_by_side[other_side]
@@ -583,42 +593,66 @@ class GraphView(_GraphicsViewport):
         self.scene().clear()
         self.viewport().update()
 
+        _default_text_interaction = QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction
+
         if not _core._which("dot"):  # dot has not been installed
             print(_DOT_ENVIRONMENT_ERROR)
             text_item = QtWidgets.QGraphicsTextItem()
             text_item.setPlainText(_DOT_ENVIRONMENT_ERROR)
-            text_item.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction)
+            text_item.setTextInteractionFlags(_default_text_interaction)
             self.scene().addItem(text_item)
             return
 
-        try:  # exit early if pygraphviz is not installed, needed for positions
-            positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+        try:  # exit early if pydot is not installed, needed for positions
+            positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
         except ImportError as exc:
-            message = str(exc)
+            message = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
             print(message)
             text_item = QtWidgets.QGraphicsTextItem()
             text_item.setPlainText(message)
+            text_item.setTextInteractionFlags(_default_text_interaction)
             self.scene().addItem(text_item)
             return
 
         print("LOADING GRAPH")
         self._nodes_map.clear()
         edge_color = graph.graph.get('edge', {}).get("color", "")
+        graph_node_attrs = graph.graph.get('node', {})
 
         def _add_node(nx_node):
             node_data = graph.nodes[nx_node]
+            plugs = node_data.pop('plugs', ())  # implementation detail
+            nodes_attrs = ChainMap(node_data, graph_node_attrs)
+            if (shape := nodes_attrs.get('shape')) == 'record':
+                try:
+                    label = node_data['label']
+                except KeyError:
+                    raise ValueError(f"'label' must be supplied when 'record' shape is set for node: '{nx_node}' with data: {node_data}")
+                if plugs:
+                    raise ValueError(f"record 'shape' and 'ports' are mutually exclusive, pick one for node: '{nx_node}' with data: {node_data}")
+                try:
+                    plugs = _get_plugs_from_label(label)
+                except ValueError as exc:
+                    raise ValueError(f"In order to use the 'record' shape, a record 'label' in the form of: '{{<port1>text1|<port2>text2}}' must be used") from exc
+                label = _get_html_table_from_fields(**plugs)
+            else:
+                label = node_data.get('label')
+                if shape in {'none', 'plaintext'}:
+                    if not label:
+                        raise ValueError(f"A label must be provided for when using 'none' or 'plaintext' shapes for {nx_node}, {node_data=}")
+                    label = _adjust_graphviz_html_table_label(label)
+                elif not label:
+                    label = str(nx_node)
+
             item = _Node(
-                label=node_data.get('label', str(nx_node)),
-                color=graph.graph.get('node', {}).get("color", ""),
-                fillcolor=graph.graph.get('node', {}).get("fillcolor", "white"),
-                plugs=node_data.get('plugs', {}),
-                visible=node_data.get('style', "") != "invis",
-                active_plugs=node_data.get('active_plugs', set()),
+                label=label,
+                color=nodes_attrs.get("color", ""),
+                fillcolor=nodes_attrs.get("fillcolor", "white"),
+                plugs=plugs,
+                visible=nodes_attrs.get('style', "") != "invis",
             )
             item.linkActivated.connect(self._graph_url_changed)
             self.scene().addItem(item)
-            for each_plug in chain.from_iterable(item._plug_items.values()):
-                self.scene().addItem(each_plug)
             return item
 
         max_y = max(pos[1] for pos in positions.values())
@@ -649,6 +683,7 @@ class GraphView(_GraphicsViewport):
             if source._plugs or target._plugs:
                 kwargs['target_plug'] = target._plugs[edge_data['headport']] if edge_data.get('headport') is not None else None
                 kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
+
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
 
@@ -680,6 +715,7 @@ class _SvgPixmapViewport(_GraphicsViewport):
         self.setScene(scene)
 
     def load(self, filepath):
+        filepath = filepath.toLocalFile() if isinstance(filepath, QtCore.QUrl) else filepath
         scene = self.scene()
         scene.clear()
 
@@ -721,6 +757,7 @@ class _DotViewer(QtWidgets.QFrame):
         layout.addWidget(self._error_view)
         layout.setContentsMargins(0, 0, 0, 0)
         self._error_view.setVisible(False)
+        self._error_view.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
         self.setLayout(layout)
         self._dot2svg = None
         self._threadpool = QtCore.QThreadPool()
@@ -805,7 +842,7 @@ class _GraphSVGViewer(_DotViewer):
 
         fd, fp = tempfile.mkstemp()
         try:
-            nx.nx_agraph.write_dot(subgraph, fp)
+            nx.nx_pydot.write_dot(subgraph, fp)
         except ImportError as exc:
             error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
         else:

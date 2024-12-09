@@ -4,6 +4,19 @@ from pxr import Usd, UsdGeom, Sdf
 
 import grill.usd as gusd
 
+# 2024-11-09 - Python-3.13 & USD-24.11
+# python -m unittest --durations 0 test_usd
+# .....
+# Slowest test durations
+# ----------------------------------------------------------------------
+# 0.026s     test_edit_context (test_usd.TestUSD.test_edit_context)
+# 0.001s     test_format_tree (test_usd.TestUSD.test_format_tree)
+# 0.001s     test_make_plane (test_usd.TestUSD.test_make_plane)
+#
+# (durations < 0.001s were hidden; use -v to show these durations)
+# ----------------------------------------------------------------------
+# Ran 5 tests in 0.030s
+
 
 class TestUSD(unittest.TestCase):
     def test_edit_context(self):

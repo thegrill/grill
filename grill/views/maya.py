@@ -1,8 +1,12 @@
 from functools import cache, partial
 
 from maya import cmds
-from PySide2 import QtWidgets
-from shiboken2 import wrapInstance
+from ._qt import QtWidgets
+
+if cmds.about(qt=True).startswith("6"):
+    from shiboken6 import wrapInstance
+else:
+    from shiboken2 import wrapInstance
 
 import ufe
 import mayaUsd
@@ -11,7 +15,6 @@ import maya.api.OpenMaya as om
 
 from . import description as _description, sheets as _sheets, create as _create, _core, stats as _stats
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
-_core._ensure_dot()
 
 
 @cache
