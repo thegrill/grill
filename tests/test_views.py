@@ -125,7 +125,7 @@ class TestViews(unittest.TestCase):
         viewer.setPrim(material)
         graph = viewer._graph_view._graph
         self.assertEqual(graph.nodes[str(material.GetPrim().GetPath())]['plugs'], ['', surface_name])
-        self.assertEqual(graph.nodes[str(pbrShader.GetPrim().GetPath())]['plugs'], ['', cycle_input.GetName(), roughness_name, cycle_output.GetName(), surface_name])
+        self.assertEqual(graph.nodes[str(pbrShader.GetPrim().GetPath())]['plugs'], ['', cycle_input.GetBaseName(), roughness_name, cycle_output.GetBaseName(), surface_name])
         viewer.setPrim(None)
 
     def test_scenegraph_composition(self):
