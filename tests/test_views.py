@@ -124,8 +124,8 @@ class TestViews(unittest.TestCase):
         viewer._graph_view.view = lambda indices: None
         viewer.setPrim(material)
         graph = viewer._graph_view._graph
-        self.assertEqual(graph.nodes[str(material.GetPrim().GetPath())]['plugs'], ['', surface_name])
-        self.assertEqual(graph.nodes[str(pbrShader.GetPrim().GetPath())]['plugs'], ['', cycle_input.GetBaseName(), roughness_name, cycle_output.GetBaseName(), surface_name])
+        self.assertEqual(graph.nodes[str(material.GetPrim().GetPath())]['ports'], ['', surface_name])
+        self.assertEqual(graph.nodes[str(pbrShader.GetPrim().GetPath())]['ports'], ['', cycle_input.GetBaseName(), roughness_name, cycle_output.GetBaseName(), surface_name])
         viewer.setPrim(None)
 
     def test_scenegraph_composition(self):
@@ -549,7 +549,7 @@ class TestViews(unittest.TestCase):
                     (dict(shape='record'), "'label' must be supplied"),
                     (dict(shape='record', label='no record'), "a record 'label' in the form of"),
                     (dict(shape='record', label='{1}'), "a record 'label' in the form of"),
-                    (dict(shape='record', label='{<0>1}', plugs={'first': 1, 'second': 2}), "record 'shape' and 'ports' are mutually exclusive"),
+                    (dict(shape='record', label='{<0>1}', ports=('first', 'second')), "record 'shape' and 'ports' are mutually exclusive"),
                     (dict(shape='none'), "A label must be provided"),
             ):
                 invalid_graph = _graph.nx.MultiDiGraph()
@@ -607,13 +607,7 @@ class TestViews(unittest.TestCase):
 
         connection_nodes = dict(
             ancestor=dict(
-                plugs={
-                    '': 0,
-                    'cycle_in': 1,
-                    'roughness': 2,
-                    'cycle_out': 3,
-                    'surface': 4
-                },
+                ports=('', 'cycle_in', 'roughness', 'cycle_out', 'surface'),
                 shape='none',
                 connections=dict(
                     surface=[('successor', 'surface')],
@@ -621,7 +615,7 @@ class TestViews(unittest.TestCase):
                 ),
             ),
             successor=dict(
-                plugs={'': 0, 'surface': 1},
+                ports=('', 'surface'),
                 shape='none',
                 connections=dict(),
             )
@@ -636,19 +630,16 @@ class TestViews(unittest.TestCase):
             label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
             label += table_row.format(port="", color="white",
                                       text=f'<font color="{outline_color}"><b>{node}</b></font>')
-            # for index, plug in enumerate(data['plugs'], start=1):  # we start at 1 because index 0 is the node itself
-            for plug, index in data['plugs'].items():  # we start at 1 because index 0 is the node itself
-                if not plug:
+            for port in data['ports']:
+                if not port:
                     continue
-                plug_name = plug
-                sources = data['connections'].get(plug, [])  # (valid, invalid): we care only about valid sources (index 0)
+                sources = data['connections'].get(port, [])  # (valid, invalid): we care only about valid sources (index 0)
                 color = r"#F08080" if sources else background_color
-                # color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else background_color
-                label += table_row.format(port=plug_name, color=color, text=f'<font color="#242828">{plug_name}</font>')
-                for source_node, source_plug in sources:
-                    # node_id='ancestor', plug_name='cycle_out', ancestor, source.sourceName='cycle_in'
+                label += table_row.format(port=port, color=color, text=f'<font color="#242828">{port}</font>')
+                for source_node, source_port in sources:
+                    # node_id='ancestor', port_name='cycle_out', ancestor, source.sourceName='cycle_in'
                     # tooltip='/TexModel/boardMat/PBRShader.cycle_in -> /TexModel/boardMat/PBRShader.cycle_out'
-                    _add_edges(node, plug_name, source_node, source_plug)
+                    _add_edges(node, port, source_node, source_port)
 
             label += '</table>>'
             data['label'] = label

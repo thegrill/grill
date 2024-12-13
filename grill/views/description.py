@@ -229,7 +229,7 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     graph.graph['edge'] = {"color": 'crimson'}
 
     all_nodes = dict()  # {node_id: {graphviz_attr: value}}
-    edges = list()  # [(source_node_id, target_node_id, {source_plug_name, target_plug_name, graphviz_attrs})]
+    edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
 
     @cache
     def _get_node_id(api):
@@ -240,7 +240,7 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         tooltip = f"{src_node}.{src_name} -> {tgt_node}.{tgt_name}"
         edges.append((src_node, tgt_node, {"tailport": src_name, "headport": tgt_name, "tooltip": tooltip}))
 
-    plug_colors = {
+    port_colors = {
         UsdShade.Input: outline_color,  # blue
         UsdShade.Output: "#F08080"  # "lightcoral",  # pink
     }
@@ -255,18 +255,18 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         node_id = _get_node_id(current_prim)
         label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
         label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
-        plugs = [""]  # port names for this node. Empty string is used to refer to the node itself (no port).
-        for plug in chain(api.GetInputs(), api.GetOutputs()):
-            plug_name = plug.GetBaseName()
-            sources, __ = plug.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
-            color = plug_colors[type(plug)] if isinstance(plug, UsdShade.Output) or sources else background_color
-            label += table_row.format(port=plug_name, color=color, text=f'<font color="#242828">{plug_name}</font>')
+        ports = [""]  # port names for this node. Empty string is used to refer to the node itself (no port).
+        for port in chain(api.GetInputs(), api.GetOutputs()):
+            port_name = port.GetBaseName()
+            sources, __ = port.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
+            color = port_colors[type(port)] if isinstance(port, UsdShade.Output) or sources else background_color
+            label += table_row.format(port=port_name, color=color, text=f'<font color="#242828">{port_name}</font>')
             for source in sources:
-                _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, plug_name)
+                _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, port_name)
                 traverse(source.source)
-            plugs.append(plug_name)
+            ports.append(port_name)
         label += '</table>>'
-        all_nodes[node_id] = dict(label=label, plugs=plugs)
+        all_nodes[node_id] = dict(label=label, ports=ports)
 
     traverse(connections_api)
 
