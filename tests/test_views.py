@@ -111,8 +111,10 @@ class TestViews(unittest.TestCase):
         stage = Usd.Stage.CreateInMemory()
         material = UsdShade.Material.Define(stage, '/TexModel/boardMat')
         pbrShader = UsdShade.Shader.Define(stage, '/TexModel/boardMat/PBRShader')
-        pbrShader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.4)
-        material.CreateSurfaceOutput().ConnectToSource(pbrShader.ConnectableAPI(), "surface")
+        roughness_name = "roughness"
+        pbrShader.CreateInput(roughness_name, Sdf.ValueTypeNames.Float).Set(0.4)
+        surface_name = "surface"
+        material.CreateSurfaceOutput().ConnectToSource(pbrShader.ConnectableAPI(), surface_name)
         # Ensure cycles don't cause recursion
         cycle_input = pbrShader.CreateInput("cycle_in", Sdf.ValueTypeNames.Float)
         cycle_output = pbrShader.CreateOutput("cycle_out", Sdf.ValueTypeNames.Float)
@@ -121,6 +123,9 @@ class TestViews(unittest.TestCase):
         # GraphView capabilities are tested elsewhere, so mock 'view' here.
         viewer._graph_view.view = lambda indices: None
         viewer.setPrim(material)
+        graph = viewer._graph_view._graph
+        self.assertEqual(graph.nodes[str(material.GetPrim().GetPath())]['plugs'], ['', surface_name])
+        self.assertEqual(graph.nodes[str(pbrShader.GetPrim().GetPath())]['plugs'], ['', cycle_input.GetName(), roughness_name, cycle_output.GetName(), surface_name])
         viewer.setPrim(None)
 
     def test_scenegraph_composition(self):

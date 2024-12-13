@@ -621,7 +621,7 @@ class GraphView(_GraphicsViewport):
 
         def _add_node(nx_node):
             node_data = graph.nodes[nx_node]
-            plugs = node_data.pop('plugs', ())  # implementation detail
+            plugs = node_data.get('plugs', ())
             nodes_attrs = ChainMap(node_data, graph_node_attrs)
             if (shape := nodes_attrs.get('shape')) == 'record':
                 try:
