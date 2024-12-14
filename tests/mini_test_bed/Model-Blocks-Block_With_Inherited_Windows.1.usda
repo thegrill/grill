@@ -1,0 +1,68 @@
+#usda 1.0
+(
+    defaultPrim = "Origin"
+)
+
+def "Origin" (
+    prepend apiSchemas = ["GeomModelAPI"]
+    assetInfo = {
+        asset identifier = @Model-Blocks-Block_With_Inherited_Windows.1.usda@
+        string name = "Block_With_Inherited_Windows"
+    }
+    displayName = "Block_With_Inherited_Windows"
+    prepend inherits = </Inherited/Model/Blocks/Block_With_Inherited_Windows>
+    kind = "assembly"
+    prepend references = @main-Taxonomy-test.1.usda@</Taxonomy/Blocks>
+    prepend specializes = </Specialized/Model/Blocks/Block_With_Inherited_Windows>
+)
+{
+    def "Building1" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (-18, 42, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def "Building2" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (18, 42, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def "Building3" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (-18, -42, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def "Building4" (
+        prepend references = @Model-Buildings-Multi_Story_Building.1.usda@
+    )
+    {
+        double3 xformOp:translate = (18, -42, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+over "Inherited"
+{
+    over "Model"
+    {
+        over "Elements"
+        {
+            over "Apartment" (
+                variants = {
+                    string color = "blue"
+                }
+            )
+            {
+            }
+        }
+    }
+}
+

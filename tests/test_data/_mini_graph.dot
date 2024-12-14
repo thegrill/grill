@@ -1,0 +1,21 @@
+digraph {
+rankdir=LR;
+edge [color=crimson];
+1 [label="{<one>x:y:z|<two>z}", style=rounded, shape=record];
+2 [label="{<three>a|<four>b}", style=rounded, shape=record];
+3 [label="{<five>c|<six>d}", style=rounded, shape=record];
+parent [shape=box, fillcolor="#afd7ff", color="#1E90FF", style="filled,rounded"];
+child1 [shape=box, fillcolor="#afd7ff", color="#1E90FF", style="filled,rounded"];
+child2 [shape=box, fillcolor="#afd7ff", color="#1E90FF", style=invis];
+ancestor [ports="('', 'cycle_in', 'roughness', 'cycle_out', 'surface')", shape=none, label=<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="#F0FFFF" color="#4682B4"><tr><td port="" border="0" bgcolor="white" style="ROUNDED"><font color="#4682B4"><b>ancestor</b></font></td></tr><tr><td port="cycle_in" border="0" bgcolor="#F0FFFF" style="ROUNDED"><font color="#242828">cycle_in</font></td></tr><tr><td port="roughness" border="0" bgcolor="#F0FFFF" style="ROUNDED"><font color="#242828">roughness</font></td></tr><tr><td port="cycle_out" border="0" bgcolor="#F08080" style="ROUNDED"><font color="#242828">cycle_out</font></td></tr><tr><td port="surface" border="0" bgcolor="#F08080" style="ROUNDED"><font color="#242828">surface</font></td></tr></table>>];
+successor [ports="('', 'surface')", shape=none, label=<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="#F0FFFF" color="#4682B4"><tr><td port="" border="0" bgcolor="white" style="ROUNDED"><font color="#4682B4"><b>successor</b></font></td></tr><tr><td port="surface" border="0" bgcolor="#F0FFFF" style="ROUNDED"><font color="#242828">surface</font></td></tr></table>>];
+1 -> 1 [key=0, color="sienna:crimson:orange"];
+1 -> 2 [key=0, color=crimson];
+2 -> 1 [key=0, color=seagreen];
+3 -> 2 [key=0, color=steelblue, tailport=five];
+3 -> 1 [key=0, color=hotpink, tailport=five];
+parent -> child1 [key=0];
+parent -> child2 [key=0, label=invis];
+ancestor -> ancestor [key=0, tailport="cycle_out", headport="cycle_in", tooltip="ancestor.cycle_out -> ancestor.cycle_in"];
+ancestor -> successor [key=0, tailport=surface, headport=surface, tooltip="ancestor.surface -> successor.surface"];
+}

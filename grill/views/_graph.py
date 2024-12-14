@@ -10,12 +10,12 @@ import configparser
 import networkx as nx
 from itertools import chain
 from functools import cache
+from collections import ChainMap
 
 from networkx import drawing
 
 from . import _core
 from ._qt import QtCore, QtGui, QtWidgets, QtSvg
-_core._ensure_dot()
 
 _logger = logging.getLogger(__name__)
 
@@ -34,44 +34,52 @@ _USE_SVG_VIEWPORT = _env_config.getboolean('graph_view', 'svg_as_pixmap')
 _IS_QT5 = QtCore.qVersion().startswith("5")
 
 # TODO:
-#   - Popup everytime a new graph is loaded in Houdini or Maya ( it's on _run_prog func line 1380 of agraph.py )
-#       https://github.com/pygraphviz/pygraphviz/pull/514
 #   - Should toggling "precise source layer" on LayerStack compostiion view preserve node position for _GraphViewer?
 #   - Tooltip on nodes for _GraphViewer
 #   - Context menu items
 #   - Ability to move further in canvas after Nodes don't exist
-#   - when switching a node left to right with precise source layers, the source node plugs do not refresh if we're moving the target node
+#   - when switching a node left to right with precise source layers, the source node ports do not refresh if we're moving the target node
 #   - refactor conditionals for _GraphSVGViewer from the description module
 
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
 
-_DOT_ENVIRONMENT_ERROR = """In order to display composition arcs in a graph,
+_DOT_ENVIRONMENT_ERROR = """In order to display content in this graph view,
 the 'dot' command must be available on the current environment.
 
 Please make sure graphviz is installed and 'dot' available on the system's PATH environment variable.
 
-For more details on installing graphviz, visit https://pygraphviz.github.io/documentation/stable/install.html
+For more details on installing graphviz, visit:
+ - https://graphviz.org/download/ or 
+ - https://grill.readthedocs.io/en/latest/install.html#conda-environment-example
 """
 
 
-def _convert_graphviz_to_html_label(label):
+def _adjust_graphviz_html_table_label(label):
     # TODO: these checks below rely on internals from the grill (layer stack composition uses record shapes, connection viewer uses html)
-    if label.startswith("{"):  # We're a record. Split the label into individual fields
-        fields = label.strip("{}").split("|")
-        label = '<table>'
-        for index, field in enumerate(fields):
-            port, text = field.strip("<>").split(">", 1)
-            bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
-            # text = f'<font color="#3e4444">{text}</font>'
-            text = f'<font color="#242828">{text}</font>'
-            label += f"<tr><td port='{port}' bgcolor='{bgcolor}'>{text}</td></tr>"
-        label += "</table>"
-    elif label.startswith("<"):
+    if label.startswith("<"):
         # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internal to graphviz
         # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
         label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
     return label
+
+
+def _get_html_table_from_ports(**ports):
+    label = '<table>'
+    for index, (name, text) in enumerate(ports.items()):
+        bgcolor = "white" if index % 2 == 0 else "#f0f6ff"  # light blue
+        text = f'<font color="#242828">{text}</font>'
+        label += f"<tr><td port='{name}' bgcolor='{bgcolor}'>{text}</td></tr>"
+    label += "</table>"
+    return label
+
+
+def _get_ports_from_label(label) -> dict[str, str]:
+    if not label.startswith("{"):  # Only for record labels.
+        raise ValueError(f"Label needs to start with '{{' to extract ports from it, for example: '{{<port1>item|<port2>another_item}}'. Got label: '{label}'")
+    # see https://graphviz.org/doc/info/shapes.html#record
+    fields = label.strip("{}").split("|")
+    return dict(field.strip("<>").split(">", 1) for field in fields)
 
 
 @cache
@@ -85,26 +93,16 @@ def _dot_2_svg(sourcepath):
 
 class _Node(QtWidgets.QGraphicsTextItem):
 
-    def __init__(self, parent=None, label="", color="", fillcolor="", plugs: tuple =None, active_plugs: set = frozenset(), visible=True):
+    # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
+    def __init__(self, parent=None, label="", color="", fillcolor="", ports: tuple = (), visible=True):
         super().__init__(parent)
         self._edges = []
-        self._plugs = plugs = dict(zip(plugs, range(len(plugs)))) or {}  # {identifier: index}
-
-        plug_items = {}  # {index: (QEllipse, QEllipse)}
-        radius = 4
-        def _plug_item():
-            item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
-            item.setPen(_NO_PEN)
-            return item
-        self._active_plugs = active_plugs
-        self._active_plugs_by_side = dict()  # {index: {left[int]: {}, right[int]: {}}
-        for plug_index in active_plugs:
-            plug_items[plugs[plug_index]] = (_plug_item(), _plug_item())
-            self._active_plugs_by_side[plugs[plug_index]] = {0: dict(), 1: dict()}
-        self._plug_items = plug_items
+        self._ports = dict(zip(ports, range(len(ports)))) or {}  # {identifier: index}
+        self._active_ports_by_side = dict()  # {index: {left[int]: {}, right[int]: {}}
+        self._port_items = {}  # {index: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
-        self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + _convert_graphviz_to_html_label(label))
+        self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
         # https://bugreports.qt.io/browse/QTBUG-89563
@@ -167,48 +165,62 @@ class _Node(QtWidgets.QGraphicsTextItem):
                 edge.adjust()
         return super().itemChange(change, value)
 
-    def _activatePlug(self, edge, plug_index, side, position):
-        if plug_index is None:
+    def _activatePort(self, edge, port, side, position):
+        if port is None:
             return  # we're at the center, nothing to draw nor activate
-        plugs_by_side = self._active_plugs_by_side[plug_index]  # {index: {left[int]: {}, right[int]: {}}
-        plugs_by_side[side][edge] = True
+        try:
+            ports_by_side = self._active_ports_by_side[port]  # {index: {left[int]: {}, right[int]: {}}
+        except KeyError:  # first time we're activating a port, so add a visual ellipse for it
+            radius = 4
+
+            def _add_port_item():
+                item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
+                item.setPen(_NO_PEN)
+                self.scene().addItem(item)
+                return item
+
+            self._port_items[port] = (_add_port_item(), _add_port_item())
+            self._active_ports_by_side[port] = ports_by_side = {0: dict(), 1: dict()}
+
+        ports_by_side[side][edge] = True
         other_side = bool(not side)
-        inactive_plugs = plugs_by_side[other_side]
-        inactive_plugs.pop(edge, None)
-        plug_items = self._plug_items[plug_index]  # {index: (QEllipse, QEllipse)}
-        if not inactive_plugs:
-            plug_items[other_side].setVisible(False)
-        this_item = plug_items[side]
+        inactive_ports = ports_by_side[other_side]
+        inactive_ports.pop(edge, None)
+        port_items = self._port_items[port]  # {index: (QEllipse, QEllipse)}
+        if not inactive_ports:
+            port_items[other_side].setVisible(False)
+        this_item = port_items[side]
         this_item.setVisible(True)
         this_item.setBrush(edge._brush)
-        plug_items[side].setPos(position)
+        port_items[side].setPos(position)
 
 
 class _Edge(QtWidgets.QGraphicsItem):
-    def __init__(self, source: _Node, target: _Node, *, source_plug: int =None, target_plug: int =None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
+    def __init__(self, source: _Node, target: _Node, *, source_port: int = None, target_port: int = None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
         super().__init__(parent)
         source.add_edge(self)
         target.add_edge(self)
         self._source = source
         self._target = target
-        self._source_plug = source_plug
-        self._target_plug = target_plug
-        self._is_source_plugged = source_plug is not None
-        self._is_target_plugged = target_plug is not None
+        self._source_port = source_port
+        self._target_port = target_port
+        self._is_source_port_used = source_port is not None
+        self._is_target_port_used = target_port is not None
         self._is_cycle = is_cycle = source == target
 
-        self._plug_positions = plug_positions = {}
+        self._port_positions = port_positions = {}
         outer_shift = 10  # surrounding rect has ~5 px top and bottom
 
-        for node, plug, max_plug_idx in (source, source_plug, max(source._plugs.values(), default=0)), (target, target_plug, max(target._plugs.values(), default=0)):
+        # TODO: this is the main reason of why Node._ports has {port: index}. See if it can be removed
+        for node, port, max_port_idx in (source, source_port, max(source._ports.values(), default=0)), (target, target_port, max(target._ports.values(), default=0)):
             bounds = node.boundingRect()
-            if plug is None:
-                plug_positions[node, plug] = {None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()}
+            if port is None:
+                port_positions[node, port] = {None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()}
                 continue
-            # max_plug_idx can be 0, so we add 1 since this needs to be 1-index based
-            port_size = (bounds.height() - outer_shift) / (max_plug_idx + 1)
-            y_pos = (plug * port_size) + (port_size / 2) + (outer_shift / 2)
-            plug_positions[node, plug] = {
+            # max_port_idx can be 0, so we add 1 since this needs to be 1-index based
+            port_size = (bounds.height() - outer_shift) / (max_port_idx + 1)
+            y_pos = (port * port_size) + (port_size / 2) + (outer_shift / 2)
+            port_positions[node, port] = {
                 0: QtCore.QPointF(0, y_pos),  # left
                 1: QtCore.QPointF(bounds.right(), y_pos),  # right
             }
@@ -219,7 +231,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._line = QtCore.QLineF()
         self.setZValue(-1)
 
-        self._spline_path = QtGui.QPainterPath() if (self._is_source_plugged or self._is_target_plugged) else None
+        self._spline_path = QtGui.QPainterPath() if (self._is_source_port_used or self._is_target_port_used) else None
 
         self._colors = colors = color.split(":")
         main_color = QtGui.QColor(colors[0])
@@ -255,8 +267,8 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     @property
     def _cycle_start_position(self):
-        if not self._is_source_plugged:
-            return self._source.pos() + self._plug_positions[self._source, self._source_plug][None]
+        if not self._is_source_port_used:
+            return self._source.pos() + self._port_positions[self._source, self._source_port][None]
 
         return self._line.p1() + QtCore.QPointF(-3, -31)
 
@@ -269,14 +281,14 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         source_on_left = self._is_cycle or (self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x())
 
-        is_source_plugged = self._is_source_plugged
-        is_target_plugged = self._is_target_plugged
-        source_side = source_on_left if is_source_plugged else None
-        target_side = not source_side if is_target_plugged else None
-        source_point = source_pos + self._plug_positions[self._source, self._source_plug][source_side]
-        target_point = target_pos + self._plug_positions[self._target, self._target_plug][target_side]
+        is_source_port_used = self._is_source_port_used
+        is_target_port_used = self._is_target_port_used
+        source_side = source_on_left if is_source_port_used else None
+        target_side = not source_side if is_target_port_used else None
+        source_point = source_pos + self._port_positions[self._source, self._source_port][source_side]
+        target_point = target_pos + self._port_positions[self._target, self._target_port][target_side]
 
-        if not is_target_plugged:
+        if not is_target_port_used:
             line = QtCore.QLineF(source_point, target_point)
             if not self._spline_path and self._bidirectional_shift and source_point != target_point:
                 # offset in case of bidirectional connections when we are not using splines (as lines would overlap)
@@ -309,15 +321,15 @@ class _Edge(QtWidgets.QGraphicsItem):
             falloff = (length / 100) ** 2 if length < 100 else 1
             control_point_shift = (1 if source_on_left else -1) * 75 * falloff
 
-            control_point1 = source_point + QtCore.QPointF(control_point_shift, 0) if is_source_plugged else source_point
-            control_point2 = target_point + QtCore.QPointF(-control_point_shift, 0) if is_target_plugged else target_point
+            control_point1 = source_point + QtCore.QPointF(control_point_shift, 0) if is_source_port_used else source_point
+            control_point2 = target_point + QtCore.QPointF(-control_point_shift, 0) if is_target_port_used else target_point
 
             self._spline_path = QtGui.QPainterPath()
             self._spline_path.moveTo(source_point)
             self._spline_path.cubicTo(control_point1, control_point2, target_point)
 
-        self._source._activatePlug(self, self._source_plug, source_side, source_point)
-        self._target._activatePlug(self, self._target_plug, target_side, target_point)
+        self._source._activatePort(self, self._source_port, source_side, source_point)
+        self._target._activatePort(self, self._target_port, target_side, target_point)
         if self._label_text:
             self._label_text.setPos((source_point + target_point) / 2)
 
@@ -583,42 +595,66 @@ class GraphView(_GraphicsViewport):
         self.scene().clear()
         self.viewport().update()
 
+        _default_text_interaction = QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction
+
         if not _core._which("dot"):  # dot has not been installed
             print(_DOT_ENVIRONMENT_ERROR)
             text_item = QtWidgets.QGraphicsTextItem()
             text_item.setPlainText(_DOT_ENVIRONMENT_ERROR)
-            text_item.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction)
+            text_item.setTextInteractionFlags(_default_text_interaction)
             self.scene().addItem(text_item)
             return
 
-        try:  # exit early if pygraphviz is not installed, needed for positions
-            positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+        try:  # exit early if pydot is not installed, needed for positions
+            positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
         except ImportError as exc:
-            message = str(exc)
+            message = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
             print(message)
             text_item = QtWidgets.QGraphicsTextItem()
             text_item.setPlainText(message)
+            text_item.setTextInteractionFlags(_default_text_interaction)
             self.scene().addItem(text_item)
             return
 
         print("LOADING GRAPH")
         self._nodes_map.clear()
         edge_color = graph.graph.get('edge', {}).get("color", "")
+        graph_node_attrs = graph.graph.get('node', {})
 
         def _add_node(nx_node):
             node_data = graph.nodes[nx_node]
+            ports = node_data.get('ports', ())
+            nodes_attrs = ChainMap(node_data, graph_node_attrs)
+            if (shape := nodes_attrs.get('shape')) == 'record':
+                try:
+                    label = node_data['label']
+                except KeyError:
+                    raise ValueError(f"'label' must be supplied when 'record' shape is set for node: '{nx_node}' with data: {node_data}")
+                if ports:
+                    raise ValueError(f"record 'shape' and 'ports' are mutually exclusive, pick one for node: '{nx_node}' with data: {node_data}")
+                try:
+                    ports = _get_ports_from_label(label)
+                except ValueError as exc:
+                    raise ValueError(f"In order to use the 'record' shape, a record 'label' in the form of: '{{<port1>text1|<port2>text2}}' must be used") from exc
+                label = _get_html_table_from_ports(**ports)
+            else:
+                label = node_data.get('label')
+                if shape in {'none', 'plaintext'}:
+                    if not label:
+                        raise ValueError(f"A label must be provided for when using 'none' or 'plaintext' shapes for {nx_node}, {node_data=}")
+                    label = _adjust_graphviz_html_table_label(label)
+                elif not label:
+                    label = str(nx_node)
+
             item = _Node(
-                label=node_data.get('label', str(nx_node)),
-                color=graph.graph.get('node', {}).get("color", ""),
-                fillcolor=graph.graph.get('node', {}).get("fillcolor", "white"),
-                plugs=node_data.get('plugs', {}),
-                visible=node_data.get('style', "") != "invis",
-                active_plugs=node_data.get('active_plugs', set()),
+                label=label,
+                color=nodes_attrs.get("color", ""),
+                fillcolor=nodes_attrs.get("fillcolor", "white"),
+                ports=ports,
+                visible=nodes_attrs.get('style', "") != "invis",
             )
             item.linkActivated.connect(self._graph_url_changed)
             self.scene().addItem(item)
-            for each_plug in chain.from_iterable(item._plug_items.values()):
-                self.scene().addItem(each_plug)
             return item
 
         max_y = max(pos[1] for pos in positions.values())
@@ -646,9 +682,10 @@ class GraphView(_GraphicsViewport):
             color = edge_data.get('color', edge_color)
             label = edge_data.get('label', '')
             kwargs = dict()
-            if source._plugs or target._plugs:
-                kwargs['target_plug'] = target._plugs[edge_data['headport']] if edge_data.get('headport') is not None else None
-                kwargs['source_plug'] = source._plugs[edge_data['tailport']] if edge_data.get('tailport') is not None else None
+            if source._ports or target._ports:
+                kwargs['target_port'] = target._ports[edge_data['headport']] if edge_data.get('headport') is not None else None
+                kwargs['source_port'] = source._ports[edge_data['tailport']] if edge_data.get('tailport') is not None else None
+
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
 
@@ -680,6 +717,7 @@ class _SvgPixmapViewport(_GraphicsViewport):
         self.setScene(scene)
 
     def load(self, filepath):
+        filepath = filepath.toLocalFile() if isinstance(filepath, QtCore.QUrl) else filepath
         scene = self.scene()
         scene.clear()
 
@@ -721,6 +759,7 @@ class _DotViewer(QtWidgets.QFrame):
         layout.addWidget(self._error_view)
         layout.setContentsMargins(0, 0, 0, 0)
         self._error_view.setVisible(False)
+        self._error_view.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
         self.setLayout(layout)
         self._dot2svg = None
         self._threadpool = QtCore.QThreadPool()
@@ -805,7 +844,7 @@ class _GraphSVGViewer(_DotViewer):
 
         fd, fp = tempfile.mkstemp()
         try:
-            nx.nx_agraph.write_dot(subgraph, fp)
+            nx.nx_pydot.write_dot(subgraph, fp)
         except ImportError as exc:
             error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
         else:

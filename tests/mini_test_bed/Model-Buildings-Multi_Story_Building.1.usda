@@ -1,0 +1,81 @@
+#usda 1.0
+(
+    defaultPrim = "Origin"
+)
+
+def "Origin" (
+    prepend apiSchemas = ["GeomModelAPI"]
+    assetInfo = {
+        asset identifier = @Model-Buildings-Multi_Story_Building.1.usda@
+        string name = "Multi_Story_Building"
+    }
+    displayName = "Multi_Story_Building"
+    prepend inherits = </Inherited/Model/Buildings/Multi_Story_Building>
+    kind = "assembly"
+    prepend references = @main-Taxonomy-test.1.usda@</Taxonomy/Buildings>
+    prepend specializes = </Specialized/Model/Buildings/Multi_Story_Building>
+)
+{
+    def PointInstancer "Windows" (
+        kind = "group"
+    )
+    {
+        point3f[] positions = [(0, 0, 0), (0, 0, 8), (0, 0, 16), (8, 0, 0), (8, 0, 8), (8, 0, 16), (16, 0, 0), (16, 0, 8), (16, 0, 16), (0, 10.5, 0), (0, 10.5, 8), (0, 10.5, 16), (8, 10.5, 0), (8, 10.5, 8), (8, 10.5, 16), (16, 10.5, 0), (16, 10.5, 8), (16, 10.5, 16), (0, 21, 0), (0, 21, 8), (0, 21, 16), (8, 21, 0), (8, 21, 8), (8, 21, 16), (16, 21, 0), (16, 21, 8), (16, 21, 16)]
+        int[] protoIndices = [4, 2, 3, 4, 1, 4, 3, 2, 4, 4, 2, 3, 4, 2, 2, 1, 2, 4, 4, 0, 4, 2, 4, 1, 3, 3, 1]
+        prepend rel prototypes = [
+            </Origin/Windows/Apartment>,
+            </Origin/Windows/Apartment_blue>,
+            </Origin/Windows/Apartment_constant>,
+            </Origin/Windows/Apartment_red>,
+            </Origin/Windows/Apartment_spectrum>,
+        ]
+
+        def "Apartment" (
+            instanceable = true
+            prepend references = @Model-Elements-Apartment.1.usda@
+        )
+        {
+        }
+
+        def "Apartment_blue" (
+            instanceable = true
+            prepend references = @Model-Elements-Apartment.1.usda@
+            variants = {
+                string color = "blue"
+            }
+        )
+        {
+        }
+
+        def "Apartment_constant" (
+            instanceable = true
+            prepend references = @Model-Elements-Apartment.1.usda@
+            variants = {
+                string color = "constant"
+            }
+        )
+        {
+        }
+
+        def "Apartment_red" (
+            instanceable = true
+            prepend references = @Model-Elements-Apartment.1.usda@
+            variants = {
+                string color = "red"
+            }
+        )
+        {
+        }
+
+        def "Apartment_spectrum" (
+            instanceable = true
+            prepend references = @Model-Elements-Apartment.1.usda@
+            variants = {
+                string color = "spectrum"
+            }
+        )
+        {
+        }
+    }
+}
+

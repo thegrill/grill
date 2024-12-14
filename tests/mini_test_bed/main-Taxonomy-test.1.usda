@@ -1,0 +1,76 @@
+#usda 1.0
+(
+    defaultPrim = "Taxonomy"
+)
+
+class "Taxonomy"
+{
+    def "Color" (
+        assetInfo = {
+            dictionary grill = {
+                dictionary fields = {
+                    string cluster = "Color"
+                    string kingdom = "Shade"
+                }
+                dictionary taxa = {
+                    int Color = 0
+                }
+            }
+        }
+        prepend inherits = </Inherited/Taxonomy/Color>
+    )
+    {
+    }
+
+    def Xform "Elements" (
+        assetInfo = {
+            dictionary grill = {
+                dictionary fields = {
+                    string cluster = "Elements"
+                    string kingdom = "Model"
+                }
+                dictionary taxa = {
+                    int Elements = 0
+                }
+            }
+        }
+        prepend inherits = </Inherited/Taxonomy/Elements>
+    )
+    {
+    }
+
+    def "Buildings" (
+        assetInfo = {
+            dictionary grill = {
+                dictionary fields = {
+                    string cluster = "Buildings"
+                }
+                dictionary taxa = {
+                    int Buildings = 0
+                }
+            }
+        }
+        prepend inherits = </Inherited/Taxonomy/Buildings>
+        prepend references = </Taxonomy/Elements>
+    )
+    {
+    }
+
+    def "Blocks" (
+        assetInfo = {
+            dictionary grill = {
+                dictionary fields = {
+                    string cluster = "Blocks"
+                }
+                dictionary taxa = {
+                    int Blocks = 0
+                }
+            }
+        }
+        prepend inherits = </Inherited/Taxonomy/Blocks>
+        prepend references = </Taxonomy/Elements>
+    )
+    {
+    }
+}
+
