@@ -321,6 +321,8 @@ class _ConnectableAPIViewer(QtWidgets.QDialog):
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent=parent, **kwargs)
         if nx.__version__.startswith("2"):
+            # TODO: Remove this if-statement when Py-3.9 / networkx-2 support is dropped (starting Py-3.10)
+            #   Use SVG when networkx-2 is in use, as there are fixes to pydot graph inspection which only exist in nx-3
             self._graph_view = _graph._GraphSVGViewer(parent=self)
         else:
             self._graph_view = _graph._GraphViewer(parent=self)
