@@ -259,8 +259,17 @@ class GrillAttributeClearMenuItem(_GrillAttributeViewContextMenuItem):
 
     def IsEnabled(self):
         # Usd.Attribute.Clear operates only on specs with an existing authored default value at the current edit target
+        try:
+            # USD>=24.11
+            spec_getter = Usd.EditTarget.GetAttributeSpecForScenePath
+        except AttributeError:
+            # USD<24.11
+            # Usd.EditTarget.GetSpecForScenePath did not work on earlier usd versions. It was fixed in 24.11.
+            def spec_getter(edit_target, path):
+                return edit_target.GetLayer().GetAttributeAtPath(edit_target.MapToSpecPath(path))
+
         return super().IsEnabled() and any(
-            (spec := attr.GetStage().GetEditTarget().GetAttributeSpecForScenePath(attr.GetPath())) and spec.default
+            (spec := spec_getter(attr.GetStage().GetEditTarget(), attr.GetPath())) and spec.default
             for attr in self._attributes
         )
 
