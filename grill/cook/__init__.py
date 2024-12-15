@@ -31,6 +31,7 @@ import functools
 import itertools
 import contextlib
 import contextvars
+import collections
 from pathlib import Path
 from pprint import pformat
 
@@ -93,7 +94,7 @@ def _fetch_layer(identifier: str, context: Ar.ResolverContext) -> Sdf.Layer:
     return layer
 
 
-def asset_identifier(path):
+def asset_identifier(path: Path | str):
     """Since identifiers from relative paths can become absolute when opening existing assets, this function ensures to return the value expected to be authored in layers."""
     # TODO: temporary public. mmm
     # Expect identifiers to not have folders in between.
@@ -106,7 +107,7 @@ def asset_identifier(path):
         return str(path.relative_to(Repository.get()))
 
 
-def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverContext = None, load=Usd.Stage.LoadAll) -> Usd.Stage:
+def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverContext = None, load: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
@@ -169,7 +170,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = t
     return prim
 
 
-def itaxa(stage: Usd.Stage) -> typing.Generator[Usd.Prim]:
+def itaxa(stage: Usd.Stage) -> collections.abc.Iterator[Usd.Prim]:
     """For the given stage, iterate existing taxa under the taxonomy hierarchy."""
     return filter(
         lambda prim: prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY),
@@ -191,7 +192,7 @@ def _broadcast_root_path(taxon, broadcast_method, scope_path=None):
     return scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _BROADCAST_METHOD_RELPATHS[broadcast_method])
 
 
-def create_many(taxon, names, labels=tuple()) -> typing.List[Usd.Prim]:
+def create_many(taxon: Usd.Prim, names: collections.abc.Iterable[str], labels: collections.abc.Iterable[str] = tuple()) -> list[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
     When creating hundreds or thousands of members, this provides a considerable performance improvement over :func:`create_unit`.
@@ -351,7 +352,7 @@ def unit_asset(prim: Usd.Prim) -> Sdf.Layer:
     return _find_layer_matching(fields, (i.layer for i in prim.GetPrimStack()))
 
 
-def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
+def spawn_unit(parent: Usd.Prim, child: Usd.Prim, path: Sdf.Path = Sdf.Path.emptyPath, label: str = "") -> Usd.Prim:
     """Spawn a unit prim as a descendant of another.
 
     * Both parent and child must be existing units in the catalogue.
@@ -367,7 +368,7 @@ def spawn_unit(parent, child, path=Sdf.Path.emptyPath, label=""):
     return spawn_many(parent, child, [path or child.GetName()], [label])[0]
 
 
-def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = ()):
+def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels: list[str] = ()) -> list[Usd.Prim]:
     """Spawn many instances of a prim unit as descendants of another.
 
     * Both parent and child must be existing units in the catalogue.
@@ -407,7 +408,10 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
     with Sdf.ChangeBlock():
         # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
         if child_is_model and not (parent_model := Usd.ModelAPI(parent)).IsKind(Kind.Tokens.assembly):
-            parent_model.SetKind(Kind.Tokens.assembly)
+            try:
+                parent_model.SetKind(Kind.Tokens.assembly)
+            except Exception as exc:
+                raise RuntimeError(f'Could not set kind to "{Kind.Tokens.assembly}" on parent model {parent_model} with current kind: "{parent_model.GetKind()}", when spawning {child} of kind "{Usd.ModelAPI(child).GetKind()}"') from exc
         for spawned_unit, label in zip(spawned, labels):
             # Use reference for the asset to:
             # 1. Make use of instancing as much as possible with fewer prototypes.
@@ -456,7 +460,7 @@ def _get_id_fields(prim):
     return fields
 
 
-def _find_layer_matching(tokens: typing.Mapping, layers: typing.Iterable[Sdf.Layer]) -> Sdf.Layer:
+def _find_layer_matching(tokens: typing.Mapping, layers: collections.abc.Iterable[Sdf.Layer]) -> Sdf.Layer:
     """Find the first layer matching the given identifier tokens.
 
     :raises ValueError: If none of the given layers match the provided tokens.
@@ -511,7 +515,7 @@ def _inherit_or_specialize_unit(method, context_unit):
 
 
 @functools.singledispatch
-def taxonomy_graph(prims: Usd.Prim, url_id_prefix) -> nx.DiGraph:
+def taxonomy_graph(prims: Usd.Prim, url_id_prefix: str) -> nx.DiGraph:
     """Get the hierarchical taxonomy representation of existing prims."""
     graph = nx.DiGraph(tooltip="Taxonomy Graph")
     graph.graph.update(
@@ -535,6 +539,6 @@ def taxonomy_graph(prims: Usd.Prim, url_id_prefix) -> nx.DiGraph:
 
 
 @taxonomy_graph.register(Usd.Stage)
-def _(stage: Usd.Stage, url_id_prefix) -> nx.DiGraph:
+def _(stage: Usd.Stage, url_id_prefix: str) -> nx.DiGraph:
     # Convenience for the stage
     return taxonomy_graph(itaxa(stage), url_id_prefix)

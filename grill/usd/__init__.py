@@ -46,7 +46,7 @@ def _pruned_prims(prim_range: Usd.PrimRange, predicate):
         yield prim
 
 
-def common_paths(paths: typing.Iterable[Sdf.Path]) -> typing.List[Sdf.Path]:
+def common_paths(paths: abc.Iterable[Sdf.Path]) -> list[Sdf.Path]:
     """For the given paths, get those which are the common parents."""
     unique = list()
     for path in sorted(filter(lambda p: p and not p.IsAbsoluteRootPath(), paths)):
@@ -56,12 +56,20 @@ def common_paths(paths: typing.Iterable[Sdf.Path]) -> typing.List[Sdf.Path]:
     return unique
 
 
-def iprims(stage: Usd.Stage, root_paths: typing.Iterable[Sdf.Path] = tuple(), prune_predicate: typing.Callable = None, traverse_predicate=Usd.PrimDefaultPredicate) -> typing.Iterator[Usd.Prim]:
-    """Convenience function that creates a generator useful for common prim traversals.
+def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune_predicate: abc.Callable[[Usd.Prim], bool] = None, traverse_predicate: typing.Union[Usd._Term, Usd._PrimFlagsConjunction] = None) -> abc.Iterator[Usd.Prim]:
+    """Convenience function that creates an iterator useful for common :ref:`glossary:stage traversal`.
+
+    Refer to the :ref:`glossary:specifier` ins the documentation.
+    Refer to the :ref:`Specifier <glossary:specifier>` in the documentation.
 
     Without keyword arguments, this is the same as calling `Usd.Stage.Traverse(...)`, so
     use that instead when no `root_paths` or `prune_predicates` are needed.
+
+    The remaining methods
+    (e.g. :code:`GetChildren()`) all use a predefined :usdcpp:`Default Predicate <UsdPrimDefaultPredicate>`
     """
+    if traverse_predicate is None:
+        traverse_predicate = Usd.PrimDefaultPredicate
     if root_paths:  # Traverse only specific parts of the stage.
         root_paths = common_paths(root_paths)
         # Usd.PrimRange already discards invalid prims, so no need to check.
@@ -76,10 +84,16 @@ def iprims(stage: Usd.Stage, root_paths: typing.Iterable[Sdf.Path] = tuple(), pr
 
 
 @functools.singledispatch
-def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: typing.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
+def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: abc.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
     """Composition arcs target layer stacks. These functions help create EditTargets for the first matching node's root layer stack from prim's composition arcs.
 
     This allows for "chained" context switching while preserving the same stage objects.
+
+    Operate on a :usdclass:`prim` and return an :usdclass:`EditContext <edit_context>`.
+
+    Refer to the :ref:`glossary:specifier` ins the documentation.
+    Refer to the :ref:`Specifier <glossary:specifier>` in the documentation.
+    Refer to the :ref:`Stage <usdglossary-stage>` in the documentation.
 
     .. tip::
 
@@ -201,6 +215,9 @@ def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filte
             }
         }
 
+    Returns:
+        :usdclass:`EditContext <edit_context>`
+
     """
     # https://blogs.mathworks.com/developer/2015/03/31/dont-get-in-too-deep/
     # with write.context(prim, dict(kingdom="assets")):
@@ -243,8 +260,8 @@ def _(arc, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
     return _edit_context_by_arc(arc.GetPrim(), type(arc), path, layer)
 
 
-@edit_context.register
-def _(variant_set: Usd.VariantSet, /, layer) -> Usd.EditContext:
+@edit_context.register(Usd.VariantSet)
+def _(variant_set, /, layer: Sdf.Layer) -> Usd.EditContext:
     with contextlib.suppress(Tf.ErrorException):
         return variant_set.GetVariantEditContext()
     # ----- From Pixar -----
