@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import types
+# https://docs.python.org/3/whatsnew/3.10.html#pep-604-new-type-union-operator
+# TODO: Remove when py-3.10+ is supported (for union types)
 import typing
 import logging
 import functools
@@ -127,7 +129,7 @@ def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverCon
         return Usd.Stage.Open(layer, load=load)
 
 
-def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: typing.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: collections.abc.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
     """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
@@ -455,12 +457,12 @@ def _root_asset(stage):
 def _get_id_fields(prim):
     if not (fields:=prim.GetAssetInfoByKey(_ASSETINFO_FIELDS_KEY)):
         raise ValueError(f"Missing or empty '{_FIELDS_KEY}' on '{_ASSETINFO_KEY}' asset info for {prim}. Got: {pformat(prim.GetAssetInfoByKey(_ASSETINFO_KEY))}")
-    if not isinstance(fields, typing.Mapping):
+    if not isinstance(fields, collections.abc.Mapping):
         raise TypeError(f"Expected mapping on key '{_FIELDS_KEY}' from {prim} on custom data key '{_ASSETINFO_KEY}'. Got instead {fields} with type: {type(fields)}")
     return fields
 
 
-def _find_layer_matching(tokens: typing.Mapping, layers: collections.abc.Iterable[Sdf.Layer]) -> Sdf.Layer:
+def _find_layer_matching(tokens: collections.abc.Mapping, layers: collections.abc.Iterable[Sdf.Layer]) -> Sdf.Layer:
     """Find the first layer matching the given identifier tokens.
 
     :raises ValueError: If none of the given layers match the provided tokens.

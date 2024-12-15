@@ -1,5 +1,7 @@
 """Helpers for USD workflows which do not know anything about the pipeline."""
 import enum
+# https://docs.python.org/3/whatsnew/3.10.html#pep-604-new-type-union-operator
+# TODO: Remove when py-3.10+ is supported (for union types)
 import typing
 import inspect
 import logging
@@ -305,7 +307,7 @@ def _edit_context_by_arc(prim, arc_type, path, layer):
 
 
 @contextlib.contextmanager
-def _prim_tree_printer(predicate, prims_to_include: typing.Container = frozenset()):
+def _prim_tree_printer(predicate, prims_to_include: abc.Container = frozenset()):
     prim_entry = Usd.Prim.GetName if predicate != Usd.PrimIsModel else lambda prim: f"{prim.GetName()} ({Usd.ModelAPI(prim).GetKind()})"
 
     class PrimTreePrinter(TreePrinter):
