@@ -33,7 +33,6 @@ from datetime import datetime
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.extlinks',
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
     'sphinx.ext.inheritance_diagram',
@@ -61,13 +60,7 @@ intersphinx_mapping = {
     'naming': ('https://naming.readthedocs.io/en/latest/', None),
     'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
 }
-# extlinks = {
-#     'usd': ('https://openusd.org/release/api/%s.html', '')
-# }
-extlinks = {
-    'usdclass': ('https://openusd.org/release/api/class_usd_%s.html', '%s'),
-    'usdmethod': ('https://openusd.org/release/api/class_usd_%s.html#%s', 'Usd.%s'),
-}
+
 hoverxref_auto_ref = True
 hoverxref_default_type = 'tooltip'
 
@@ -246,23 +239,23 @@ epub_copyright = copyright
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
 
-_USD_TAG_URL = "https://openusd.org/release/USD.tag"
-_DOXY_LINK_CACHE_NAME = 'usdcpp'
-_DOXY_LINK_ROOT_DIR = "https://openusd.org/release/api/"
+_USD_DOXYGEN_TAG_URL = "https://openusd.org/release/USD.tag"
+_USD_DOXYGEN_CACHE_NAME = 'usdcpp'
+_USD_DOXYGEN_ROOT_DIR = "https://openusd.org/release/api/"
 doxylink = {
-    _DOXY_LINK_CACHE_NAME: (_USD_TAG_URL, _DOXY_LINK_ROOT_DIR)
+    _USD_DOXYGEN_CACHE_NAME: (_USD_DOXYGEN_TAG_URL, _USD_DOXYGEN_ROOT_DIR)
 }
 
 def _handle_missing_usd_reference(app, env, node, contnode):
     """Handle missing references by redirecting to a custom URL."""
     from docutils import nodes
+    from sphinxcontrib.doxylink import doxylink
 
     target = node['reftarget']
     if not target.startswith('pxr.'):
         return None
 
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
-    print("---------")
     print(f"{target=}")
     print(f"{pxr_obj_namespace=}")
     pxr_obj_namespace = {
@@ -272,11 +265,10 @@ def _handle_missing_usd_reference(app, env, node, contnode):
         "Usd_Term": "primFlags.h",
         "Usd_PrimFlagsConjunction": "primFlags.h",
     }.get(pxr_obj_namespace, pxr_obj_namespace)
-    from sphinxcontrib.doxylink import doxylink
     has_explicit_title, title, part = doxylink.split_explicit_title(pxr_obj_namespace)
     part = doxylink.utils.unescape(part)
-    url = app.env.doxylink_cache[_DOXY_LINK_CACHE_NAME]['mapping'][part]
-    full_url = doxylink.join(_DOXY_LINK_ROOT_DIR, url.file)
+    url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
+    full_url = doxylink.join(_USD_DOXYGEN_ROOT_DIR, url.file)
     print(full_url)
     return nodes.reference('', contnode.astext(), refuri=full_url)
 
