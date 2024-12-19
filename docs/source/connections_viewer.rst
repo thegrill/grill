@@ -1,9 +1,8 @@
 Connections Viewer
 ------------------
 
-From a given `prim`_, recursively traverse its connections through `UsdShade.ConnectableAPI`_.
-Every node represents a `prim`_, with its name at the top, followed by each of its inputs and outputs.
-Outputs are marked as red. Inputs are blue (light for non connected inputs, dark for ones with incoming connections).
+From a given :ref:`glossary:prim`, recursively traverse its :ref:`Connections <glossary:connection>` through :usdcpp:`UsdShadeConnectableAPI`.
+Every node represents a :ref:`glossary:prim`, with its name at the top, followed by each of its :usdcpp:`inputs <UsdShadeInput>` (colored dark blue if :usdcpp:`connected <UsdShadeInput::GetConnectedSources>`, else light blue) and :usdcpp:`outputs <UsdShadeOutput>` (in red).
 
 .. tab:: USDView
 
@@ -16,7 +15,3 @@ Outputs are marked as red. Inputs are blue (light for non connected inputs, dark
 .. tab:: Maya
 
     .. image:: images/connections_viewer_maya.jpg
-
-.. _UsdShade.ConnectableAPI: https://openusd.org/release/api/class_usd_shade_connectable_a_p_i.html
-.. _prim: https://openusd.org/release/glossary.html#usdglossary-prim
-
