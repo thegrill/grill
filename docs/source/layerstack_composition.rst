@@ -1,10 +1,10 @@
 Layer Stack Composition
 -----------------------
 
-Similar to ``Prim Composition``, but available for the whole `stage`_ or multiple `prims`_ at once.
+Similar to ``Prim Composition``, but available for the whole :ref:`glossary:stage` or multiple :ref:`Prims <glossary:prim>` at once.
 This helps answer questions like:
 
--  What prims are being affected by `layers`_ X and Y?
+-  What :ref:`Prims <glossary:prim>` are being affected by :ref:`Layers <glossary:layer>` X and Y?
 
 .. tab:: USDView
 
@@ -20,13 +20,13 @@ This helps answer questions like:
 
 In the above example, we're inspecting `Animal Logic's USD ALab`_.
 
-1. On the upper left, all used layers in the composition of the inspected `stage`_ or `prims`_ are listed.
-2. On the upper right, all `prims`_ that are affected by the current selected `layers`_ are listed.
-3. On the bottom, a `composition arcs`_ graph is displayed for the selected `layers`_ plus the neighbors (predecessors and successors) for each of their `layerStacks`_.
+1. On the upper left, all used layers in the composition of the inspected :ref:`glossary:stage` or :ref:`Prims <glossary:prim>` are listed.
+2. On the upper right, all :ref:`Prims <glossary:prim>` that are affected by the current selected :ref:`Layers <glossary:layer>` are listed.
+3. On the bottom, a :ref:`glossary:composition arcs` graph is displayed for the selected :ref:`Layers <glossary:layer>` plus the neighbors (predecessors and successors) for each of their :ref:`LayerStacks <glossary:layerstack>`.
 
-   - Nodes in the network represent `layerStacks`_.
-   - Edges are the `composition arcs`_ between them (it follows the same color scheme as the ones provided by Pcp.PrimIndex.DumpToDotGraph).
-   - Options to filter `composition arcs`_ are provided above the network view.
+   - Nodes in the network represent :ref:`LayerStacks <glossary:layerstack>`.
+   - Edges are the :ref:`glossary:composition arcs` between them (it follows the same color scheme as the ones provided by :usdcpp:`PcpPrimIndex::DumpToDotGraph`).
+   - Options to filter :ref:`glossary:composition arcs` are provided above the network view.
 
      .. image:: images/layerstack_composition_arc_filter_options.jpg
 
@@ -40,14 +40,8 @@ In the above example, we're inspecting `Animal Logic's USD ALab`_.
 
 
 .. warning::
-    Time for computing this graph increases with stage complexity. So for larger stages, it is recommended to start the widget with the `prims`_ of interest rather than the complete `stage`_:
+    Time for computing this graph increases with stage complexity. So for larger stages, it is recommended to start the widget with the :ref:`Prims <glossary:prim>` of interest rather than the complete :ref:`glossary:stage`:
 
     .. image:: https://user-images.githubusercontent.com/8294116/131242428-7b06729d-f96e-4b92-b02f-1608e99859bd.gif
 
 .. _Animal Logic's USD ALab: https://animallogic.com/usd-alab
-.. _layerStacks: https://openusd.org/release/glossary.html#usdglossary-layerstack
-.. _layers: https://openusd.org/release/glossary.html#usdglossary-layer
-.. _stage: https://openusd.org/release/glossary.html#usdglossary-stage
-.. _prims: https://openusd.org/release/glossary.html#usdglossary-prim
-.. _composition arcs: https://openusd.org/release/glossary.html#usdglossary-compositionarcs
-

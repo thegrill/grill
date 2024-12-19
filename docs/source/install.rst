@@ -47,7 +47,7 @@ Extra Dependencies
 The following optional dependencies should be installed separately.
 
 - `graphviz`_ for graph widgets. See conda example below for instructions.
-- `usdview <https://openusd.org/release/toolset.html#usdview>`_
+- :ref:`toolset:usdview`
   (hopefully will be available soon via `pypi <https://pypi.org/>`_). In the meantime, it can be built from USD source
   (`conda recipe <https://github.com/PixarAnimationStudios/USD/issues/1260#issuecomment-656985888>`_).
 

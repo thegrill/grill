@@ -1,7 +1,7 @@
 Layer Content Browser
 ---------------------
 
-Uses `sdffilter`_ and `usdtree`_ to display content from USD layers (regardless of format or if they have been saved on disk).
+Uses :ref:`toolset:sdffilter` and :ref:`toolset:usdtree` to display content from USD layers (regardless of format or if they have been saved on disk).
 
 Array attributes and time samples have their contents reduced to a maximum of 6 entries.
 
@@ -14,6 +14,3 @@ The browser can be opened from USDView's ``Composition`` tab (as shown above), a
 Images from formats supported by Qt through ``QtGui.QImageReader.supportedImageFormats`` will also be displayed:
 
 .. image:: images/layer_content_browser_image_tab_update.gif
-
-.. _sdffilter: https://openusd.org/release/toolset.html#sdffilter
-.. _usdtree: https://openusd.org/release/toolset.html#usdtree
