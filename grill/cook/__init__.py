@@ -33,9 +33,9 @@ import functools
 import itertools
 import contextlib
 import contextvars
-import collections
 from pathlib import Path
 from pprint import pformat
+from collections import abc
 
 import networkx as nx
 from pxr import UsdGeom, Usd, Sdf, Kind, Ar
@@ -129,7 +129,7 @@ def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverCon
         return Usd.Stage.Open(layer, load=load)
 
 
-def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: collections.abc.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
+def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: abc.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
     """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
 
     If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
@@ -172,7 +172,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = t
     return prim
 
 
-def itaxa(stage: Usd.Stage) -> collections.abc.Iterator[Usd.Prim]:
+def itaxa(stage: Usd.Stage) -> abc.Iterator[Usd.Prim]:
     """For the given stage, iterate existing taxa under the taxonomy hierarchy."""
     return filter(
         lambda prim: prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY),
@@ -194,7 +194,7 @@ def _broadcast_root_path(taxon, broadcast_method, scope_path=None):
     return scope_path.ReplacePrefix(_CATALOGUE_ROOT_PATH, _BROADCAST_METHOD_RELPATHS[broadcast_method])
 
 
-def create_many(taxon: Usd.Prim, names: collections.abc.Iterable[str], labels: collections.abc.Iterable[str] = tuple()) -> list[Usd.Prim]:
+def create_many(taxon: Usd.Prim, names: abc.Iterable[str], labels: abc.Iterable[str] = tuple()) -> list[Usd.Prim]:
     """Create a new taxon member for each of the provided names.
 
     When creating hundreds or thousands of members, this provides a considerable performance improvement over :func:`create_unit`.
@@ -457,12 +457,12 @@ def _root_asset(stage):
 def _get_id_fields(prim):
     if not (fields:=prim.GetAssetInfoByKey(_ASSETINFO_FIELDS_KEY)):
         raise ValueError(f"Missing or empty '{_FIELDS_KEY}' on '{_ASSETINFO_KEY}' asset info for {prim}. Got: {pformat(prim.GetAssetInfoByKey(_ASSETINFO_KEY))}")
-    if not isinstance(fields, collections.abc.Mapping):
+    if not isinstance(fields, abc.Mapping):
         raise TypeError(f"Expected mapping on key '{_FIELDS_KEY}' from {prim} on custom data key '{_ASSETINFO_KEY}'. Got instead {fields} with type: {type(fields)}")
     return fields
 
 
-def _find_layer_matching(tokens: collections.abc.Mapping, layers: collections.abc.Iterable[Sdf.Layer]) -> Sdf.Layer:
+def _find_layer_matching(tokens: abc.Mapping, layers: abc.Iterable[Sdf.Layer]) -> Sdf.Layer:
     """Find the first layer matching the given identifier tokens.
 
     :raises ValueError: If none of the given layers match the provided tokens.
