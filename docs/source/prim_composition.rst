@@ -2,7 +2,8 @@ Prim Composition
 ----------------
 
 Uses existing :ref:`glossary:prim` utilities (:usdcpp:`UsdPrimCompositionQuery`, :usdcpp:`PcpPrimIndex::DumpToDotGraph`, :usdcpp:`PcpPrimIndex::DumpToString`) to help inspect :ref:`glossary:composition arcs` beyond what is possible by default in :ref:`toolset:usdview`.
-To visualize the composition graph, the ``graphviz`` library needs to be available on the environment.
+
+To visualize the :ref:`glossary:composition` graph, the ``graphviz`` library needs to be available in the environment.
 
 .. tab:: USDView
 
@@ -21,7 +22,7 @@ Setting an Edit Target
 ~~~~~~~~~~~~~~~~~~~~~~
 
 The ``Prim Composition`` tree exposes a context menu with a ``Set as Edit Target`` item.
-This redirect edits under the selected :ref:`arc <glossary:composition arcs>` by setting the current :ref:`stage's <glossary:stage>` :ref:`glossary:edittarget`.
+This redirects edits under the selected :ref:`arc <glossary:composition arcs>` by setting the current :ref:`stage's <glossary:stage>` :ref:`glossary:edittarget`.
 
 In the examples below, prims under ``ChairB_2`` and ``CheerioA_164`` have their :usdcpp:`displayColor <UsdGeomGprim::GetDisplayColorAttr>`, :usdcpp:`doc <UsdObject::GetDocumentation>` and :usdcpp:`active <UsdPrim::SetActive>` properties modified in ``USDView``, ``Houdini`` and ``Maya`` respectively, and changes are inspected via the ``Layer Content Browser`` view.
 

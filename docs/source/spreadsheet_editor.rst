@@ -2,6 +2,7 @@ Spreadsheet Editor
 ------------------
 
 Tabular representation of a :ref:`glossary:stage` to quickly inspect and edit :ref:`Prims <glossary:prim>` in bulk.
+
 Copy pasting functionality like in other spreadsheet applications should be possible (via csv clipboards).
 
 .. tab:: USDView

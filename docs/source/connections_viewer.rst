@@ -2,7 +2,8 @@ Connections Viewer
 ------------------
 
 From a given :ref:`glossary:prim`, recursively traverse its :ref:`Connections <glossary:connection>` through :usdcpp:`UsdShadeConnectableAPI`.
-Every node represents a :ref:`glossary:prim`, with its name at the top, followed by each of its :usdcpp:`inputs <UsdShadeInput>` (colored dark blue if :usdcpp:`connected <UsdShadeInput::GetConnectedSources>`, else light blue) and :usdcpp:`outputs <UsdShadeOutput>` (in red).
+
+Every node represents a :ref:`glossary:prim` with its name at the top, and each of its :usdcpp:`Inputs <UsdShadeInput>` (dark blue if :usdcpp:`connected <UsdShadeInput::GetConnectedSources>`, otherwise light blue) and :usdcpp:`Outputs <UsdShadeOutput>` (red) below.
 
 .. tab:: USDView
 
