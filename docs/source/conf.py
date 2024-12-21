@@ -38,7 +38,6 @@ extensions = [
     'sphinx.ext.inheritance_diagram',
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
-    'sphinx.ext.viewcode',
     'sphinx.ext.graphviz',
     "myst_parser",
     'sphinx_copybutton',
@@ -47,6 +46,7 @@ extensions = [
     'sphinx_inline_tabs',
     'hoverxref.extension',
     'sphinx.ext.autosectionlabel',
+    'sphinxcontrib.doxylink',
 ]
 
 # Offset to play well with copybutton
@@ -54,9 +54,12 @@ toggleprompt_offset_right = 35
 togglebutton_hint = " "
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
+    'usd': ('https://openusd.org/release/', None),
+    'networkx': ('https://networkx.org/documentation/stable/', None),
     'naming': ('https://naming.readthedocs.io/en/latest/', None),
     'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
 }
+
 hoverxref_auto_ref = True
 hoverxref_default_type = 'tooltip'
 
@@ -66,7 +69,7 @@ hoverxref_domains = ['py']
 
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
-
+maximum_signature_line_length = 150
 inheritance_graph_attrs = dict(rankdir="TB", bgcolor='transparent')
 
 inheritance_node_attrs = dict(
@@ -145,7 +148,9 @@ html_theme = 'shibuya'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
+html_css_files = [
+  'custom.css',
+]
 
 # -- Options for HTMLHelp output ------------------------------------------
 
@@ -234,3 +239,42 @@ epub_copyright = copyright
 
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
+
+_USD_DOXYGEN_TAG_URL = "https://openusd.org/release/USD.tag"
+_USD_DOXYGEN_CACHE_NAME = 'usdcpp'
+_USD_DOXYGEN_ROOT_DIR = "https://openusd.org/release/api/"
+doxylink = {
+    _USD_DOXYGEN_CACHE_NAME: (_USD_DOXYGEN_TAG_URL, _USD_DOXYGEN_ROOT_DIR)
+}
+
+def _handle_missing_usd_reference(app, env, node, contnode):
+    """Handle missing references by redirecting to a custom URL."""
+    from docutils import nodes
+    from sphinxcontrib.doxylink import doxylink
+
+    target = node['reftarget']
+    if not target.startswith('pxr.'):
+        return None
+
+    pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
+    print(f"{target=}")
+    print(f"{pxr_obj_namespace=}")
+    pxr_obj_namespace = {
+        "UsdInitialLoadSet": "UsdStage::InitialLoadSet",  # there's a level of indirection in the python bindings?
+        "UsdFilter": "UsdPrimCompositionQuery::Filter",  # filter is a member of the query type
+        "UsdCompositionArc": "UsdPrimCompositionQueryArc",
+        "Usd_Term": "primFlags.h",
+        "Usd_PrimFlagsConjunction": "primFlags.h",
+    }.get(pxr_obj_namespace, pxr_obj_namespace)
+    has_explicit_title, title, part = doxylink.split_explicit_title(pxr_obj_namespace)
+    part = doxylink.utils.unescape(part)
+    url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
+    full_url = doxylink.join(_USD_DOXYGEN_ROOT_DIR, url.file)
+    print(full_url)
+    return nodes.reference('', contnode.astext(), refuri=full_url)
+
+
+def setup(app):
+    """Setup Sphinx to handle missing USD references. This can be removed when the USD C++ docs ship with an inventory of the USD types for python bindings."""
+    app.connect("missing-reference", _handle_missing_usd_reference)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
