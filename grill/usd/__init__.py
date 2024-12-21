@@ -58,7 +58,7 @@ def common_paths(paths: abc.Iterable[Sdf.Path]) -> list[Sdf.Path]:
     return unique
 
 
-def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune_predicate: abc.Callable[[Usd.Prim], bool] = None, traverse_predicate: typing.Union[Usd._Term, Usd._PrimFlagsConjunction] = None) -> abc.Iterator[Usd.Prim]:
+def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune_predicate: abc.Callable[[Usd.Prim], bool] = None, traverse_predicate: typing.Union[Usd._Term, Usd._PrimFlagsConjunction] = Usd.PrimDefaultPredicate) -> abc.Iterator[Usd.Prim]:
     """Convenience function that creates an iterator useful for common :ref:`glossary:stage traversal`.
 
     Refer to the :ref:`glossary:specifier` ins the documentation.
@@ -70,8 +70,6 @@ def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune
     The remaining methods
     (e.g. :code:`GetChildren()`) all use a predefined :usdcpp:`Default Predicate <UsdPrimDefaultPredicate>`
     """
-    if traverse_predicate is None:
-        traverse_predicate = Usd.PrimDefaultPredicate
     if root_paths:  # Traverse only specific parts of the stage.
         root_paths = common_paths(root_paths)
         # Usd.PrimRange already discards invalid prims, so no need to check.
