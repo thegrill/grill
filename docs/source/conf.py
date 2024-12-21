@@ -38,7 +38,6 @@ extensions = [
     'sphinx.ext.inheritance_diagram',
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
-    'sphinx.ext.viewcode',
     'sphinx.ext.graphviz',
     "myst_parser",
     'sphinx_copybutton',
@@ -70,7 +69,7 @@ hoverxref_domains = ['py']
 
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
-
+maximum_signature_line_length = 140
 inheritance_graph_attrs = dict(rankdir="TB", bgcolor='transparent')
 
 inheritance_node_attrs = dict(
