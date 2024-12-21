@@ -87,15 +87,11 @@ def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune
 
 @functools.singledispatch
 def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: abc.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
-    """Composition arcs target layer stacks. These functions help create EditTargets for the first matching node's root layer stack from prim's composition arcs.
+    """:ref:`glossary:composition arcs` target :ref:`LayerStacks <glossary:layerstack>`. These functions provide an :ref:`glossary:edittarget` for the first :usdcpp:`arc <UsdPrimCompositionQueryArc>` in the :ref:`Prims <glossary:prim>`'s :usdcpp:`composition <UsdPrimCompositionQuery>` that returns ``True`` for the given ``arc_predicate``.
+
+    Overloaded methods allow for a direct search targetting Payloads, References, Specializes, Inherits and VariantSets.
 
     This allows for "chained" context switching while preserving the same stage objects.
-
-    Operate on a :usdclass:`prim` and return an :usdclass:`EditContext <edit_context>`.
-
-    Refer to the :ref:`glossary:specifier` ins the documentation.
-    Refer to the :ref:`Specifier <glossary:specifier>` in the documentation.
-    Refer to the :ref:`Stage <usdglossary-stage>` in the documentation.
 
     .. tip::
 
@@ -216,9 +212,6 @@ def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filte
                 }
             }
         }
-
-    Returns:
-        :usdclass:`EditContext <edit_context>`
 
     """
     # https://blogs.mathworks.com/developer/2015/03/31/dont-get-in-too-deep/

@@ -4,7 +4,7 @@
 
     :class:`contextvars.ContextVar` for the global asset repository location.
 
-    It's value must always be set to a :class:`pathlib.Path`.
+    Its value must always be set to a :class:`pathlib.Path`.
 
     .. attention::
         By default, no value has been set. Ensure to set it before performing any creation operation.

@@ -1,0 +1,26 @@
+/* Default state (with sidebar visible) */
+.sy-main {
+    width: calc(100% - 20rem); /* Adjust width with sidebar */
+    max-width: none;       /* Prevent it from exceeding the container's size */
+    box-sizing: border-box; /* Ensure padding/margins don’t add to total width */
+}
+
+/* Responsive state (when sidebar disappears) */
+@media (max-width: 768px) { /* Adjust breakpoint as needed */
+    .sy-main {
+        width: 100%;         /* Use full width when sidebar is hidden */
+        max-width: none;     /* Remove max-width limit */
+    }
+}
+
+.sy-rside {
+    width: 0; /* Keep the sidebar offset */
+    max-width: 0;           /* Allow the element to fill the remaining space */
+}
+/* Take out pointless vertical whitespace in the signatures. */
+/* https://github.com/readthedocs/sphinx_rtd_theme/issues/1529#issuecomment-1918561608 */
+.sig dl {
+  margin-bottom: 0;
+  margin-top: 0;
+  margin-left: 2em;
+}

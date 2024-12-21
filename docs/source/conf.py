@@ -69,7 +69,7 @@ hoverxref_domains = ['py']
 
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
-maximum_signature_line_length = 140
+maximum_signature_line_length = 150
 inheritance_graph_attrs = dict(rankdir="TB", bgcolor='transparent')
 
 inheritance_node_attrs = dict(
@@ -148,7 +148,9 @@ html_theme = 'shibuya'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
+html_css_files = [
+  'custom.css',
+]
 
 # -- Options for HTMLHelp output ------------------------------------------
 
