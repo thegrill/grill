@@ -358,12 +358,12 @@ def spawn_unit(parent: Usd.Prim, child: Usd.Prim, path: Sdf.Path = Sdf.Path.empt
     """Spawn a unit prim as a descendant of another.
 
     * Both parent and child must be existing units in the catalogue.
-    * If `path <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Path>`_ is not provided, the name of child will be used.
-    * A valid `Model Hierarchy <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-ModelHierarchy>`_ is preserved by:
+    * If ``path`` is not provided, the name of child will be used.
+    * A valid :ref:`glossary:model hierarchy` is preserved by:
 
-      1. Turning parent into an `assembly <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Assembly>`_.
-      2. Ensuring intermediate prims between parent and child are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
-      3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
+      1. Turning parent into an :ref:`glossary:assembly`.
+      2. Ensuring intermediate prims between parent and child are also :ref:`glossary:model`.
+      3. Setting explicit :ref:`glossary:instanceable`. on spawned children that are components.
 
     .. seealso:: :func:`spawn_many` and :func:`create_unit`
     """
