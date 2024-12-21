@@ -66,7 +66,6 @@ hoverxref_default_type = 'tooltip'
 
 hoverxref_intersphinx = list(set(intersphinx_mapping) - {'python'})
 hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, hoverxref_default_type)
-hoverxref_domains = ['py']
 
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
