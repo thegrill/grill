@@ -61,14 +61,12 @@ def common_paths(paths: abc.Iterable[Sdf.Path]) -> list[Sdf.Path]:
 def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune_predicate: abc.Callable[[Usd.Prim], bool] = None, traverse_predicate: typing.Union[Usd._Term, Usd._PrimFlagsConjunction] = Usd.PrimDefaultPredicate) -> abc.Iterator[Usd.Prim]:
     """Convenience function that creates an iterator useful for common :ref:`glossary:stage traversal`.
 
-    Refer to the :ref:`glossary:specifier` ins the documentation.
-    Refer to the :ref:`Specifier <glossary:specifier>` in the documentation.
+    Without keyword arguments, this is the same as calling :usdcpp:`UsdStage::Traverse`, so
+    use that instead when no ``root_paths`` or ``prune_predicate`` are provided.
 
-    Without keyword arguments, this is the same as calling `Usd.Stage.Traverse(...)`, so
-    use that instead when no `root_paths` or `prune_predicates` are needed.
+    A :usdcpp:`UsdPrimRange` with the provided ``traverse_predicate`` is created for each :usdcpp:`SdfPath` in ``root_paths``,
+    for which :usdcpp:`PruneChildren <UsdPrimRange::iterator::PruneChildren>` is called whenever a traversed :usdcpp:`Prim <UsdPrim>` passes ``prune_predicate``.
 
-    The remaining methods
-    (e.g. :code:`GetChildren()`) all use a predefined :usdcpp:`Default Predicate <UsdPrimDefaultPredicate>`
     """
     if root_paths:  # Traverse only specific parts of the stage.
         root_paths = common_paths(root_paths)

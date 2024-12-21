@@ -20,6 +20,7 @@
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
+import functools
 from datetime import datetime
 
 # -- General configuration ------------------------------------------------
@@ -240,25 +241,29 @@ epub_copyright = copyright
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
 
-_USD_DOXYGEN_TAG_URL = "https://openusd.org/release/USD.tag"
 _USD_DOXYGEN_CACHE_NAME = 'usdcpp'
 _USD_DOXYGEN_ROOT_DIR = "https://openusd.org/release/api/"
 doxylink = {
-    _USD_DOXYGEN_CACHE_NAME: (_USD_DOXYGEN_TAG_URL, _USD_DOXYGEN_ROOT_DIR)
+    _USD_DOXYGEN_CACHE_NAME: ("https://openusd.org/release/USD.tag", _USD_DOXYGEN_ROOT_DIR)
 }
+
 
 def _handle_missing_usd_reference(app, env, node, contnode):
     """Handle missing references by redirecting to a custom URL."""
     from docutils import nodes
-    from sphinxcontrib.doxylink import doxylink
 
     target = node['reftarget']
     if not target.startswith('pxr.'):
         return None
 
+    full_url = _get_url_for_target(app, target)
+    return nodes.reference('', contnode.astext(), refuri=full_url)
+
+
+@functools.cache
+def _get_url_for_target(app, target):
+    from sphinxcontrib.doxylink import doxylink
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
-    print(f"{target=}")
-    print(f"{pxr_obj_namespace=}")
     pxr_obj_namespace = {
         "UsdInitialLoadSet": "UsdStage::InitialLoadSet",  # there's a level of indirection in the python bindings?
         "UsdFilter": "UsdPrimCompositionQuery::Filter",  # filter is a member of the query type
@@ -270,11 +275,19 @@ def _handle_missing_usd_reference(app, env, node, contnode):
     part = doxylink.utils.unescape(part)
     url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
     full_url = doxylink.join(_USD_DOXYGEN_ROOT_DIR, url.file)
-    print(full_url)
-    return nodes.reference('', contnode.astext(), refuri=full_url)
+    return full_url
+
+
+def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
+    if name == "grill.usd.iprims":  # Target the specific function
+        # Prim predicates don't have a __repr__, which creates malformed signature formatting (no new lines, no links)
+        # Report to pixar
+        signature = signature.replace("<pxr.Usd._PrimFlagsConjunction object>", "Usd.PrimDefaultPredicate")
+    return signature, return_annotation
 
 
 def setup(app):
     """Setup Sphinx to handle missing USD references. This can be removed when the USD C++ docs ship with an inventory of the USD types for python bindings."""
+    app.connect("autodoc-process-signature", _grill_process_signature)
     app.connect("missing-reference", _handle_missing_usd_reference)
     return {"parallel_read_safe": True, "parallel_write_safe": True}
