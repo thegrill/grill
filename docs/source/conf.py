@@ -64,7 +64,7 @@ intersphinx_mapping = {
 hoverxref_auto_ref = True
 hoverxref_default_type = 'tooltip'
 
-hoverxref_intersphinx = list(set(intersphinx_mapping) - {'python'})
+hoverxref_intersphinx = list(set(intersphinx_mapping) - {'python', 'usd', 'networkx'})  # only works for RTD hosted docs
 hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, hoverxref_default_type)
 
 always_document_param_types = True
@@ -255,8 +255,15 @@ def _handle_missing_usd_reference(app, env, node, contnode):
     if not target.startswith('pxr.'):
         return None
 
-    full_url = _get_url_for_target(app, target)
-    return nodes.reference('', contnode.astext(), refuri=full_url)
+    reftitle, refuri = _get_url_for_target(app, target)
+    node = nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
+    return node
+
+
+@functools.cache
+def _get_usd_ref_tooltip(app):
+    proj, version, __, __ = app.env.intersphinx_named_inventory['usd']['std:doc']['README']
+    return f"(in {proj} v{version})"
 
 
 @functools.cache
@@ -274,7 +281,8 @@ def _get_url_for_target(app, target):
     part = doxylink.utils.unescape(part)
     url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
     full_url = doxylink.join(_USD_DOXYGEN_ROOT_DIR, url.file)
-    return full_url
+    reftitle = _get_usd_ref_tooltip(app)
+    return reftitle, full_url
 
 
 def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -290,3 +298,23 @@ def setup(app):
     app.connect("autodoc-process-signature", _grill_process_signature)
     app.connect("missing-reference", _handle_missing_usd_reference)
     return {"parallel_read_safe": True, "parallel_write_safe": True}
+
+
+from sphinxcontrib.doxylink import doxylink as doxylink_ext
+_doxylink_create_role = doxylink_ext.create_role
+
+
+def _create_doxylink_role_with_title(app, *args, **kwargs):
+    doxylink_role = _doxylink_create_role(app, *args, **kwargs)
+    title = _get_usd_ref_tooltip(app)
+
+    def _find_doxygen_link_with_title(*patched_args, **patched_kwargs):
+        inner_result = doxylink_role(*patched_args, **patched_kwargs)
+        node = inner_result[0][0]
+        node.attributes['reftitle'] = title
+        return inner_result
+
+    return _find_doxygen_link_with_title
+
+
+doxylink_ext.create_role = _create_doxylink_role_with_title
