@@ -49,7 +49,7 @@ def _pruned_prims(prim_range: Usd.PrimRange, predicate):
 
 
 def common_paths(paths: abc.Iterable[Sdf.Path]) -> list[Sdf.Path]:
-    """For the given paths, get those which are the common parents."""
+    """For the given :ref:`paths <glossary:path>`, get those which are the common parents."""
     unique = list()
     for path in sorted(filter(lambda p: p and not p.IsAbsoluteRootPath(), paths)):
         if unique and path.HasPrefix(unique[-1]):  # we're a child, so safe to continue.
@@ -62,10 +62,10 @@ def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune
     """Convenience function that creates an iterator useful for common :ref:`glossary:stage traversal`.
 
     Without keyword arguments, this is the same as calling :usdcpp:`UsdStage::Traverse`, so
-    use that instead when no ``root_paths`` or ``prune_predicate`` are provided.
+    use that instead when neither ``root_paths`` nor ``prune_predicate`` are provided.
 
-    A :usdcpp:`UsdPrimRange` with the provided ``traverse_predicate`` is created for each :usdcpp:`SdfPath` in ``root_paths``,
-    for which :usdcpp:`PruneChildren <UsdPrimRange::iterator::PruneChildren>` is called whenever a traversed :usdcpp:`Prim <UsdPrim>` passes ``prune_predicate``.
+    A :usdcpp:`PrimRage <UsdPrimRange>` with the provided ``traverse_predicate`` is created for each :func:`common <common_paths>` :usdcpp:`Path <SdfPath>` in ``root_paths``,
+    and :usdcpp:`PruneChildren <UsdPrimRange::iterator::PruneChildren>` is called whenever ``prune_predicate`` returns ``True`` for a traversed :usdcpp:`Prim <UsdPrim>`.
 
     """
     if root_paths:  # Traverse only specific parts of the stage.
@@ -82,10 +82,10 @@ def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune
 
 
 @functools.singledispatch
-def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: abc.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
-    """:ref:`glossary:composition arcs` target :ref:`LayerStacks <glossary:layerstack>`. These functions provide an :ref:`glossary:edittarget` for the first :usdcpp:`arc <UsdPrimCompositionQueryArc>` in the :ref:`Prims <glossary:prim>`'s :usdcpp:`composition <UsdPrimCompositionQuery>` that returns ``True`` for the given ``arc_predicate``.
+def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, predicate: abc.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
+    """Get an :ref:`glossary:edittarget` for the first :usdcpp:`arc <UsdPrimCompositionQueryArc>` in the :ref:`Prims <glossary:prim>`'s :usdcpp:`composition <UsdPrimCompositionQuery>` for which the given ``predicate`` returns ``True``.
 
-    Overloaded methods allow for a direct search targetting Payloads, References, Specializes, Inherits and VariantSets.
+    Overloaded implementations allow for a direct search targetting :ref:`glossary:payload`, :ref:`glossary:references`, :ref:`glossary:specializes`, :ref:`glossary:inherits` and :ref:`glossary:variantset`.
 
     This allows for "chained" context switching while preserving the same stage objects.
 
@@ -218,11 +218,11 @@ def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filte
     query = Usd.PrimCompositionQuery(prim)
     query.filter = query_filter
     for arc in query.GetCompositionArcs():
-        if arc_predicate(arc):
+        if predicate(arc):
             node = arc.GetTargetNode()
             target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
             return Usd.EditContext(prim.GetStage(), target)
-    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {arc_predicate}")
+    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {predicate}")
 
 
 @edit_context.register(Sdf.Reference)
@@ -245,8 +245,8 @@ def _(arc, /, prim: Usd.Prim) -> Usd.EditContext:
     return _edit_context_by_arc(prim, type(arc), path, layer)
 
 
-@edit_context.register(Usd.Inherits)
 @edit_context.register(Usd.Specializes)
+@edit_context.register(Usd.Inherits)
 def _(arc, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
     return _edit_context_by_arc(arc.GetPrim(), type(arc), path, layer)
 

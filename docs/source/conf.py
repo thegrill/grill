@@ -22,6 +22,7 @@
 # sys.path.insert(0, os.path.abspath('.'))
 import functools
 from datetime import datetime
+from sphinxcontrib.doxylink import doxylink as _doxylink_ext
 
 # -- General configuration ------------------------------------------------
 
@@ -262,13 +263,20 @@ def _handle_missing_usd_reference(app, env, node, contnode):
 
 @functools.cache
 def _get_usd_ref_tooltip(app):
+    # TODO: find a less hacky way of achieving this (aiming for consistency with intersphinx titles on hovered links)
     proj, version, __, __ = app.env.intersphinx_named_inventory['usd']['std:doc']['README']
     return f"(in {proj} v{version})"
 
 
 @functools.cache
+def _doxylink_split_explicit_title(text):
+    has_explicit_title, title, part = _doxylink_ext.split_explicit_title(text)
+    part = _doxylink_ext.utils.unescape(part)
+    return has_explicit_title, title, part
+
+
+@functools.cache
 def _get_url_for_target(app, target):
-    from sphinxcontrib.doxylink import doxylink
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
     pxr_obj_namespace = {
         "UsdInitialLoadSet": "UsdStage::InitialLoadSet",  # there's a level of indirection in the python bindings?
@@ -277,12 +285,11 @@ def _get_url_for_target(app, target):
         "Usd_Term": "primFlags.h",
         "Usd_PrimFlagsConjunction": "primFlags.h",
     }.get(pxr_obj_namespace, pxr_obj_namespace)
-    has_explicit_title, title, part = doxylink.split_explicit_title(pxr_obj_namespace)
-    part = doxylink.utils.unescape(part)
+    __, __, part = _doxylink_split_explicit_title(pxr_obj_namespace)
     url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
-    full_url = doxylink.join(_USD_DOXYGEN_ROOT_DIR, url.file)
+    full_url = _doxylink_ext.join(_USD_DOXYGEN_ROOT_DIR, url.file)
     reftitle = _get_usd_ref_tooltip(app)
-    return reftitle, full_url
+    return part + " " + reftitle, full_url
 
 
 def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -293,28 +300,30 @@ def _grill_process_signature(app, what, name, obj, options, signature, return_an
     return signature, return_annotation
 
 
-def setup(app):
-    """Setup Sphinx to handle missing USD references. This can be removed when the USD C++ docs ship with an inventory of the USD types for python bindings."""
-    app.connect("autodoc-process-signature", _grill_process_signature)
-    app.connect("missing-reference", _handle_missing_usd_reference)
-    return {"parallel_read_safe": True, "parallel_write_safe": True}
-
-
-from sphinxcontrib.doxylink import doxylink as doxylink_ext
-_doxylink_create_role = doxylink_ext.create_role
+_doxylink_create_role = _doxylink_ext.create_role
 
 
 def _create_doxylink_role_with_title(app, *args, **kwargs):
     doxylink_role = _doxylink_create_role(app, *args, **kwargs)
-    title = _get_usd_ref_tooltip(app)
+    intersphinx_title = _get_usd_ref_tooltip(app)
 
-    def _find_doxygen_link_with_title(*patched_args, **patched_kwargs):
-        inner_result = doxylink_role(*patched_args, **patched_kwargs)
+    def _find_doxygen_link_with_title(name, rawtext, text, *patched_args, **patched_kwargs):
+        inner_result = doxylink_role(name, rawtext, text, *patched_args, **patched_kwargs)
         node = inner_result[0][0]
-        node.attributes['reftitle'] = title
+
+        __, __, part = _doxylink_split_explicit_title(text)
+
+        node.attributes['reftitle'] = part + " " + intersphinx_title
         return inner_result
 
     return _find_doxygen_link_with_title
 
 
-doxylink_ext.create_role = _create_doxylink_role_with_title
+_doxylink_ext.create_role = _create_doxylink_role_with_title
+
+
+def setup(app):
+    """Setup Sphinx to handle missing USD references. This can be removed when the USD C++ docs ship with an inventory of the USD types for python bindings."""
+    app.connect("autodoc-process-signature", _grill_process_signature)
+    app.connect("missing-reference", _handle_missing_usd_reference)
+    return {"parallel_read_safe": True, "parallel_write_safe": True}
