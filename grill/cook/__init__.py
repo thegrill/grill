@@ -412,7 +412,15 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
             try:
                 parent_model.SetKind(Kind.Tokens.assembly)
             except Exception as exc:
-                raise RuntimeError(f'Could not set kind to "{Kind.Tokens.assembly}" on parent model {parent_model} with current kind: "{parent_model.GetKind()}", when spawning {child} of kind "{Usd.ModelAPI(child).GetKind()}"') from exc
+                message = (
+                    f'Could not set kind to "{Kind.Tokens.assembly}" on parent {parent} with current kind: "{parent_model.GetKind()}" '
+                    f'when spawning {child} of kind "{Usd.ModelAPI(child).GetKind()}"'
+                )
+                edit_target = parent_stage.GetEditTarget()
+                if not edit_target.GetSpecForScenePath(parent.GetPath()):
+                    message = f"No spec path for {parent} could be found; it might be out of the scope of the current edit target with map {edit_target.GetMapFunction().sourceToTargetMap}. {message}"
+                raise RuntimeError(message) from exc
+
         for spawned_unit, label in zip(spawned, labels):
             # Use reference for the asset to:
             # 1. Make use of instancing as much as possible with fewer prototypes.

@@ -173,8 +173,8 @@ class TestCook(unittest.TestCase):
 
         id_fields = {tokens.ids.CGAsset.kingdom.name: "K"}
         taxon = cook.define_taxon(stage, "Another", id_fields=id_fields)
-        parent, child, third = cook.create_many(taxon, ['A', 'B', 'C'])
-        cook.spawn_many(parent, child, ["b01", "nested/b02"], labels=["1", "2", "3"])
+        parent, child = cook.create_many(taxon, ['A', 'B'])
+        cook.spawn_many(parent, child, ["b", "nested/c"], labels=["1", "2", "3"])
         self.assertEqual(len(parent.GetChildren()), 2)
 
         geom = cook.fetch_stage(cook.UsdAsset.get_anonymous(part="Geom"))
@@ -185,8 +185,8 @@ class TestCook(unittest.TestCase):
             geom_root = stage.DefinePrim(child.GetPath().AppendChild("Geom"))
             geom_root.GetPayloads().AddPayload(payload)
             with usd.edit_context(payload, geom_root):
-                with self.assertRaisesRegex(RuntimeError, 'Could not set kind to "assembly"'):
-                    cook.spawn_many(child, third, paths=[geom_root.GetPath().AppendChild(side) for side in ("L", "R")])
+                with self.assertRaisesRegex(RuntimeError, 'No spec path.*Could not set kind to "assembly"'):
+                    cook.spawn_many(child, parent, paths=[geom_root.GetPath().AppendChild('this_will_fail')])
 
     def test_inherited_and_specialized_contexts(self):
         stage = cook.fetch_stage(self.root_asset)
