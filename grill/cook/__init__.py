@@ -130,15 +130,14 @@ def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverCon
 
 
 def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = tuple(), id_fields: abc.Mapping[str, str] = types.MappingProxyType({})) -> Usd.Prim:
-    """Define a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_.
+    """:ref:`Define <glossary:def>` a new `taxon group <https://en.wikipedia.org/wiki/Taxon>`_ for asset `taxonomy <https://en.wikipedia.org/wiki/Taxonomy>`_ and return it.
 
-    If an existing ``taxon`` with the provided name already exists in the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_, it is used.
+    If an existing ``taxon`` with the provided name already exists in the :usdcpp:`stage <UsdStage>`, it is used.
 
     The new ``taxon`` can extend from existing ``taxa`` via the ``references`` argument.
 
-    Optional ``field=value`` items can be provided for identification purposes via ``id_fields``.
+    Optional ``field=value`` items can be provided for identification purposes through ``id_fields``.
 
-    :returns: `Prim <https://graphics.pixar.com/usd/docs/api/class_usd_prim.html>`_ representing the ``taxon`` group.
     """
     if name == _TAXONOMY_NAME:
         # TODO: prevent upper case lower case mismatch handle between multiple OS?
