@@ -248,17 +248,10 @@ doxylink = {
 }
 
 
-def _handle_missing_usd_reference(app, env, node, contnode):
-    """Handle missing references by redirecting to a custom URL."""
-    from docutils import nodes
-
-    target = node['reftarget']
-    if not target.startswith('pxr.'):
-        return None
-
-    reftitle, refuri = _get_url_for_target(app, target)
-    node = nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
-    return node
+@functools.cache
+def _get_doxylink_part(text):
+    __, __, part = _doxylink_ext.split_explicit_title(text)
+    return _doxylink_ext.utils.unescape(part)
 
 
 @functools.cache
@@ -266,13 +259,6 @@ def _get_usd_ref_tooltip(app):
     # TODO: find a less hacky way of achieving this (aiming for consistency with intersphinx titles on hovered links)
     proj, version, __, __ = app.env.intersphinx_named_inventory['usd']['std:doc']['README']
     return f"(in {proj} v{version})"
-
-
-@functools.cache
-def _doxylink_split_explicit_title(text):
-    has_explicit_title, title, part = _doxylink_ext.split_explicit_title(text)
-    part = _doxylink_ext.utils.unescape(part)
-    return has_explicit_title, title, part
 
 
 @functools.cache
@@ -285,11 +271,24 @@ def _get_url_for_target(app, target):
         "Usd_Term": "primFlags.h",
         "Usd_PrimFlagsConjunction": "primFlags.h",
     }.get(pxr_obj_namespace, pxr_obj_namespace)
-    __, __, part = _doxylink_split_explicit_title(pxr_obj_namespace)
+    part = _get_doxylink_part(pxr_obj_namespace)
     url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
     full_url = _doxylink_ext.join(_USD_DOXYGEN_ROOT_DIR, url.file)
     reftitle = _get_usd_ref_tooltip(app)
     return part + " " + reftitle, full_url
+
+
+def _handle_missing_usd_reference(app, env, node, contnode):
+    """Handle missing references by redirecting to a custom URL."""
+    from docutils import nodes
+
+    target = node['reftarget']
+    if not target.startswith('pxr.'):
+        return None
+
+    reftitle, refuri = _get_url_for_target(app, target)
+    node = nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
+    return node
 
 
 def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -304,6 +303,7 @@ _doxylink_create_role = _doxylink_ext.create_role
 
 
 def _create_doxylink_role_with_title(app, *args, **kwargs):
+    # TODO: find a less hacky way of achieving this (aiming for consistency with intersphinx titles on hovered links)
     doxylink_role = _doxylink_create_role(app, *args, **kwargs)
     intersphinx_title = _get_usd_ref_tooltip(app)
 
@@ -311,7 +311,7 @@ def _create_doxylink_role_with_title(app, *args, **kwargs):
         inner_result = doxylink_role(name, rawtext, text, *patched_args, **patched_kwargs)
         node = inner_result[0][0]
 
-        __, __, part = _doxylink_split_explicit_title(text)
+        part = _get_doxylink_part(text)
 
         node.attributes['reftitle'] = part + " " + intersphinx_title
         return inner_result
