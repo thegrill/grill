@@ -34,7 +34,7 @@ Defining Taxonomy
 
 For asset organization, ``The Grill`` uses the concept of asset `taxonomy`_. This is a hierarchy for organizing assets into groups (``Taxa``) where members of each individual group (``Taxon``) share characteristics (e.g. ``Characters``, ``Props`` and ``Shots`` are common organizational groups found on ``Film`` and ``Animation`` projects).
 
-**API:** :func:`grill.cook.define_taxon`
+**API:** :py:func:`grill.cook.define_taxon`
 
 .. hint::
 
