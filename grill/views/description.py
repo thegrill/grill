@@ -29,12 +29,12 @@ _logger = logging.getLogger(__name__)
 
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
-    Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
+    Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),  # Pcp internal is 'green'
     Pcp.ArcTypeVariant: _color_attrs('orange'),
-    Pcp.ArcTypeRelocate: _color_attrs('indigo'),  # ~indigo
-    Pcp.ArcTypeReference: _color_attrs('crimson'),  # ~red
-    Pcp.ArcTypePayload: _color_attrs('#9370db'),  # ~purple
-    Pcp.ArcTypeSpecialize: _color_attrs('sienna'),  # ~brown
+    Pcp.ArcTypeRelocate: _color_attrs('#b300b3'),  # Pcp internal is 'purple'
+    Pcp.ArcTypeReference: _color_attrs('crimson'),  # Pcp internal is 'red'
+    Pcp.ArcTypePayload: _color_attrs('#9370db'),  # Pcp internal is 'indigo'
+    Pcp.ArcTypeSpecialize: _color_attrs('sienna'),
 })
 _BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
 _PALETTE = contextvars.ContextVar("_PALETTE", default=1)  # (0 == dark, 1 == light)
@@ -49,6 +49,7 @@ _HIGHLIGHT_COLORS = MappingProxyType(
         *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
         *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name", "outline_details")),
         *((key, (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])) for key in ("inherit", "inherits")),
+        *((key, ("#ff66ff", _ARCS_LEGEND[Pcp.ArcTypeRelocate]['color'])) for key in ("relocates", "relocate")),
         *((key, ("#9a94bf", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])) for key in ("payload", "payloads")),
         *((key,  ("#c18f76", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])) for key in ("specialize", "specializes")),
         ("list_op", ("#e3eaa7", "#2aa198")),
@@ -60,7 +61,7 @@ _HIGHLIGHT_COLORS = MappingProxyType(
     )}
 )
 _HIGHLIGHT_PATTERN = re.compile(
-    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload|references)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload|references|relocates)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
 )
 
 _OUTLINE_SDF_PATTERN = re.compile(  # this is a very minimal draft to have colors on the outline sdffilter mode.
