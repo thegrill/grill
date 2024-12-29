@@ -265,8 +265,8 @@ def _get_usd_ref_tooltip(app):
 def _get_url_for_target(app, target):
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
     pxr_obj_namespace = {
-        "UsdInitialLoadSet": "UsdStage::InitialLoadSet",  # there's a level of indirection in the python bindings?
-        "UsdFilter": "UsdPrimCompositionQuery::Filter",  # filter is a member of the query type
+        "UsdInitialLoadSet": "UsdStage::InitialLoadSet",   # there's indirection in the python bindings
+        "UsdFilter": "UsdPrimCompositionQuery::Filter",    # filter is a member of the query type
         "UsdCompositionArc": "UsdPrimCompositionQueryArc",
         "Usd_Term": "primFlags.h",
         "Usd_PrimFlagsConjunction": "primFlags.h",
@@ -279,7 +279,6 @@ def _get_url_for_target(app, target):
 
 
 def _handle_missing_usd_reference(app, env, node, contnode):
-    """Handle missing references by redirecting to a custom URL."""
     from docutils import nodes
 
     target = node['reftarget']
@@ -292,9 +291,9 @@ def _handle_missing_usd_reference(app, env, node, contnode):
 
 
 def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
-    if name == "grill.usd.iprims":  # Target the specific function
-        # Prim predicates don't have a __repr__, which creates malformed signature formatting (no new lines, no links)
-        # Report to pixar
+    if name == "grill.usd.iprims":
+        # TODO: Report to pixar
+        #   Prim predicates don't have a __repr__, which creates malformed signature formatting (no new lines, no links)
         signature = signature.replace("<pxr.Usd._PrimFlagsConjunction object>", "Usd.PrimDefaultPredicate")
     return signature, return_annotation
 
