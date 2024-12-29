@@ -166,28 +166,6 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
 
     @cache
     def _compute_composition(_prim):
-        # def walk_composition(node):
-        #     yield node
-        #     for child in node.children:
-        #         yield from walk_composition(child)
-        #
-        # index = _prim.GetPrimIndex()
-        # root = index.rootNode
-        # affected_by = set()  # {int}  indices of nodes affecting this prim
-        # for node in walk_composition(root):
-        #     arc_type = node.arcType
-        #     target_idx, __ = _add_node(node)
-        #     affected_by.add(target_idx)
-        #     if origin:=node.parent:
-        #         source_layer = origin.layerStack.identifier.rootLayer
-        #         source_idx, source_layers = _add_node(origin)
-        #         source_port = source_layers[source_layer]
-        #         all_edges[source_idx, target_idx][str(source_port)][arc_type].update(
-        #             {func.__name__: True for func in _USD_COMPOSITION_ARC_QUERY_METHODS}
-        #         )
-        #
-        # return affected_by
-        # ---- #
         query = Usd.PrimCompositionQuery(_prim)
         affected_by = set()  # {int}  indices of nodes affecting this prim
         for arc in query.GetCompositionArcs():
