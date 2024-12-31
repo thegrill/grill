@@ -18,6 +18,7 @@
    views
    end_to_end
    api
+   glossary
 
 Indices and tables
 ==================
