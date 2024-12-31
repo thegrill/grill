@@ -379,15 +379,11 @@ class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
 class PrimComposition(QtWidgets.QDialog):
     # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
-        "Target Layer": lambda arc: _layer_label(arc.GetTargetNode().layerStack.layerTree.layer),
-        "Arc": lambda arc: arc.GetArcType().displayName,
-        "#": lambda arc: arc.GetTargetNode().siblingNumAtOrigin,
-        "Target Path": lambda arc: arc.GetTargetNode().path,
-        "Has Specs": Usd.CompositionArc.HasSpecs,
-        "Is Ancestral": Usd.CompositionArc.IsAncestral,
-        "Is Implicit": Usd.CompositionArc.IsImplicit,
-        "From Root Layer Prim Spec": Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
-        "From Root LayerStack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
+        "Target Layer": lambda node: _layer_label(node.layerStack.layerTree.layer),
+        "Arc": lambda node: node.arcType.displayName,
+        "#": lambda node: node.siblingNumAtOrigin,
+        "Target Path": lambda node: node.path,
+        "Has Specs": lambda node: node.hasSpecs,
     }
 
     def __init__(self, *args, **kwargs):
@@ -418,7 +414,13 @@ class PrimComposition(QtWidgets.QDialog):
         self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
         self._complete_target_layerstack.setChecked(False)
         self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
+
+        self._compute_expanded_index = QtWidgets.QCheckBox("Expanded Prim Index")
+        self._compute_expanded_index.setChecked(True)
+        self._compute_expanded_index.clicked.connect(lambda: self.setPrim(self._prim))
+
         tree_controls_layout.addWidget(self._complete_target_layerstack)
+        tree_controls_layout.addWidget(self._compute_expanded_index)
         tree_controls_layout.addStretch(0)
         tree_controls_layout.setContentsMargins(0,0,0,0)
         tree_controls.setContentsMargins(0,0,0,0)
@@ -475,32 +477,50 @@ class PrimComposition(QtWidgets.QDialog):
         model.setHorizontalHeaderLabels([""] * len(self._COLUMNS))
         root_item = model.invisibleRootItem()
 
-        query = Usd.PrimCompositionQuery(prim)
-        items = dict()
         stage = prim.GetStage()
-        arcs = query.GetCompositionArcs()
-        for arc in arcs:
-            values = [getter(arc) for getter in self._COLUMNS.values()]
 
-            intro_node = arc.GetIntroducingNode()
-            target_node = arc.GetTargetNode()
+        # UsdPrimCompositionQuery does not return relocates arcs, so use Pcp API for now
+        # query = Usd.PrimCompositionQuery(prim)
+        # arcs = query.GetCompositionArcs()
+
+        def walk_composition(node):
+            if not (node.isInert and node.arcType != Pcp.ArcTypeRelocate):
+                # Inert nodes are discarded by UsdPrimCompositionQuery to avoid duplicates of some nodes
+                # https://github.com/PixarAnimationStudios/OpenUSD/blob/9b0c13b2efa6233c8a4a4af411833628c5435bde/pxr/usd/usd/primCompositionQuery.cpp#L401
+                # From the docs:
+                #   An inert node never provides any opinions to a prim index.
+                #   Such a node may exist purely as a marker to represent certain composition structure,
+                #   but should never contribute opinions.
+                # Relocates are marked as inert, but we need them to keep track of the composition tree.
+                yield node
+            for child in node.children:
+                yield from walk_composition(child)
+
+        index = prim.ComputeExpandedPrimIndex() if self._compute_expanded_index.isChecked() else prim.GetPrimIndex()
+        items = {str(index.rootNode.site): root_item}
+
+        for target_node in walk_composition(index.rootNode):
+            arc_type = target_node.arcType
+            parent_node = target_node.parent if arc_type != Pcp.ArcTypeRoot else target_node
+            parent_id = str(parent_node.site)
+            target_id = str(target_node.site)
+            parent = items[parent_id]
+            values = [getter(target_node) for getter in self._COLUMNS.values()]
+
             target_path = target_node.path
             target_layer = target_node.layerStack.identifier.rootLayer
 
-            # TODO: is there a better way than relying on str(node.site)???
-            key = str(intro_node.site)
-            parent = items[key] if key in items else root_item
-
             try:
-                highlight_color = _HIGHLIGHT_COLORS[arc.GetArcType().displayName][_PALETTE.get()]
+                highlight_color = _HIGHLIGHT_COLORS[arc_type.displayName][_PALETTE.get()]
             except KeyError:
                 highlight_color = None
 
             sublayers = target_node.layerStack.layers if complete_target_layerstack else (target_layer,)
+
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
                     arc_items = [QtGui.QStandardItem(str(s)) for s in values]
-                    items[str(target_node.site)] = arc_items[0]
+                    items[target_id] = arc_items[0]
                 else:
                     has_specs = bool(each.GetObjectAtPath(target_path))
                     arc_items = [QtGui.QStandardItem(str(s)) for s in [_layer_label(each), values[1], values[2], values[3], str(has_specs)]]
