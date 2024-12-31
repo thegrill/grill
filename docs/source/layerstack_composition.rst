@@ -28,15 +28,15 @@ In the above example, we're inspecting `Animal Logic's USD ALab`_.
    - Edges are the :ref:`glossary:composition arcs` between them (it follows the same color scheme as the ones provided by :usdcpp:`PcpPrimIndex::DumpToDotGraph`).
    - Options to filter :ref:`glossary:composition arcs` are provided above the network view.
 
-     .. image:: images/layerstack_composition_arc_filter_options.jpg
+     .. image:: images/layerstack_composition_arc_filter_options.png
 
    - The additional option ``Precise Source Layer`` (**off** by default) exists to draw the edge source from the layer from the stack that introduces it.
      This allows to go from this:
 
-     .. image:: images/layerstack_composition_options_default.jpg
+     .. image:: images/layerstack_composition_options_default.png
      To (note the outputs of ``books_magazines01_surfacing`` and ``books_magazines01_modelling``):
 
-     .. image:: images/layerstack_composition_options_precise_source_layer.jpg
+     .. image:: images/layerstack_composition_options_precise_source_layer.png
 
 
 .. warning::
