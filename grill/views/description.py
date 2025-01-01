@@ -383,10 +383,10 @@ class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
 class PrimComposition(QtWidgets.QDialog):
     # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
-        "Target Layer": lambda node: _layer_label(node.layerStack.layerTree.layer),
+        "Layer": lambda node: _layer_label(node.layerStack.layerTree.layer),
         "Arc": lambda node: node.arcType.displayName,
         "#": lambda node: node.siblingNumAtOrigin,
-        "Target Path": lambda node: node.path,
+        "Path": lambda node: node.path,
         "Has Specs": lambda node: node.hasSpecs,
     }
 
@@ -416,7 +416,7 @@ class PrimComposition(QtWidgets.QDialog):
         tree_controls_layout = QtWidgets.QHBoxLayout()
         tree_controls.setLayout(tree_controls_layout)
         self._prim = None  # TODO: see if we can remove this. Atm needed for "enabling layer stack" checkbox
-        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
+        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete LayerStack")
         self._complete_target_layerstack.setChecked(False)
         self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
 
