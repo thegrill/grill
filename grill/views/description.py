@@ -72,6 +72,10 @@ _TREE_PATTERN = re.compile(  # draft as well output of usdtree
     rf'^(?P<identifier_prim_path>([/`|\s:]+-+)(\w+)?)(\((?P<metadata>\w+)\)|(?P<prop_name>\.[\w:]+)|( \[(?P<specifier>def|over|class)( (?P<prim_type>\w+))?])( \((?P<custom_meta>[\w\s=]+)\))?)'
 )
 
+_PCP_DUMP_PATTERN = re.compile(
+    r"^((?P<prim_name>Node \d+:)|\s+\w[ \w\#]+:(\s+((?P<boolean>TRUE|FALSE|NONE)|(?P<arc_selection>inherit|payload|reference|relocate|specialize|variant)|(?P<number>\d+)|(?P<string_value>\w[\w\-, ]+)))?)$|(?P<identifier_prim_path><[/\w{}=]+>)|(?P<identifier>@[^@]+@)|(?P<relationship>/[/\w]*)"
+)
+
 _USD_COMPOSITION_ARC_QUERY_METHODS = (
     Usd.CompositionArc.HasSpecs,
     Usd.CompositionArc.IsAncestral,
@@ -395,6 +399,7 @@ class PrimComposition(QtWidgets.QDialog):
         """
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
+        _PcpNodeDumpHighlighter(self.index_box)
         self.index_box.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
         self._composition_model = model = QtGui.QStandardItemModel()
         columns = tuple(_core._Column(k, v) for k, v in self._COLUMNS.items())
@@ -419,8 +424,23 @@ class PrimComposition(QtWidgets.QDialog):
         self._compute_expanded_index.setChecked(True)
         self._compute_expanded_index.clicked.connect(lambda: self.setPrim(self._prim))
 
+        self._compute_expanded_index = QtWidgets.QCheckBox("Expanded Prim Index")
+        self._compute_expanded_index.setChecked(True)
+        self._compute_expanded_index.clicked.connect(lambda: self.setPrim(self._prim))
+
+        # Inert nodes are discarded by UsdPrimCompositionQuery to avoid duplicates of some nodes
+        # https://github.com/PixarAnimationStudios/OpenUSD/blob/9b0c13b2efa6233c8a4a4af411833628c5435bde/pxr/usd/usd/primCompositionQuery.cpp#L401
+        # From the docs:
+        #   An inert node never provides any opinions to a prim index.
+        #   Such a node may exist purely as a marker to represent certain composition structure,
+        #   but should never contribute opinions.
+        self._include_inert_nodes = QtWidgets.QCheckBox("Include Inert Nodes")
+        self._include_inert_nodes.setChecked(False)
+        self._include_inert_nodes.clicked.connect(lambda: self.setPrim(self._prim))
+
         tree_controls_layout.addWidget(self._complete_target_layerstack)
         tree_controls_layout.addWidget(self._compute_expanded_index)
+        tree_controls_layout.addWidget(self._include_inert_nodes)
         tree_controls_layout.addStretch(0)
         tree_controls_layout.setContentsMargins(0,0,0,0)
         tree_controls.setContentsMargins(0,0,0,0)
@@ -460,7 +480,8 @@ class PrimComposition(QtWidgets.QDialog):
             self.setWindowTitle("Prim Composition")
             return
         self.setWindowTitle(f"Prim Composition: {prim.GetName()} ({prim.GetPath()})")
-        prim_index = prim.GetPrimIndex()
+        prim_index = prim.ComputeExpandedPrimIndex() if self._compute_expanded_index.isChecked() else prim.GetPrimIndex()
+
         self.index_box.setText(prim_index.DumpToString())
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
@@ -479,32 +500,35 @@ class PrimComposition(QtWidgets.QDialog):
 
         stage = prim.GetStage()
 
-        # UsdPrimCompositionQuery does not return relocates arcs, so use Pcp API for now
-        # query = Usd.PrimCompositionQuery(prim)
-        # arcs = query.GetCompositionArcs()
+        include_inert_nodes = self._include_inert_nodes.isChecked()
 
         def walk_composition(node):
-            if not (node.isInert and node.arcType != Pcp.ArcTypeRelocate):
-                # Inert nodes are discarded by UsdPrimCompositionQuery to avoid duplicates of some nodes
-                # https://github.com/PixarAnimationStudios/OpenUSD/blob/9b0c13b2efa6233c8a4a4af411833628c5435bde/pxr/usd/usd/primCompositionQuery.cpp#L401
-                # From the docs:
-                #   An inert node never provides any opinions to a prim index.
-                #   Such a node may exist purely as a marker to represent certain composition structure,
-                #   but should never contribute opinions.
-                # Relocates are marked as inert, but we need them to keep track of the composition tree.
-                yield node
+            yield node
             for child in node.children:
                 yield from walk_composition(child)
 
-        index = prim.ComputeExpandedPrimIndex() if self._compute_expanded_index.isChecked() else prim.GetPrimIndex()
-        items = {str(index.rootNode.site): root_item}
+        root_node = prim_index.rootNode
+        items = {str(root_node.site): root_item}
 
-        for target_node in walk_composition(index.rootNode):
+        def _find_parent_for_display(_node):
+            if _parent := _node.parent:
+                if not include_inert_nodes and _parent.isInert:
+                    # if we're skipping inert nodes for display purposes, find the closes parent that is not inert
+                    return _find_parent_for_display(_parent)
+                return _parent
+
+        for node_index, target_node in enumerate(walk_composition(root_node)):
+            is_inert = target_node.isInert
+            if is_inert and not include_inert_nodes:
+                continue
+
             arc_type = target_node.arcType
-            parent_node = target_node.parent if arc_type != Pcp.ArcTypeRoot else target_node
-            parent_id = str(parent_node.site)
+            if parent_node := _find_parent_for_display(target_node):
+                parent = items[str(parent_node.site)]
+            else:
+                parent = root_item
+
             target_id = str(target_node.site)
-            parent = items[parent_id]
             values = [getter(target_node) for getter in self._COLUMNS.values()]
 
             target_path = target_node.path
@@ -519,11 +543,11 @@ class PrimComposition(QtWidgets.QDialog):
 
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
-                    arc_items = [QtGui.QStandardItem(str(s)) for s in values]
+                    arc_items = [QtGui.QStandardItem(f"{node_index} " + str(s)) for s in values]
                     items[target_id] = arc_items[0]
                 else:
                     has_specs = bool(each.GetObjectAtPath(target_path))
-                    arc_items = [QtGui.QStandardItem(str(s)) for s in [_layer_label(each), values[1], values[2], values[3], str(has_specs)]]
+                    arc_items = [QtGui.QStandardItem(f"{node_index} " + str(s)) for s in [_layer_label(each), values[1], values[2], values[3], str(has_specs)]]
 
                 edit_target = Usd.EditTarget(each, target_node)
                 for item in arc_items:
@@ -533,6 +557,7 @@ class PrimComposition(QtWidgets.QDialog):
 
                 parent.appendRow(arc_items)
 
+        prim_index.PrintStatistics()
         tree.expandAll()
         tree._fixPositions()  # TODO: Houdini needs this. Why?
         for index, size in sizes.items():
@@ -572,6 +597,10 @@ class _SdfOutlineHighlighter(_Highlighter):
 
 class _TreeOutlineHighlighter(_Highlighter):
     _pattern = _TREE_PATTERN
+
+
+class _PcpNodeDumpHighlighter(_Highlighter):
+    _pattern = _PCP_DUMP_PATTERN
 
 
 class _LayersSheet(_sheets._Spreadsheet):
