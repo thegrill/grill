@@ -381,9 +381,10 @@ class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
 
 class PrimComposition(QtWidgets.QDialog):
     _HAS_SPECS_COLUMN_KEY = "Has Specs"
+    _LAYER_COLUMN_KEY = "Layer"
     # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
-        "Layer": lambda idx, node: _layer_label(node.layerStack.layerTree.layer),
+        _LAYER_COLUMN_KEY: lambda idx, node: _layer_label(node.layerStack.layerTree.layer),
         "Arc Type": lambda idx, node: node.arcType.displayName,
         "Node #": lambda idx, node: idx,
         "Path": lambda idx, node: node.path,
@@ -557,7 +558,7 @@ class PrimComposition(QtWidgets.QDialog):
                 yield from walk_composition(child)
 
         root_node = prim_index.rootNode
-        node_items_by_site = dict()
+        parents_by_site = dict()
         arcs_counter = Counter()
 
         def _find_parent_for_display(_node):
@@ -567,6 +568,8 @@ class PrimComposition(QtWidgets.QDialog):
                     return _find_parent_for_display(_parent)
                 return _parent
 
+        parent_column_index = list(self._COLUMNS).index(self._LAYER_COLUMN_KEY)
+
         for node_index, target_node in enumerate(walk_composition(root_node)):
             arc_type = target_node.arcType
             arcs_counter[arc_type] += 1
@@ -575,10 +578,10 @@ class PrimComposition(QtWidgets.QDialog):
             if is_inert and not include_inert_nodes:
                 continue
 
-            parent = node_items_by_site[str(parent.site)] if (parent := _find_parent_for_display(target_node)) else root_item
+            parent = parents_by_site[str(parent.site)] if (parent := _find_parent_for_display(target_node)) else root_item
 
             target_id = str(target_node.site)
-            column_values = {column_key: getter(node_index, target_node) for column_key, getter in self._COLUMNS.items()}
+            row_values = {key: getter(node_index, target_node) for key, getter in self._COLUMNS.items()}
 
             target_path = target_node.path
             target_layer = target_node.layerStack.identifier.rootLayer
@@ -592,20 +595,21 @@ class PrimComposition(QtWidgets.QDialog):
 
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
-                    arc_items = [QtGui.QStandardItem(str(s)) for s in column_values.values()]
-                    node_items_by_site[target_id] = arc_items[0]
+                    row_items = [QtGui.QStandardItem(str(s)) for s in row_values.values()]
+                    parents_by_site[target_id] = row_items[parent_column_index]
                 else:
-                    sublayer_values = ChainMap({}, column_values)
-                    sublayer_values[self._HAS_SPECS_COLUMN_KEY] = bool(each.GetObjectAtPath(target_path))
-                    arc_items = [QtGui.QStandardItem(str(s)) for s in sublayer_values.values()]
+                    row_items = [QtGui.QStandardItem(str(s)) for s in ChainMap({
+                        self._LAYER_COLUMN_KEY: _layer_label(each),
+                        self._HAS_SPECS_COLUMN_KEY: bool(each.GetObjectAtPath(target_path)),
+                    }, row_values).values()]
 
                 edit_target = Usd.EditTarget(each, target_node)
-                for item in arc_items:
+                for item in row_items:
                     item.setData((stage, edit_target, target_path), QtCore.Qt.UserRole)
                     if highlight_color:
                         item.setData(highlight_color, QtCore.Qt.ForegroundRole)
 
-                parent.appendRow(arc_items)
+                parent.appendRow(row_items)
 
         arc_statistics_colors = ChainMap({Pcp.ArcTypeRoot.displayName: _HIGHLIGHT_COLORS['boolean']}, _HIGHLIGHT_COLORS)
         arcs_stats = ' | '.join(f'<span style="color:rgb{arc_statistics_colors[arc_type.displayName][_PALETTE.get()].getRgb()[:3]};">{arc_type.displayName}: {arcs_counter.get(arc_type, 0)}' for arc_type in chain([Pcp.ArcTypeRoot], _ARCS_LEGEND))
