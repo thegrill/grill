@@ -418,7 +418,6 @@ class PrimComposition(QtWidgets.QDialog):
         composition_control_panel_layout = QtWidgets.QHBoxLayout()
         composition_control_panel.setLayout(composition_control_panel_layout)
         self._composition_stats = QtWidgets.QLabel()
-        # self._composition_stats.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
 
         tree_controls = QtWidgets.QFrame()
         tree_controls_layout = QtWidgets.QHBoxLayout()
@@ -426,28 +425,34 @@ class PrimComposition(QtWidgets.QDialog):
         self._prim = None  # TODO: see if we can remove this. Atm needed for "enabling layer stack" checkbox
         self._complete_target_layerstack = QtWidgets.QCheckBox("Complete LayerStack")
         self._complete_target_layerstack.setChecked(False)
+        self._complete_target_layerstack.setToolTip(
+            "Toggle between displaying all layers in each layerStack or only the root layer"
+        )
         self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
 
         self._compute_expanded_index = QtWidgets.QCheckBox("Expanded Prim Index")
         self._compute_expanded_index.setChecked(True)
+        self._compute_expanded_index.setToolTip(
+            "Toggle between the expanded prim index, which includes all possible contributing sites to this prim,\n"
+            "or the cached prim index, which is optimized and may not include sites that are not contributing opinions"
+        )
         self._compute_expanded_index.clicked.connect(lambda: self.setPrim(self._prim))
 
-        self._compute_expanded_index = QtWidgets.QCheckBox("Expanded Prim Index")
-        self._compute_expanded_index.setChecked(True)
-        self._compute_expanded_index.clicked.connect(lambda: self.setPrim(self._prim))
-
-        # Inert nodes are discarded by UsdPrimCompositionQuery to avoid duplicates of some nodes
-        # https://github.com/PixarAnimationStudios/OpenUSD/blob/9b0c13b2efa6233c8a4a4af411833628c5435bde/pxr/usd/usd/primCompositionQuery.cpp#L401
-        # From the docs:
-        #   An inert node never provides any opinions to a prim index.
-        #   Such a node may exist purely as a marker to represent certain composition structure,
-        #   but should never contribute opinions.
         self._include_inert_nodes = QtWidgets.QCheckBox("Inert Nodes")
         self._include_inert_nodes.setChecked(False)
+        self._include_inert_nodes.setToolTip(
+            # Inert nodes are discarded by UsdPrimCompositionQuery to avoid duplicates of some nodes
+            # https://github.com/PixarAnimationStudios/OpenUSD/blob/9b0c13b2efa6233c8a4a4af411833628c5435bde/pxr/usd/usd/primCompositionQuery.cpp#L401
+            # From the docs:
+            #   An inert node never provides any opinions to a prim index.
+            #   Such a node may exist purely as a marker to represent certain composition structure,
+            #   but should never contribute opinions.
+            "Toggle whether to display inert nodes.\n"
+            "Inert nodes do not contribute opinions to a prim index so can typically be omitted"
+        )
         self._include_inert_nodes.clicked.connect(lambda: self.setPrim(self._prim))
 
         composition_control_panel_layout.addWidget(self._compute_expanded_index)
-        # composition_control_panel_layout.addStretch(0)
         composition_control_panel_layout.addWidget(self._composition_stats)
         composition_control_panel_layout.setContentsMargins(0,0,0,0)
         composition_control_panel.setContentsMargins(0, 0, 0, 0)
@@ -553,7 +558,6 @@ class PrimComposition(QtWidgets.QDialog):
 
         root_node = prim_index.rootNode
         node_items_by_site = dict()
-        # arcs_counter = Counter(dict.fromkeys([Pcp.ArcTypeRoot, *_ARCS_LEGEND], 0))
         arcs_counter = Counter()
 
         def _find_parent_for_display(_node):
