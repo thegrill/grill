@@ -1,8 +1,7 @@
 """Helpers for USD workflows which do not know anything about the pipeline."""
+from __future__ import annotations
+
 import enum
-# https://docs.python.org/3/whatsnew/3.10.html#pep-604-new-type-union-operator
-# TODO: Remove when py-3.10+ is supported (for union types)
-import typing
 import inspect
 import logging
 import functools
@@ -58,7 +57,7 @@ def common_paths(paths: abc.Iterable[Sdf.Path]) -> list[Sdf.Path]:
     return unique
 
 
-def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune_predicate: abc.Callable[[Usd.Prim], bool] = None, traverse_predicate: typing.Union[Usd._Term, Usd._PrimFlagsConjunction] = Usd.PrimDefaultPredicate) -> abc.Iterator[Usd.Prim]:
+def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune_predicate: abc.Callable[[Usd.Prim], bool] = None, traverse_predicate: Usd._Term | Usd._PrimFlagsConjunction = Usd.PrimDefaultPredicate) -> abc.Iterator[Usd.Prim]:
     """Convenience function that creates an iterator useful for common :ref:`glossary:stage traversal`.
 
     Without keyword arguments, this is the same as calling :usdcpp:`UsdStage::Traverse`, so

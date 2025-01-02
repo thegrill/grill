@@ -262,7 +262,7 @@ def _get_usd_ref_tooltip(app):
 
 
 @functools.cache
-def _get_url_for_target(app, target):
+def _get_url_for_usd_target(app, target):
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
     pxr_obj_namespace = {
         "UsdInitialLoadSet": "UsdStage::InitialLoadSet",   # there's indirection in the python bindings
@@ -281,13 +281,9 @@ def _get_url_for_target(app, target):
 def _handle_missing_usd_reference(app, env, node, contnode):
     from docutils import nodes
 
-    target = node['reftarget']
-    if not target.startswith('pxr.'):
-        return None
-
-    reftitle, refuri = _get_url_for_target(app, target)
-    node = nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
-    return node
+    if (target := node['reftarget']).startswith('pxr.'):
+        reftitle, refuri = _get_url_for_usd_target(app, target)
+        return nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
 
 
 def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
