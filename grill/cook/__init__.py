@@ -25,9 +25,6 @@
 from __future__ import annotations
 
 import types
-# https://docs.python.org/3/whatsnew/3.10.html#pep-604-new-type-union-operator
-# TODO: Remove when py-3.10+ is supported (for union types)
-import typing
 import logging
 import functools
 import itertools
@@ -109,7 +106,7 @@ def asset_identifier(path: Path | str):
         return str(path.relative_to(Repository.get()))
 
 
-def fetch_stage(identifier: typing.Union[str, UsdAsset], context: Ar.ResolverContext = None, load: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll) -> Usd.Stage:
+def fetch_stage(identifier: str | UsdAsset, context: Ar.ResolverContext = None, load: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll) -> Usd.Stage:
     """Retrieve the `stage <https://graphics.pixar.com/usd/docs/api/class_usd_stage.html>`_ whose root `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ matches the given ``identifier``.
 
     If the `layer <https://graphics.pixar.com/usd/docs/api/class_sdf_layer.html>`_ does not exist, it is created in the repository.
