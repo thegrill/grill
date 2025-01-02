@@ -8,11 +8,10 @@ import logging
 import operator
 import tempfile
 import contextvars
-import collections
 
 from pathlib import Path
 from itertools import chain
-from collections import defaultdict
+from collections import defaultdict, ChainMap, Counter
 from functools import cache, partial
 from types import MappingProxyType
 
@@ -381,13 +380,16 @@ class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
 
 
 class PrimComposition(QtWidgets.QDialog):
+    _HAS_SPECS_COLUMN_KEY = "Has Specs"
     # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
-        "Layer": lambda node: _layer_label(node.layerStack.layerTree.layer),
-        "Arc": lambda node: node.arcType.displayName,
-        "#": lambda node: node.siblingNumAtOrigin,
-        "Path": lambda node: node.path,
-        "Has Specs": lambda node: node.hasSpecs,
+        "Layer": lambda idx, node: _layer_label(node.layerStack.layerTree.layer),
+        "Arc Type": lambda idx, node: node.arcType.displayName,
+        "Node #": lambda idx, node: idx,
+        "Path": lambda idx, node: node.path,
+        "Sibling #": lambda idx, node: node.siblingNumAtOrigin,
+        _HAS_SPECS_COLUMN_KEY: lambda idx, node: node.hasSpecs,
+        "Is Inert": lambda idx, node: node.isInert,
     }
 
     def __init__(self, *args, **kwargs):
@@ -412,6 +414,12 @@ class PrimComposition(QtWidgets.QDialog):
 
         self._dot_view = _graph._DotViewer(parent=self)
 
+        composition_control_panel = QtWidgets.QFrame()
+        composition_control_panel_layout = QtWidgets.QHBoxLayout()
+        composition_control_panel.setLayout(composition_control_panel_layout)
+        self._composition_stats = QtWidgets.QLabel()
+        # self._composition_stats.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
+
         tree_controls = QtWidgets.QFrame()
         tree_controls_layout = QtWidgets.QHBoxLayout()
         tree_controls.setLayout(tree_controls_layout)
@@ -434,27 +442,63 @@ class PrimComposition(QtWidgets.QDialog):
         #   An inert node never provides any opinions to a prim index.
         #   Such a node may exist purely as a marker to represent certain composition structure,
         #   but should never contribute opinions.
-        self._include_inert_nodes = QtWidgets.QCheckBox("Include Inert Nodes")
+        self._include_inert_nodes = QtWidgets.QCheckBox("Inert Nodes")
         self._include_inert_nodes.setChecked(False)
         self._include_inert_nodes.clicked.connect(lambda: self.setPrim(self._prim))
 
+        composition_control_panel_layout.addWidget(self._compute_expanded_index)
+        # composition_control_panel_layout.addStretch(0)
+        composition_control_panel_layout.addWidget(self._composition_stats)
+        composition_control_panel_layout.setContentsMargins(0,0,0,0)
+        composition_control_panel.setContentsMargins(0, 0, 0, 0)
+        composition_control_panel.setFixedHeight(composition_control_panel.sizeHint().height())
+
         tree_controls_layout.addWidget(self._complete_target_layerstack)
-        tree_controls_layout.addWidget(self._compute_expanded_index)
         tree_controls_layout.addWidget(self._include_inert_nodes)
         tree_controls_layout.addStretch(0)
         tree_controls_layout.setContentsMargins(0,0,0,0)
         tree_controls.setContentsMargins(0,0,0,0)
         tree_controls.setFixedHeight(tree_controls.sizeHint().height())
 
+        control_panel = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        control_panel.addWidget(composition_control_panel)
+
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(tree_controls)
         vertical.addWidget(tree)
         vertical.addWidget(self._dot_view)
         vertical.setStretchFactor(2, 1)
+
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(vertical)
-        horizontal.addWidget(self.index_box)
+
+        index_frame = QtWidgets.QFrame()
+        index_frame_layout = QtWidgets.QVBoxLayout()
+        index_frame.setLayout(index_frame_layout)
+
+        index_line_filter = QtWidgets.QLineEdit()
+        index_line_filter.setPlaceholderText("Find")
+        index_line_filter.setContentsMargins(0,0,0,0)
+
+        def _find(text):
+            if text and not self.index_box.find(text):
+                self.index_box.moveCursor(QtGui.QTextCursor.Start)  # try again from start
+                self.index_box.find(text)
+
+        index_line_filter.textChanged.connect(_find)
+        index_line_filter.returnPressed.connect(lambda: _find(index_line_filter.text()))
+
+        index_frame_layout.addWidget(index_line_filter)
+        self.index_box.setContentsMargins(0,0,0,0)
+        index_frame_layout.setSpacing(0)
+        index_frame_layout.addWidget(self.index_box)
+        index_frame_layout.setContentsMargins(0,0,0,0)
+        index_frame.setContentsMargins(0, 0, 0, 0)
+
+        horizontal.addWidget(index_frame)
+
         layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(control_panel)
         layout.addWidget(horizontal)
         self.setLayout(layout)
         self.setWindowTitle("Prim Composition")
@@ -508,7 +552,9 @@ class PrimComposition(QtWidgets.QDialog):
                 yield from walk_composition(child)
 
         root_node = prim_index.rootNode
-        items = {str(root_node.site): root_item}
+        node_items_by_site = dict()
+        # arcs_counter = Counter(dict.fromkeys([Pcp.ArcTypeRoot, *_ARCS_LEGEND], 0))
+        arcs_counter = Counter()
 
         def _find_parent_for_display(_node):
             if _parent := _node.parent:
@@ -518,18 +564,17 @@ class PrimComposition(QtWidgets.QDialog):
                 return _parent
 
         for node_index, target_node in enumerate(walk_composition(root_node)):
+            arc_type = target_node.arcType
+            arcs_counter[arc_type] += 1
+
             is_inert = target_node.isInert
             if is_inert and not include_inert_nodes:
                 continue
 
-            arc_type = target_node.arcType
-            if parent_node := _find_parent_for_display(target_node):
-                parent = items[str(parent_node.site)]
-            else:
-                parent = root_item
+            parent = node_items_by_site[str(parent.site)] if (parent := _find_parent_for_display(target_node)) else root_item
 
             target_id = str(target_node.site)
-            values = [getter(target_node) for getter in self._COLUMNS.values()]
+            column_values = {column_key: getter(node_index, target_node) for column_key, getter in self._COLUMNS.items()}
 
             target_path = target_node.path
             target_layer = target_node.layerStack.identifier.rootLayer
@@ -543,11 +588,12 @@ class PrimComposition(QtWidgets.QDialog):
 
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
-                    arc_items = [QtGui.QStandardItem(f"{node_index} " + str(s)) for s in values]
-                    items[target_id] = arc_items[0]
+                    arc_items = [QtGui.QStandardItem(str(s)) for s in column_values.values()]
+                    node_items_by_site[target_id] = arc_items[0]
                 else:
-                    has_specs = bool(each.GetObjectAtPath(target_path))
-                    arc_items = [QtGui.QStandardItem(f"{node_index} " + str(s)) for s in [_layer_label(each), values[1], values[2], values[3], str(has_specs)]]
+                    sublayer_values = ChainMap({}, column_values)
+                    sublayer_values[self._HAS_SPECS_COLUMN_KEY] = bool(each.GetObjectAtPath(target_path))
+                    arc_items = [QtGui.QStandardItem(str(s)) for s in sublayer_values.values()]
 
                 edit_target = Usd.EditTarget(each, target_node)
                 for item in arc_items:
@@ -557,7 +603,9 @@ class PrimComposition(QtWidgets.QDialog):
 
                 parent.appendRow(arc_items)
 
-        prim_index.PrintStatistics()
+        arc_statistics_colors = ChainMap({Pcp.ArcTypeRoot.displayName: _HIGHLIGHT_COLORS['boolean']}, _HIGHLIGHT_COLORS)
+        arcs_stats = ' | '.join(f'<span style="color:rgb{arc_statistics_colors[arc_type.displayName][_PALETTE.get()].getRgb()[:3]};">{arc_type.displayName}: {arcs_counter.get(arc_type, 0)}' for arc_type in chain([Pcp.ArcTypeRoot], _ARCS_LEGEND))
+        self._composition_stats.setText(f'Total nodes: {arcs_counter.total()} → {arcs_stats}')
         tree.expandAll()
         tree._fixPositions()  # TODO: Houdini needs this. Why?
         for index, size in sizes.items():
@@ -1163,12 +1211,12 @@ class LayerStackComposition(QtWidgets.QDialog):
         checked_arcs = {arc for arc, control in self._graph_edge_include.items() if control.isChecked()}
         precise_ports = self._graph_precise_source_ports.isChecked()
         for (src, tgt), edge_info in graph_info.edges.items():
-            arc_ports = edge_info if precise_ports else {None: collections.ChainMap(*edge_info.values())}
+            arc_ports = edge_info if precise_ports else {None: ChainMap(*edge_info.values())}
             for src_port, arcs in arc_ports.items():
                 visible_arcs = {arc: attrs for arc, attrs in arcs.items() if (arc in checked_arcs or {src, tgt}.issubset(graph_info.sticky_nodes))}
                 if visible_arcs:
                     # Composition arcs target layer stacks, so we don't specify port on our target nodes
                     ports = {"tailport": src_port} if precise_ports and src_port is not None else {}
                     color = _edge_color(tuple(visible_arcs))
-                    yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
+                    yield src, tgt, ChainMap(ports, color, *visible_arcs.values())
 
