@@ -605,7 +605,9 @@ class PrimComposition(QtWidgets.QDialog):
 
         arc_statistics_colors = ChainMap({Pcp.ArcTypeRoot.displayName: _HIGHLIGHT_COLORS['boolean']}, _HIGHLIGHT_COLORS)
         arcs_stats = ' | '.join(f'<span style="color:rgb{arc_statistics_colors[arc_type.displayName][_PALETTE.get()].getRgb()[:3]};">{arc_type.displayName}: {arcs_counter.get(arc_type, 0)}' for arc_type in chain([Pcp.ArcTypeRoot], _ARCS_LEGEND))
-        self._composition_stats.setText(f'Total nodes: {arcs_counter.total()} → {arcs_stats}')
+        # py-3.10+
+        total_arcs = arcs_counter.total() if hasattr(arcs_counter, 'total') else sum(arcs_counter.values())
+        self._composition_stats.setText(f'Total nodes: {total_arcs} → {arcs_stats}')
         tree.expandAll()
         tree._fixPositions()  # TODO: Houdini needs this. Why?
         for index, size in sizes.items():
