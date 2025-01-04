@@ -15,7 +15,7 @@ To visualize the :ref:`glossary:composition` graph, the ``graphviz`` library nee
 
 .. tab:: Maya
 
-    .. image:: prim_composition_maya.gif
+    .. image:: images/prim_composition_maya.gif
 
 
 Setting an Edit Target
