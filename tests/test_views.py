@@ -172,11 +172,13 @@ class TestViews(unittest.TestCase):
         widget.deleteLater()
 
     def test_prim_composition(self):
-        temp = Usd.Stage.CreateInMemory()
-        ancestor = temp.DefinePrim("/a")
-        prim = temp.DefinePrim("/b")
-        prim.GetReferences().AddReference(Sdf.Reference(primPath=ancestor.GetPath()))
+        stage = Usd.Stage.Open(str(_test_bed))
+        prim = stage.GetPrimAtPath("/Catalogue/Model/Buildings/Multi_Story_Building/Windows/Apartment/Geom/Floor")
         widget = description.PrimComposition()
+        widget._include_inert_nodes.setChecked(False)
+        widget._compute_expanded_index.setChecked(False)
+        widget._complete_target_layerstack.setChecked(True)
+
         # DotView capabilities are tested elsewhere, so mock 'setDotPath' here.
         widget._dot_view.setDotPath = lambda fp: None
         widget.setPrim(prim)
@@ -184,7 +186,7 @@ class TestViews(unittest.TestCase):
         # cheap. prim is affected by 2 layers
         # single child for this prim.
         self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
-
+        widget._compute_expanded_index.setChecked(True)
         widget._complete_target_layerstack.setChecked(True)
         widget.setPrim(prim)
         self.assertTrue(widget.composition_tree._model.invisibleRootItem().hasChildren())
