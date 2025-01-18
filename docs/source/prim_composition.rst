@@ -1,7 +1,7 @@
 Prim Composition
 ----------------
 
-Uses existing :ref:`glossary:prim` utilities (:usdcpp:`UsdPrimCompositionQuery`, :usdcpp:`PcpPrimIndex::DumpToDotGraph`, :usdcpp:`PcpPrimIndex::DumpToString`) to help inspect :ref:`glossary:composition arcs` beyond what is possible by default in :ref:`toolset:usdview`.
+Uses :ref:`Prim Index <glossary:index>` and its utilities (:usdcpp:`PcpPrimIndex::DumpToDotGraph`, :usdcpp:`PcpPrimIndex::DumpToString`) to help inspect :ref:`glossary:composition arcs` beyond what is possible by default in :ref:`toolset:usdview`.
 
 To visualize the :ref:`glossary:composition` graph, the ``graphviz`` library needs to be available in the environment.
 
