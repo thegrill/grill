@@ -564,7 +564,7 @@ class PrimComposition(QtWidgets.QDialog):
         def _find_parent_for_display(_node):
             if _parent := _node.parent:
                 if not include_inert_nodes and _parent.isInert:
-                    # if we're skipping inert nodes for display purposes, find the closes parent that is not inert
+                    # if we're skipping inert nodes for display purposes, find the first parent that is not inert
                     return _find_parent_for_display(_parent)
                 return _parent
 
@@ -574,11 +574,10 @@ class PrimComposition(QtWidgets.QDialog):
             arc_type = target_node.arcType
             arcs_counter[arc_type] += 1
 
-            is_inert = target_node.isInert
-            if is_inert and not include_inert_nodes:
+            if not include_inert_nodes and target_node.isInert:
                 continue
 
-            parent = parents_by_site[str(parent.site)] if (parent := _find_parent_for_display(target_node)) else root_item
+            parent_item = parents_by_site[str(parent_node.site)] if (parent_node := _find_parent_for_display(target_node)) else root_item
 
             target_id = str(target_node.site)
             row_values = {key: getter(node_index, target_node) for key, getter in self._COLUMNS.items()}
@@ -609,7 +608,7 @@ class PrimComposition(QtWidgets.QDialog):
                     if highlight_color:
                         item.setData(highlight_color, QtCore.Qt.ForegroundRole)
 
-                parent.appendRow(row_items)
+                parent_item.appendRow(row_items)
 
         arc_statistics_colors = ChainMap({Pcp.ArcTypeRoot.displayName: _HIGHLIGHT_COLORS['boolean']}, _HIGHLIGHT_COLORS)
         arcs_stats = ' | '.join(f'<span style="color:rgb{arc_statistics_colors[arc_type.displayName][_PALETTE.get()].getRgb()[:3]};">{arc_type.displayName}: {arcs_counter.get(arc_type, 0)}' for arc_type in chain([Pcp.ArcTypeRoot], _ARCS_LEGEND))
