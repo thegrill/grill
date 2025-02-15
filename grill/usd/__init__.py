@@ -86,7 +86,7 @@ def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filte
 
     Overloaded implementations allow for a direct search targetting :ref:`glossary:payload`, :ref:`glossary:references`, :ref:`glossary:specializes`, :ref:`glossary:inherits` and :ref:`glossary:variantset`.
 
-    This allows for "chained" context switching while preserving the same stage objects.
+    This allows for "chained" context switching of edit targets while working with the same USD API objects.
 
     .. tip::
 
