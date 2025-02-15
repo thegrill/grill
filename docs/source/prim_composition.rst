@@ -32,7 +32,7 @@ In the examples below, prims under ``ChairB_2`` and ``CheerioA_164`` have their 
 
        When :usdcpp:`displayColor <UsdGeomGprim::GetDisplayColorAttr>` is modified, the changes are visible on **both** ``ChairB_1`` **and** ``ChairB_2``, since they share that arc.
 
-    #. The :ref:`local arc <glossary:livrps strength ordering>` targeting the :ref:`local root <glossary:root layerstack>` ``Kitchen_set.usd`` layer is set as :ref:`glossary:edittarget`.
+    #. The :ref:`local arc <glossary:liverps strength ordering>` targeting the :ref:`local root <glossary:root layerstack>` ``Kitchen_set.usd`` layer is set as :ref:`glossary:edittarget`.
 
        Once the :usdcpp:`displayColor <UsdGeomGprim::GetDisplayColorAttr>` is modified, the changes are visible on ``ChairB_2`` **only**, since nothing else shares that arc.
 
@@ -44,7 +44,7 @@ In the examples below, prims under ``ChairB_2`` and ``CheerioA_164`` have their 
 
        When :usdcpp:`doc <UsdObject::GetDocumentation>` of the ``CheerioA_164`` prim is modified, the changes are visible on **all** ``CheerioA_*`` prims, since they share the composition arc and the layer being modified.
 
-    #. The :ref:`local arc <glossary:livrps strength ordering>` arc targeting the anonymous houdini LOP layer from the :ref:`glossary:root layerstack` is set as :ref:`glossary:edittarget`.
+    #. The :ref:`local arc <glossary:liverps strength ordering>` arc targeting the anonymous houdini LOP layer from the :ref:`glossary:root layerstack` is set as :ref:`glossary:edittarget`.
 
        Once the :usdcpp:`doc <UsdObject::GetDocumentation>` is modified, the changes are visible on ``CheerioA_164`` **only**, since nothing else shares that arc.
 
@@ -56,7 +56,7 @@ In the examples below, prims under ``ChairB_2`` and ``CheerioA_164`` have their 
 
        When the :usdcpp:`active <UsdPrim::SetActive>` property is modified, the changes are visible on **both** ``ChairB_1`` **and** ``ChairB_2``, since they share the composition arc and the layer being modified.
 
-    #. The :ref:`local arc <glossary:livrps strength ordering>` targeting the ``Kitchen_set.usd`` layer in the :ref:`glossary:root layerstack` is set as :ref:`glossary:edittarget`.
+    #. The :ref:`local arc <glossary:liverps strength ordering>` targeting the ``Kitchen_set.usd`` layer in the :ref:`glossary:root layerstack` is set as :ref:`glossary:edittarget`.
 
        Once the :usdcpp:`active <UsdPrim::SetActive>` property is modified, the changes are visible on ``ChairB_2`` **only**, since nothing else shares that arc.
 
