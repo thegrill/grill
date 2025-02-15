@@ -1,6 +1,7 @@
 """Helpers for USD workflows which do not know anything about the pipeline."""
+from __future__ import annotations
+
 import enum
-import typing
 import inspect
 import logging
 import functools
@@ -46,8 +47,8 @@ def _pruned_prims(prim_range: Usd.PrimRange, predicate):
         yield prim
 
 
-def common_paths(paths: typing.Iterable[Sdf.Path]) -> typing.List[Sdf.Path]:
-    """For the given paths, get those which are the common parents."""
+def common_paths(paths: abc.Iterable[Sdf.Path]) -> list[Sdf.Path]:
+    """For the given :ref:`paths <glossary:path>`, get those which are the common parents."""
     unique = list()
     for path in sorted(filter(lambda p: p and not p.IsAbsoluteRootPath(), paths)):
         if unique and path.HasPrefix(unique[-1]):  # we're a child, so safe to continue.
@@ -56,11 +57,15 @@ def common_paths(paths: typing.Iterable[Sdf.Path]) -> typing.List[Sdf.Path]:
     return unique
 
 
-def iprims(stage: Usd.Stage, root_paths: typing.Iterable[Sdf.Path] = tuple(), prune_predicate: typing.Callable = None, traverse_predicate=Usd.PrimDefaultPredicate) -> typing.Iterator[Usd.Prim]:
-    """Convenience function that creates a generator useful for common prim traversals.
+def iprims(stage: Usd.Stage, root_paths: abc.Iterable[Sdf.Path] = tuple(), prune_predicate: abc.Callable[[Usd.Prim], bool] = None, traverse_predicate: Usd._Term | Usd._PrimFlagsConjunction = Usd.PrimDefaultPredicate) -> abc.Iterator[Usd.Prim]:
+    """Convenience function that creates an iterator useful for common :ref:`glossary:stage traversal`.
 
-    Without keyword arguments, this is the same as calling `Usd.Stage.Traverse(...)`, so
-    use that instead when no `root_paths` or `prune_predicates` are needed.
+    Without keyword arguments, this is the same as calling :usdcpp:`UsdStage::Traverse`, so
+    use that instead when neither ``root_paths`` nor ``prune_predicate`` are provided.
+
+    A :usdcpp:`PrimRage <UsdPrimRange>` with the provided ``traverse_predicate`` is created for each :func:`common <common_paths>` :usdcpp:`Path <SdfPath>` in ``root_paths``,
+    and :usdcpp:`PruneChildren <UsdPrimRange::iterator::PruneChildren>` is called whenever ``prune_predicate`` returns ``True`` for a traversed :usdcpp:`Prim <UsdPrim>`.
+
     """
     if root_paths:  # Traverse only specific parts of the stage.
         root_paths = common_paths(root_paths)
@@ -76,10 +81,12 @@ def iprims(stage: Usd.Stage, root_paths: typing.Iterable[Sdf.Path] = tuple(), pr
 
 
 @functools.singledispatch
-def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, arc_predicate: typing.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
-    """Composition arcs target layer stacks. These functions help create EditTargets for the first matching node's root layer stack from prim's composition arcs.
+def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filter, predicate: abc.Callable[[Usd.CompositionArc], bool]) -> Usd.EditContext:
+    """Get an :ref:`glossary:edittarget` for the first :usdcpp:`arc <UsdPrimCompositionQueryArc>` in the :ref:`Prims <glossary:prim>`'s :usdcpp:`composition <UsdPrimCompositionQuery>` for which the given ``predicate`` returns ``True``.
 
-    This allows for "chained" context switching while preserving the same stage objects.
+    Overloaded implementations allow for a direct search targetting :ref:`glossary:payload`, :ref:`glossary:references`, :ref:`glossary:specializes`, :ref:`glossary:inherits` and :ref:`glossary:variantset`.
+
+    This allows for "chained" context switching of edit targets while working with the same USD API objects.
 
     .. tip::
 
@@ -210,11 +217,11 @@ def edit_context(prim: Usd.Prim, /, query_filter: Usd.PrimCompositionQuery.Filte
     query = Usd.PrimCompositionQuery(prim)
     query.filter = query_filter
     for arc in query.GetCompositionArcs():
-        if arc_predicate(arc):
+        if predicate(arc):
             node = arc.GetTargetNode()
             target = Usd.EditTarget(node.layerStack.identifier.rootLayer, node)
             return Usd.EditContext(prim.GetStage(), target)
-    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {arc_predicate}")
+    raise ValueError(f"Could not find appropriate node for edit target for {prim} matching {predicate}")
 
 
 @edit_context.register(Sdf.Reference)
@@ -237,14 +244,14 @@ def _(arc, /, prim: Usd.Prim) -> Usd.EditContext:
     return _edit_context_by_arc(prim, type(arc), path, layer)
 
 
-@edit_context.register(Usd.Inherits)
 @edit_context.register(Usd.Specializes)
+@edit_context.register(Usd.Inherits)
 def _(arc, /, path: Sdf.Path, layer: Sdf.Layer) -> Usd.EditContext:
     return _edit_context_by_arc(arc.GetPrim(), type(arc), path, layer)
 
 
-@edit_context.register
-def _(variant_set: Usd.VariantSet, /, layer) -> Usd.EditContext:
+@edit_context.register(Usd.VariantSet)
+def _(variant_set, /, layer: Sdf.Layer) -> Usd.EditContext:
     with contextlib.suppress(Tf.ErrorException):
         return variant_set.GetVariantEditContext()
     # ----- From Pixar -----
@@ -288,7 +295,7 @@ def _edit_context_by_arc(prim, arc_type, path, layer):
 
 
 @contextlib.contextmanager
-def _prim_tree_printer(predicate, prims_to_include: typing.Container = frozenset()):
+def _prim_tree_printer(predicate, prims_to_include: abc.Container = frozenset()):
     prim_entry = Usd.Prim.GetName if predicate != Usd.PrimIsModel else lambda prim: f"{prim.GetName()} ({Usd.ModelAPI(prim).GetKind()})"
 
     class PrimTreePrinter(TreePrinter):

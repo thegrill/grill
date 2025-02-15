@@ -8,11 +8,10 @@ import logging
 import operator
 import tempfile
 import contextvars
-import collections
 
 from pathlib import Path
 from itertools import chain
-from collections import defaultdict
+from collections import defaultdict, ChainMap, Counter
 from functools import cache, partial
 from types import MappingProxyType
 
@@ -29,12 +28,12 @@ _logger = logging.getLogger(__name__)
 
 _color_attrs = lambda color: dict.fromkeys(("color", "fontcolor"), color)
 _ARCS_LEGEND = MappingProxyType({
-    Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),
+    Pcp.ArcTypeInherit: _color_attrs('mediumseagreen'),  # Pcp internal is 'green'
     Pcp.ArcTypeVariant: _color_attrs('orange'),
-    Pcp.ArcTypeRelocate: _color_attrs('indigo'),  # ~indigo
-    Pcp.ArcTypeReference: _color_attrs('crimson'),  # ~red
-    Pcp.ArcTypePayload: _color_attrs('#9370db'),  # ~purple
-    Pcp.ArcTypeSpecialize: _color_attrs('sienna'),  # ~brown
+    Pcp.ArcTypeRelocate: _color_attrs('#b300b3'),  # Pcp internal is 'purple'
+    Pcp.ArcTypeReference: _color_attrs('crimson'),  # Pcp internal is 'red'
+    Pcp.ArcTypePayload: _color_attrs('#9370db'),  # Pcp internal is 'indigo'
+    Pcp.ArcTypeSpecialize: _color_attrs('sienna'),
 })
 _BROWSE_CONTENTS_MENU_TITLE = 'Browse Contents'
 _PALETTE = contextvars.ContextVar("_PALETTE", default=1)  # (0 == dark, 1 == light)
@@ -49,6 +48,7 @@ _HIGHLIGHT_COLORS = MappingProxyType(
         *((key, ("#b5e7a0", "#859900")) for key in ("metadata", "interpolation_meta", "custom_meta")),
         *((key, ("#ffcc5c", "#b58900")) for key in ("identifier", "variantSets", "variantSet", "variants", "variant", "prop_name", "rel_name", "outline_details")),
         *((key, (_ARCS_LEGEND[Pcp.ArcTypeInherit]['color'], _ARCS_LEGEND[Pcp.ArcTypeInherit]['color'])) for key in ("inherit", "inherits")),
+        *((key, ("#ff66ff", _ARCS_LEGEND[Pcp.ArcTypeRelocate]['color'])) for key in ("relocates", "relocate")),
         *((key, ("#9a94bf", _ARCS_LEGEND[Pcp.ArcTypePayload]['color'])) for key in ("payload", "payloads")),
         *((key,  ("#c18f76", _ARCS_LEGEND[Pcp.ArcTypeSpecialize]['color'])) for key in ("specialize", "specializes")),
         ("list_op", ("#e3eaa7", "#2aa198")),
@@ -60,7 +60,7 @@ _HIGHLIGHT_COLORS = MappingProxyType(
     )}
 )
 _HIGHLIGHT_PATTERN = re.compile(
-    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload|references)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
+    rf'(^(?P<comment>#.*$)|^( *(?P<specifier>def|over|class)( (?P<prim_type>\w+))? (?P<prim_name>\"\w+\")| +((?P<metadata>(?P<arc_selection>variants|payload|references|relocates)|{"|".join(_usd._metadata_keys())})|(?P<list_op>add|(ap|pre)pend|delete) (?P<arc>inherits|variantSets|references|payload|specializes|apiSchemas|rel (?P<rel_name>[\w:]+))|(?P<variantSet>variantSet) (?P<set_string>\"\w+\")|(?P<custom_meta>custom )?(?P<interpolation_meta>uniform )?(?P<prop_type>{"|".join(_usd._attr_value_type_names())}|dictionary|rel)(?P<prop_array>\[])? (?P<prop_name>[\w:.]+))( (\(|((?P<value_assignment>= )[\[(]?))|$))|(?P<string_value>\"[^\"]+\")|(?P<identifier>@[^@]+@)(?P<identifier_prim_path><[/\w]+>)?|(?P<relationship><[/\w:.]+>)|(?P<collapsed><< [^>]+ >>)|(?P<boolean>true|false)|(?P<number>-?[\d.]+))'
 )
 
 _OUTLINE_SDF_PATTERN = re.compile(  # this is a very minimal draft to have colors on the outline sdffilter mode.
@@ -69,6 +69,10 @@ _OUTLINE_SDF_PATTERN = re.compile(  # this is a very minimal draft to have color
 
 _TREE_PATTERN = re.compile(  # draft as well output of usdtree
     rf'^(?P<identifier_prim_path>([/`|\s:]+-+)(\w+)?)(\((?P<metadata>\w+)\)|(?P<prop_name>\.[\w:]+)|( \[(?P<specifier>def|over|class)( (?P<prim_type>\w+))?])( \((?P<custom_meta>[\w\s=]+)\))?)'
+)
+
+_PCP_DUMP_PATTERN = re.compile(
+    r"^((?P<prim_name>Node \d+:)|\s+\w[ \w\#]+:(\s+((?P<boolean>TRUE|FALSE|NONE)|(?P<arc_selection>inherit|payload|reference|relocate|specialize|variant)|(?P<number>\d+)|(?P<string_value>\w[\w\-, ]+)))?)$|(?P<identifier_prim_path><[/\w{}=]+>)|(?P<identifier>@[^@]+@)|(?P<relationship>/[/\w]*)"
 )
 
 _USD_COMPOSITION_ARC_QUERY_METHODS = (
@@ -376,17 +380,17 @@ class _Tree(_core._ColumnHeaderMixin, QtWidgets.QTreeView):
 
 
 class PrimComposition(QtWidgets.QDialog):
+    _HAS_SPECS_COLUMN_KEY = "Has Specs"
+    _LAYER_COLUMN_KEY = "Layer"
     # TODO: See if columns need to be updated from dict to tuple[_core.Column]
     _COLUMNS = {
-        "Target Layer": lambda arc: _layer_label(arc.GetTargetNode().layerStack.layerTree.layer),
-        "Arc": lambda arc: arc.GetArcType().displayName,
-        "#": lambda arc: arc.GetTargetNode().siblingNumAtOrigin,
-        "Target Path": lambda arc: arc.GetTargetNode().path,
-        "Has Specs": Usd.CompositionArc.HasSpecs,
-        "Is Ancestral": Usd.CompositionArc.IsAncestral,
-        "Is Implicit": Usd.CompositionArc.IsImplicit,
-        "From Root Layer Prim Spec": Usd.CompositionArc.IsIntroducedInRootLayerPrimSpec,
-        "From Root LayerStack": Usd.CompositionArc.IsIntroducedInRootLayerStack,
+        _LAYER_COLUMN_KEY: lambda idx, node: _layer_label(node.layerStack.layerTree.layer),
+        "Arc Type": lambda idx, node: node.arcType.displayName,
+        "Node #": lambda idx, node: idx,
+        "Path": lambda idx, node: node.path,
+        "Sibling #": lambda idx, node: node.siblingNumAtOrigin,
+        _HAS_SPECS_COLUMN_KEY: lambda idx, node: node.hasSpecs,
+        "Is Inert": lambda idx, node: node.isInert,
     }
 
     def __init__(self, *args, **kwargs):
@@ -398,6 +402,7 @@ class PrimComposition(QtWidgets.QDialog):
         """
         super().__init__(*args, **kwargs)
         self.index_box = QtWidgets.QTextBrowser()
+        _PcpNodeDumpHighlighter(self.index_box)
         self.index_box.setLineWrapMode(QtWidgets.QTextBrowser.NoWrap)
         self._composition_model = model = QtGui.QStandardItemModel()
         columns = tuple(_core._Column(k, v) for k, v in self._COLUMNS.items())
@@ -410,28 +415,96 @@ class PrimComposition(QtWidgets.QDialog):
 
         self._dot_view = _graph._DotViewer(parent=self)
 
+        composition_control_panel = QtWidgets.QFrame()
+        composition_control_panel_layout = QtWidgets.QHBoxLayout()
+        composition_control_panel.setLayout(composition_control_panel_layout)
+        self._composition_stats = QtWidgets.QLabel()
+
         tree_controls = QtWidgets.QFrame()
         tree_controls_layout = QtWidgets.QHBoxLayout()
         tree_controls.setLayout(tree_controls_layout)
         self._prim = None  # TODO: see if we can remove this. Atm needed for "enabling layer stack" checkbox
-        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete Target LayerStack")
+        self._complete_target_layerstack = QtWidgets.QCheckBox("Complete LayerStack")
         self._complete_target_layerstack.setChecked(False)
+        self._complete_target_layerstack.setToolTip(
+            "Toggle between displaying all layers in each layerStack or only the root layer"
+        )
         self._complete_target_layerstack.clicked.connect(lambda: self.setPrim(self._prim))
+
+        self._compute_expanded_index = QtWidgets.QCheckBox("Expanded Prim Index")
+        self._compute_expanded_index.setChecked(True)
+        self._compute_expanded_index.setToolTip(
+            "Toggle between the expanded prim index, which includes all possible contributing sites to this prim,\n"
+            "or the cached prim index, which is optimized and may not include sites that are not contributing opinions"
+        )
+        self._compute_expanded_index.clicked.connect(lambda: self.setPrim(self._prim))
+
+        self._include_inert_nodes = QtWidgets.QCheckBox("Inert Nodes")
+        self._include_inert_nodes.setChecked(False)
+        self._include_inert_nodes.setToolTip(
+            # Inert nodes are discarded by UsdPrimCompositionQuery to avoid duplicates of some nodes
+            # https://github.com/PixarAnimationStudios/OpenUSD/blob/9b0c13b2efa6233c8a4a4af411833628c5435bde/pxr/usd/usd/primCompositionQuery.cpp#L401
+            # From the docs:
+            #   An inert node never provides any opinions to a prim index.
+            #   Such a node may exist purely as a marker to represent certain composition structure,
+            #   but should never contribute opinions.
+            "Toggle whether to display inert nodes.\n"
+            "Inert nodes do not contribute opinions to a prim index so can typically be omitted"
+        )
+        self._include_inert_nodes.clicked.connect(lambda: self.setPrim(self._prim))
+
+        composition_control_panel_layout.addWidget(self._compute_expanded_index)
+        composition_control_panel_layout.addWidget(self._composition_stats)
+        composition_control_panel_layout.setContentsMargins(0,0,0,0)
+        composition_control_panel.setContentsMargins(0, 0, 0, 0)
+        composition_control_panel.setFixedHeight(composition_control_panel.sizeHint().height())
+
         tree_controls_layout.addWidget(self._complete_target_layerstack)
+        tree_controls_layout.addWidget(self._include_inert_nodes)
         tree_controls_layout.addStretch(0)
         tree_controls_layout.setContentsMargins(0,0,0,0)
         tree_controls.setContentsMargins(0,0,0,0)
         tree_controls.setFixedHeight(tree_controls.sizeHint().height())
+
+        control_panel = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        control_panel.addWidget(composition_control_panel)
 
         vertical = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         vertical.addWidget(tree_controls)
         vertical.addWidget(tree)
         vertical.addWidget(self._dot_view)
         vertical.setStretchFactor(2, 1)
+
         horizontal = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         horizontal.addWidget(vertical)
-        horizontal.addWidget(self.index_box)
+
+        index_frame = QtWidgets.QFrame()
+        index_frame_layout = QtWidgets.QVBoxLayout()
+        index_frame.setLayout(index_frame_layout)
+
+        index_line_filter = QtWidgets.QLineEdit()
+        index_line_filter.setPlaceholderText("Find")
+        index_line_filter.setContentsMargins(0,0,0,0)
+
+        def _find(text):
+            if text and not self.index_box.find(text):
+                self.index_box.moveCursor(QtGui.QTextCursor.Start)  # try again from start
+                self.index_box.find(text)
+
+        index_line_filter.textChanged.connect(_find)
+        index_line_filter.returnPressed.connect(lambda: _find(index_line_filter.text()))
+
+        index_frame_layout.addWidget(index_line_filter)
+        self.index_box.setContentsMargins(0,0,0,0)
+        index_frame_layout.setSpacing(0)
+        index_frame_layout.addWidget(self.index_box)
+        index_frame_layout.setContentsMargins(0,0,0,0)
+        index_frame.setContentsMargins(0, 0, 0, 0)
+
+        horizontal.addWidget(index_frame)
+
         layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(control_panel)
         layout.addWidget(horizontal)
         self.setLayout(layout)
         self.setWindowTitle("Prim Composition")
@@ -457,7 +530,8 @@ class PrimComposition(QtWidgets.QDialog):
             self.setWindowTitle("Prim Composition")
             return
         self.setWindowTitle(f"Prim Composition: {prim.GetName()} ({prim.GetPath()})")
-        prim_index = prim.GetPrimIndex()
+        prim_index = prim.ComputeExpandedPrimIndex() if self._compute_expanded_index.isChecked() else prim.GetPrimIndex()
+
         self.index_box.setText(prim_index.DumpToString())
         fd, fp = tempfile.mkstemp()
         prim_index.DumpToDotGraph(fp)
@@ -474,44 +548,73 @@ class PrimComposition(QtWidgets.QDialog):
         model.setHorizontalHeaderLabels([""] * len(self._COLUMNS))
         root_item = model.invisibleRootItem()
 
-        query = Usd.PrimCompositionQuery(prim)
-        items = dict()
         stage = prim.GetStage()
-        arcs = query.GetCompositionArcs()
-        for arc in arcs:
-            values = [getter(arc) for getter in self._COLUMNS.values()]
 
-            intro_node = arc.GetIntroducingNode()
-            target_node = arc.GetTargetNode()
+        include_inert_nodes = self._include_inert_nodes.isChecked()
+
+        def walk_composition(node):
+            yield node
+            for child in node.children:
+                yield from walk_composition(child)
+
+        root_node = prim_index.rootNode
+        parents_by_site = dict()
+        arcs_counter = Counter()
+
+        def _find_parent_for_display(_node):
+            if _parent := _node.parent:
+                if not include_inert_nodes and _parent.isInert:
+                    # if we're skipping inert nodes for display purposes, find the first parent that is not inert
+                    return _find_parent_for_display(_parent)
+                return _parent
+
+        parent_column_index = list(self._COLUMNS).index(self._LAYER_COLUMN_KEY)
+
+        for node_index, target_node in enumerate(walk_composition(root_node)):
+            arc_type = target_node.arcType
+            arcs_counter[arc_type] += 1
+
+            if not include_inert_nodes and target_node.isInert:
+                continue
+
+            parent_item = parents_by_site[str(parent_node.site)] if (parent_node := _find_parent_for_display(target_node)) else root_item
+
+            target_id = str(target_node.site)
+            row_values = {key: getter(node_index, target_node) for key, getter in self._COLUMNS.items()}
+
             target_path = target_node.path
             target_layer = target_node.layerStack.identifier.rootLayer
 
-            # TODO: is there a better way than relying on str(node.site)???
-            key = str(intro_node.site)
-            parent = items[key] if key in items else root_item
-
             try:
-                highlight_color = _HIGHLIGHT_COLORS[arc.GetArcType().displayName][_PALETTE.get()]
+                highlight_color = _HIGHLIGHT_COLORS[arc_type.displayName][_PALETTE.get()]
             except KeyError:
                 highlight_color = None
 
             sublayers = target_node.layerStack.layers if complete_target_layerstack else (target_layer,)
+
             for each in sublayers:
                 if each == target_layer:  # we're the root layer of the target node's stack
-                    arc_items = [QtGui.QStandardItem(str(s)) for s in values]
-                    items[str(target_node.site)] = arc_items[0]
+                    row_items = [QtGui.QStandardItem(str(s)) for s in row_values.values()]
+                    parents_by_site[target_id] = row_items[parent_column_index]
                 else:
-                    has_specs = bool(each.GetObjectAtPath(target_path))
-                    arc_items = [QtGui.QStandardItem(str(s)) for s in [_layer_label(each), values[1], values[2], values[3], str(has_specs)]]
+                    row_items = [QtGui.QStandardItem(str(s)) for s in ChainMap({
+                        self._LAYER_COLUMN_KEY: _layer_label(each),
+                        self._HAS_SPECS_COLUMN_KEY: bool(each.GetObjectAtPath(target_path)),
+                    }, row_values).values()]
 
                 edit_target = Usd.EditTarget(each, target_node)
-                for item in arc_items:
+                for item in row_items:
                     item.setData((stage, edit_target, target_path), QtCore.Qt.UserRole)
                     if highlight_color:
                         item.setData(highlight_color, QtCore.Qt.ForegroundRole)
 
-                parent.appendRow(arc_items)
+                parent_item.appendRow(row_items)
 
+        arc_statistics_colors = ChainMap({Pcp.ArcTypeRoot.displayName: _HIGHLIGHT_COLORS['boolean']}, _HIGHLIGHT_COLORS)
+        arcs_stats = ' | '.join(f'<span style="color:rgb{arc_statistics_colors[arc_type.displayName][_PALETTE.get()].getRgb()[:3]};">{arc_type.displayName}: {arcs_counter.get(arc_type, 0)}' for arc_type in chain([Pcp.ArcTypeRoot], _ARCS_LEGEND))
+        # py-3.10+
+        total_arcs = arcs_counter.total() if hasattr(arcs_counter, 'total') else sum(arcs_counter.values())
+        self._composition_stats.setText(f'Total nodes: {total_arcs} → {arcs_stats}')
         tree.expandAll()
         tree._fixPositions()  # TODO: Houdini needs this. Why?
         for index, size in sizes.items():
@@ -551,6 +654,10 @@ class _SdfOutlineHighlighter(_Highlighter):
 
 class _TreeOutlineHighlighter(_Highlighter):
     _pattern = _TREE_PATTERN
+
+
+class _PcpNodeDumpHighlighter(_Highlighter):
+    _pattern = _PCP_DUMP_PATTERN
 
 
 class _LayersSheet(_sheets._Spreadsheet):
@@ -1113,12 +1220,12 @@ class LayerStackComposition(QtWidgets.QDialog):
         checked_arcs = {arc for arc, control in self._graph_edge_include.items() if control.isChecked()}
         precise_ports = self._graph_precise_source_ports.isChecked()
         for (src, tgt), edge_info in graph_info.edges.items():
-            arc_ports = edge_info if precise_ports else {None: collections.ChainMap(*edge_info.values())}
+            arc_ports = edge_info if precise_ports else {None: ChainMap(*edge_info.values())}
             for src_port, arcs in arc_ports.items():
                 visible_arcs = {arc: attrs for arc, attrs in arcs.items() if (arc in checked_arcs or {src, tgt}.issubset(graph_info.sticky_nodes))}
                 if visible_arcs:
                     # Composition arcs target layer stacks, so we don't specify port on our target nodes
                     ports = {"tailport": src_port} if precise_ports and src_port is not None else {}
                     color = _edge_color(tuple(visible_arcs))
-                    yield src, tgt, collections.ChainMap(ports, color, *visible_arcs.values())
+                    yield src, tgt, ChainMap(ports, color, *visible_arcs.values())
 

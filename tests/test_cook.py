@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pxr import Usd, UsdGeom, Sdf, Ar, Tf
 
-from grill import cook, names, tokens
+from grill import cook, names, tokens, usd
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +176,17 @@ class TestCook(unittest.TestCase):
         parent, child = cook.create_many(taxon, ['A', 'B'])
         cook.spawn_many(parent, child, ["b", "nested/c"], labels=["1", "2", "3"])
         self.assertEqual(len(parent.GetChildren()), 2)
+
+        geom = cook.fetch_stage(cook.UsdAsset.get_anonymous(part="Geom"))
+        geom.SetDefaultPrim(geom.DefinePrim(cook._UNIT_ORIGIN_PATH))
+        payload = Sdf.Payload(cook.asset_identifier(geom.GetRootLayer().identifier))
+
+        with cook.unit_context(child):
+            geom_root = stage.DefinePrim(child.GetPath().AppendChild("Geom"))
+            geom_root.GetPayloads().AddPayload(payload)
+            with usd.edit_context(payload, geom_root):
+                with self.assertRaisesRegex(RuntimeError, 'No spec path.*Could not set kind to "assembly"'):
+                    cook.spawn_many(child, parent, paths=[geom_root.GetPath().AppendChild('this_will_fail')])
 
     def test_inherited_and_specialized_contexts(self):
         stage = cook.fetch_stage(self.root_asset)
