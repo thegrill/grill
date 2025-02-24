@@ -101,7 +101,15 @@ def repository_path(usdviewApi):
     return types.SimpleNamespace(show=show)
 
 
-class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMenuItem):
+class _GrillLayerStackContextMenuItem(layerStackContextMenu.LayerStackContextMenuItem):
+    """A layerStack context menu item class to register Grill menus."""
+    _items = []
+
+    def __init_subclass__(cls, **kwargs):
+        _GrillLayerStackContextMenuItem._items.append(cls)
+
+
+class GrillContentBrowserLayerMenuItem(_GrillLayerStackContextMenuItem):
     def IsEnabled(self):
         # Layer Stack Tab provides `layerPath`. Composition provides `layer`. Try both.
         return bool(getattr(self._item, 'layer', None) or getattr(self._item, 'layerPath', None))
@@ -128,6 +136,30 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
                         print(f"Could not find layer from {layerPath}")
                         return
             _description._launch_content_browser([layer], usdview_api.qMainWindow, context, paths=paths)
+
+
+class GrillAssetStructureLayerMenuItem(_GrillLayerStackContextMenuItem):
+    def IsEnabled(self):
+        # Layer Stack Tab provides `layerPath`. Composition provides `layer`. Try both.
+        return bool(getattr(self._item, 'layer', None) or getattr(self._item, 'layerPath', None))
+
+    def GetText(self):
+        return "Inspect Asset Structure"
+
+    def RunCommand(self):
+        if self._item:
+            usdview_api = _usdview_api.get()
+            context = usdview_api.stage.GetPathResolverContext()
+            if not (layer:= getattr(self._item, 'layer', None)):  # USDView allows for single layer selection in composition tab :(
+                layerPath = getattr(self._item, 'layerPath', "")
+                # We're protected by the IsEnabled method above, so don't bother checking layerPath value
+                with Ar.ResolverContextBinder(context):
+                    if not (layer:=Sdf.Layer.FindOrOpen(layerPath)):  # edge case, is this possible?
+                        print(f"Could not find layer from {layerPath}")
+                        return
+            from . import _diagrams
+            with _core.wait():
+                _diagrams._launch_asset_structure_browser(layer, usdview_api.qMainWindow, context)
 
 
 class _GrillPrimContextMenuItem(primContextMenuItems.PrimContextMenuItem):
@@ -400,7 +432,7 @@ def _extend_menu(_extender, original, *args):
 
 for module, member_name, extender in (
         (primContextMenuItems, "_GetContextMenuItems", _GrillPrimContextMenuItem._items),
-        (layerStackContextMenu, "_GetContextMenuItems", (GrillContentBrowserLayerMenuItem,)),
+        (layerStackContextMenu, "_GetContextMenuItems", _GrillLayerStackContextMenuItem._items),
         (attributeViewContextMenu, "_GetContextMenuItems", _GrillAttributeViewContextMenuItem._items),
 ):
     setattr(module, member_name, partial(_extend_menu, extender, getattr(module, member_name)))

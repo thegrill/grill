@@ -60,7 +60,10 @@ def _adjust_graphviz_html_table_label(label):
     if label.startswith("<"):
         # Contract: HTML graphviz labels start with a double <<, additionally, ROUNDED is internal to graphviz
         # QGraphicsTextItem seems to have trouble with HTML rounding, so we're controlling this via paint + custom style
-        label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
+        if label.startswith('<<table BORDER="4"'):
+            label = label.removeprefix("<").removesuffix(">").replace('table BORDER="4"', 'table')
+        else:
+            label = label.removeprefix("<").removesuffix(">").replace('table border="1" cellspacing="2" style="ROUNDED"', "table")
     return label
 
 
@@ -103,6 +106,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
         self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
+        # self.setHtml(label)
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
         # https://bugreports.qt.io/browse/QTBUG-89563
@@ -683,8 +687,14 @@ class GraphView(_GraphicsViewport):
             label = edge_data.get('label', '')
             kwargs = dict()
             if source._ports or target._ports:
-                kwargs['target_port'] = target._ports[edge_data['headport']] if edge_data.get('headport') is not None else None
-                kwargs['source_port'] = source._ports[edge_data['tailport']] if edge_data.get('tailport') is not None else None
+                if (headport_key:=edge_data.get('headport')) is not None:
+                    if isinstance(headport_key, str) and headport_key.startswith("C0R"):
+                        headport_key = int(headport_key.removeprefix("C0R"))
+                    kwargs['target_port'] = target._ports[headport_key]
+                if (tailport_key := edge_data.get('tailport')) is not None:
+                    if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
+                        tailport_key = int(tailport_key.removeprefix("C1R"))
+                    kwargs['source_port'] = source._ports[tailport_key]
 
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
@@ -844,7 +854,8 @@ class _GraphSVGViewer(_DotViewer):
 
         fd, fp = tempfile.mkstemp()
         try:
-            nx.nx_pydot.write_dot(subgraph, fp)
+            with open(fp, "w", encoding="utf-8") as fobj:
+                nx.nx_pydot.write_dot(subgraph, fobj)
         except ImportError as exc:
             error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
         else:
