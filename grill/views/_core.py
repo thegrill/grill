@@ -487,3 +487,80 @@ class _ColumnHeaderMixin:
         except AttributeError:
             header = self.header()  # Trees
         header._updateVisualSections(min(header.options_by_index))
+
+
+import html
+import collections
+_TOTAL_SPAN = object()
+_BORDER_COLOR = "#E0E0E0"
+_BG_SPACE_COLOR = "#FAFAFA"
+_BG_CELL_COLOR = "#FFFFFF"
+
+def _to_table(items):
+    span = max(x[0] for x in items) + 2
+    width = 50
+    for index, (padding, internal_index, key, value, attrs) in enumerate(items):
+        key_port = f"C0R{internal_index}"
+        value_port = f"C1R{internal_index}"
+
+        more_attrs = ''
+        if bgcolor:=attrs.get("bgcolor"):
+            more_attrs+= f' BGCOLOR="{bgcolor}"'
+        font_entry = ''
+        font_closure = ''
+        if fontcolor:=attrs.get("fontcolor"):
+            font_entry = f'<FONT COLOR="{fontcolor}">'
+            font_closure = '</FONT>'
+        fontstyle_entry = ''
+        fontstyle_closure = ''
+        # if attrs.get("fontstyle") == 'bold':
+        #     fontstyle_entry = '<B>'
+        #     fontstyle_closure = '</B>'
+
+        safe_key = html.escape(key)
+        # zero based + 2 for each side: key and value
+        span_in_row = ((span-2) * 3) if value is _TOTAL_SPAN else span
+        if value is _TOTAL_SPAN:
+            if not key:
+                display_cell_template = '<TD HEIGHT="10" BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+            else:
+                display_cell_template = '<TD BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+        else:
+            display_cell_template = '<TD BORDER="1" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+
+        key_entry = display_cell_template.format(
+            _BORDER_COLOR=_BORDER_COLOR,
+            span_in_row=span_in_row,
+            port=key_port,
+            width=width,
+            more_attrs=more_attrs,
+            font_entry=font_entry,
+            fontstyle_entry=fontstyle_entry,
+            safe_entry=safe_key,
+            fontstyle_closure=fontstyle_closure,
+            font_closure=font_closure,
+        )
+        if value is _TOTAL_SPAN:
+            identation_entry = ''
+            tail_entry = ''
+            value_entry = ''
+        else:
+            span_entry = f'<TD BORDER="0" BGCOLOR="{_BG_SPACE_COLOR}"></TD>'
+            identation_entry = span_entry * padding
+            tail_entry = span_entry * (span - padding - 1)
+            safe_value = html.escape(value).replace("\n", "<br/>")
+            value_entry = display_cell_template.format(
+                _BORDER_COLOR=_BORDER_COLOR,
+                span_in_row=span_in_row,
+                port=value_port,
+                width=width,
+                more_attrs=more_attrs,
+                font_entry=font_entry,
+                fontstyle_entry=fontstyle_entry,
+                safe_entry=safe_value,
+                fontstyle_closure=fontstyle_closure,
+                font_closure=font_closure,
+            )
+        display_entry = f'{key_entry}{value_entry}'
+        row = f'<TR>{identation_entry}{display_entry}{tail_entry}</TR>'
+        yield row

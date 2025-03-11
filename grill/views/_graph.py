@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import math
+import enum
 import typing
 import logging
 import tempfile
@@ -10,7 +11,7 @@ import configparser
 import networkx as nx
 from itertools import chain
 from functools import cache
-from collections import ChainMap
+from collections import ChainMap, deque
 
 from networkx import drawing
 
@@ -94,6 +95,37 @@ def _dot_2_svg(sourcepath):
     return error, targetpath
 
 
+class _NodeLOD(enum.Flag):
+    LOW = enum.auto()
+    MID = enum.auto()
+    HIGH = enum.auto()
+
+
+class DynamicNodeAttributes(ChainMap):
+    def __init__(self, high, mid, low):
+        super().__init__(high, mid, low)
+        self._lods = {
+            _NodeLOD.LOW: low,
+            _NodeLOD.MID: mid,
+            _NodeLOD.HIGH: high,
+        }
+        self._currentLOD = _NodeLOD.LOW
+        self._data = {}
+        self.maps = deque(chain(self._lods.values(), [self._data]))
+
+
+    @property
+    def lod(self):
+        return self._currentLOD
+
+    @lod.setter
+    def lod(self, value: _NodeLOD):
+        map = self._lods[value]
+        self._currentLOD = value
+        self.maps.remove(map)
+        self.maps.appendleft(map)
+
+
 class _Node(QtWidgets.QGraphicsTextItem):
 
     # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
@@ -153,10 +185,13 @@ class _Node(QtWidgets.QGraphicsTextItem):
     def paint(self, painter: QtGui.QPainter, option: QtWidgets.QStyleOptionGraphicsItem, widget: QtWidgets.QWidget) -> None:
         painter.setRenderHints(QtGui.QPainter.Antialiasing)
         painter.setPen(self._pen)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#E0E0E0"), 0, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin))
         rect_path = QtGui.QPainterPath()
-        round_args = self.boundingRect().adjusted(1, 1, -1, -1), 6, 6
+        # round_args = self.boundingRect().adjusted(1, 1, -1, -1), 6, 6
+        round_args = self.boundingRect(), 0, 0
         rect_path.addRoundedRect(*round_args)
-        painter.fillPath(rect_path, self._fillcolor)
+        # painter.fillPath(rect_path, self._fillcolor)
+        painter.fillPath(rect_path, QtGui.QColor("#E0E0E0"))
         painter.drawRoundedRect(*round_args)
         return super().paint(painter, option, widget)
 
@@ -482,6 +517,8 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
             self._rubber_band.hide()
             for item in self._get_items_in_rubber_band():
                 item.setSelected(True)
+            if clicked_item:=self.itemAt(event.pos()):
+                clicked_item.setSelected(True)
         return super().mouseReleaseEvent(event)
 
     def _get_items_in_rubber_band(self):
@@ -566,6 +603,41 @@ class GraphView(_GraphicsViewport):
             filters['filter_edge'] = self.filter_edges
         if filters:
             subgraph = nx.subgraph_view(subgraph, **filters)
+
+        for node_id in subgraph.nodes:
+            if not hasattr(subgraph.nodes[node_id], "lod"):
+                continue
+            lod = subgraph.nodes[node_id].lod
+            if lod == _NodeLOD.MID:
+                # lod = _NodeLOD.MID
+                items = subgraph.nodes[node_id]._data.get('items')
+                if items:
+                    ports_of_interest = set()
+                    for predecessor in subgraph.predecessors(node_id):
+                        # headport is what we need to keep (as it belongs to this node)
+                        for port_idx, data in subgraph.adj[predecessor][node_id].items():
+                            headport_key = data['headport']
+                            if isinstance(headport_key, str) and headport_key.startswith("C0R"):
+                                headport_key = int(headport_key.removeprefix("C0R"))
+                            ports_of_interest.add(headport_key)
+
+                    for successor in subgraph.successors(node_id):
+                        for port_idx, data in subgraph.adj[node_id][successor].items():
+                            tailport_key = data['tailport']
+                            if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
+                                tailport_key = int(tailport_key.removeprefix("C1R"))
+                            ports_of_interest.add(tailport_key)
+
+                    mid_items = [i for i in reversed(items) if (i[1] in ports_of_interest) or (i[3] == _core._TOTAL_SPAN)]
+                    ports = [x[1] for x in mid_items]
+                    mid_lod_label = f'<<table BORDER="4" COLOR="{_core._BORDER_COLOR}" bgcolor="{_core._BG_SPACE_COLOR}" CELLSPACING="0">'
+                    for row in _core._to_table(mid_items):
+                        mid_lod_label += row
+                    mid_lod_label += '</table>>'
+                    subgraph.nodes[node_id]._lods[lod]['label'] = mid_lod_label
+                    subgraph.nodes[node_id]._lods[lod]['ports'] = ports
+
+            # subgraph.nodes[node_id].lod = lod
 
         self._load_graph(subgraph)
 
