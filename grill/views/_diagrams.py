@@ -35,8 +35,20 @@ def _find_layer(path, anchor, resolver_context):
         else:
             return layer
 
+
 class _AssetStructureGraph(nx.MultiDiGraph):
     node_attr_dict_factory = lambda self: _graph.DynamicNodeAttributes({}, {}, {})
+
+    def __init__(self, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.graph['graph'] = {'rankdir': 'LR'}
+        self.graph['node'] = {
+            'shape': 'none',
+            # 'color': outline_color,
+            # 'fillcolor': background_color,
+        }  # color and fillcolor used for HTML view
+        self._resolver_context = resolver_context
+        self._node_by_layer_mapping = {}  # SdfLayer: node_index
 
     def _expand_dependencies(self, keys, *, recursive=False):
         # print(f"{locals()}")
@@ -54,7 +66,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             if not (dependency_layer := _find_layer(asset_path, anchor, resolver_context)):
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor}")
                 return
-            __, [node_added] = _add_node_from_layer(self, dependency_layer)
+            node_added = self._add_node_from_layer(dependency_layer)
             nodes_added.add(node_added)
             if recursive:
                 nodes_added.update(self._expand_dependencies({node_added}, recursive=True))
@@ -76,260 +88,249 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         self.add_edges_from(edges)
         return nodes_added
 
-def _asset_structure_graph(root_layer, resolver_context=Ar.GetResolver().CreateDefaultContext()):
-    graph = _AssetStructureGraph()
-    graph._resolver_context = resolver_context
-    graph._visited_layers = {}
-    graph.graph['graph'] = {'rankdir': 'LR'}
+    def _add_node_from_layer(self, root_layer):
+        """Will add a node with LOD capabilities to the current graph from a given USD layer"""
+        edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
+        upstream_dependencies = list()
+        visited_layers = self._node_by_layer_mapping
 
-    graph.graph['node'] = {
-        'shape': 'none',
-        # 'color': outline_color,
-        # 'fillcolor': background_color,
-    }  # color and fillcolor used for HTML view
-    return _add_node_from_layer(graph, root_layer)
+        visited_layer_spec_path_ports = {}  # node_index: {SdfPath: int}
 
-
-def _add_node_from_layer(graph, root_layer):
-    edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
-    upstream_dependencies = list()
-    visited_layers = graph._visited_layers  # layer: idx
-
-    visited_layer_spec_path_ports = {}  # layer_ID: {path: int}
-
-    def traverse(layer):
-        if layer in visited_layers:
-            return
-        visited_layers[layer] = node_id = len(visited_layers)
-        high_lod_items = []
-        mid_lod_items = []
-        low_lod_items = []
-
-        def item_collector(path):
-            # do early exits here
-            if path.IsTargetPath():
-                # print(f"Ignoring target path: {path}")
+        def traverse(layer):
+            if layer in visited_layers:
                 return
+            visited_layers[layer] = node_id = len(visited_layers)
+            high_lod_items = []
+            mid_lod_items = []
+            low_lod_items = []
 
-            spec = layer.GetObjectAtPath(path)
-            attrs = {}
+            def item_collector(path):
+                # do early exits here
+                if path.IsTargetPath():
+                    # print(f"Ignoring target path: {path}")
+                    return
 
-            prefixes = path.GetPrefixes()
-            key = spec.name
+                spec = layer.GetObjectAtPath(path)
+                attrs = {}
 
-            if path.IsPrimPropertyPath():
-                padding = len(prefixes) - 1  # we are the parent one
-                attrs['bgcolor'] = "#FAFDF3"  # nvidia's almost white
-            else:
-                padding = len(prefixes)
+                prefixes = path.GetPrefixes()
+                key = spec.name
 
-            if path.IsPrimPath():
-                this_spec_index = next(counter)
-                visited_layer_spec_path_ports.setdefault(node_id, {})[path] = this_spec_index  # layer_ID: {path: int}
-                typeName = ' - '
-                mid_lod_items_to_extend = []
-                # mid_lod_entry_touched = False
-                for _key in spec.ListInfoKeys():
-                    _value = spec.GetInfo(_key)
-                    fontcolor = "#8F8F8F"
-                    if _key in {"comment",}:
-                        continue
-                    elif _key == "typeName":
-                        typeName = _value
-                    elif _key == "specifier":
-                        ... # change font?
-                    elif isinstance(_value, str):
-                        high_lod_items.append((padding, next(counter), _key, _value, {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
-                    elif isinstance(_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
-                        port_index = next(counter)
-                        color = _EDGE_COLORS[type(_value)]
-                        high_lod_items.append((padding, port_index, _key, "@...@", {
-                            "bgcolor": _BG_CELL_COLOR,
-                            **color,
-                        }))
-                        mid_lod_items_to_extend.append((padding, port_index, _key, "@...@", {
-                            "bgcolor": _BG_CELL_COLOR,
-                            **color,
-                        }))
-                        for dependency_arc in _value.GetAddedOrExplicitItems():
-                            dependency_path = dependency_arc.assetPath
-                            if not dependency_path:
-                                continue
-                            upstream_dependencies.append((layer, port_index, dependency_path, dependency_arc.primPath, color))
-                            # _handle_upstream_dependency(port_index, dependency_path, dependency_arc.primPath, color)
-                    elif isinstance(_value, (Sdf.TokenListOp, Sdf.StringListOp)):
-                        if items:=_value.GetAddedOrExplicitItems():
-                            if _key=="variantSetNames":
-                                fontcolor=_EDGE_COLORS[_key]['color']
-                            high_lod_items.append((padding, next(counter), _key, ", ".join(items), {
+                if path.IsPrimPropertyPath():
+                    padding = len(prefixes) - 1  # we are the parent one
+                    attrs['bgcolor'] = "#FAFDF3"  # nvidia's almost white
+                else:
+                    padding = len(prefixes)
+
+                if path.IsPrimPath():
+                    this_spec_index = next(counter)
+                    visited_layer_spec_path_ports.setdefault(node_id, {})[path] = this_spec_index  # layer_ID: {path: int}
+                    typeName = ' - '
+                    mid_lod_items_to_extend = []
+                    # mid_lod_entry_touched = False
+                    for _key in spec.ListInfoKeys():
+                        _value = spec.GetInfo(_key)
+                        fontcolor = "#8F8F8F"
+                        if _key in {"comment",}:
+                            continue
+                        elif _key == "typeName":
+                            typeName = _value
+                        elif _key == "specifier":
+                            ... # change font?
+                        elif isinstance(_value, str):
+                            high_lod_items.append((padding, next(counter), _key, _value, {
                                 "bgcolor": _BG_CELL_COLOR,
                                 "fontcolor": fontcolor,
                             }))
-                    elif isinstance(_value, Sdf.PathListOp):
-                        # breakpoint()
-                        color = {"fontcolor": fontcolor,}
-                        if _key in _EDGE_COLORS:
-                            color = _EDGE_COLORS[_key]
-                        if items:=_value.GetAddedOrExplicitItems():
-                            high_lod_items.append((padding, next(counter), _key, "\n".join(map(str, items)), {
+                        elif isinstance(_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
+                            port_index = next(counter)
+                            color = _EDGE_COLORS[type(_value)]
+                            high_lod_items.append((padding, port_index, _key, "@...@", {
                                 "bgcolor": _BG_CELL_COLOR,
-                                **color
+                                **color,
                             }))
-                    elif isinstance(_value, dict):
-                        from pprint import pformat
-                        from collections import ChainMap
-                        if _key=="variantSelection":
-                            fontcolor=_EDGE_COLORS[_key]['color']
-                        display_overrides = {}
-                        display_dict = ChainMap(display_overrides, _value)
-                        if "identifier" in _value:
-                            display_overrides['identifier'] = "..."  # identifiers may have the same name as our top row and are long
-                        high_lod_items.append((padding, next(counter), _key, pformat(dict(display_dict)), {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
-                    elif isinstance(_value, list):
-                        high_lod_items.append((padding, next(counter), _key, f"[{len(_value)} entries]", {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
-                    else:
-                        high_lod_items.append((padding, next(counter), _key, (str(_value)), {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
-
-                attrs['bgcolor'] = "#76B900"  # nvidia's green
-                attrs['fontcolor'] = _BG_CELL_COLOR  # white
-                high_lod_items.append((padding, this_spec_index, key, str(typeName), attrs))
-                if mid_lod_items_to_extend:
-                    mid_lod_items.extend(mid_lod_items_to_extend)
-                    mid_lod_items.append((padding, this_spec_index, key, str(typeName), attrs))
-
-            def _add_separator(items):
-                items.append((0, next(counter), "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR}))
-
-            if path.IsAbsoluteRootPath():
-                pseudoRoot = layer.pseudoRoot
-                mid_lod_items_to_extend = []
-                if infoKeys:=pseudoRoot.ListInfoKeys():
-                    # wrap layer metadata with empty spaces
-                    _add_separator(high_lod_items)
-                    if mid_lod_items:
-                        _add_separator(mid_lod_items)
-                    for _key in infoKeys:
-                        if _key in {"subLayerOffsets", "comment"}:
-                            continue
-                        try:
-                            _value = pseudoRoot.GetInfo(_key)
-                        except TypeError as exc:
-                            print(f"Could not retrieve {_key} from pseudoRoot: {exc}")
-                            continue
-                        if _key == "subLayers":
-                            this_index = next(counter)
-                            high_lod_items.append((0, this_index, _key, f"@...@", {
+                            mid_lod_items_to_extend.append((padding, port_index, _key, "@...@", {
+                                "bgcolor": _BG_CELL_COLOR,
+                                **color,
+                            }))
+                            for dependency_arc in _value.GetAddedOrExplicitItems():
+                                dependency_path = dependency_arc.assetPath
+                                if not dependency_path:
+                                    continue
+                                upstream_dependencies.append((layer, port_index, dependency_path, dependency_arc.primPath, color))
+                                # _handle_upstream_dependency(port_index, dependency_path, dependency_arc.primPath, color)
+                        elif isinstance(_value, (Sdf.TokenListOp, Sdf.StringListOp)):
+                            if items:=_value.GetAddedOrExplicitItems():
+                                if _key=="variantSetNames":
+                                    fontcolor=_EDGE_COLORS[_key]['color']
+                                high_lod_items.append((padding, next(counter), _key, ", ".join(items), {
                                     "bgcolor": _BG_CELL_COLOR,
-                                    "fontcolor": "#8F8F8F",
+                                    "fontcolor": fontcolor,
                                 }))
-                            mid_lod_items_to_extend.append((0, this_index, _key, f"@...@", {
+                        elif isinstance(_value, Sdf.PathListOp):
+                            # breakpoint()
+                            color = {"fontcolor": fontcolor,}
+                            if _key in _EDGE_COLORS:
+                                color = _EDGE_COLORS[_key]
+                            if items:=_value.GetAddedOrExplicitItems():
+                                high_lod_items.append((padding, next(counter), _key, "\n".join(map(str, items)), {
                                     "bgcolor": _BG_CELL_COLOR,
-                                    "fontcolor": "#8F8F8F",
+                                    **color
                                 }))
-                            edge_color = _EDGE_COLORS[_key]
-                            for sublayer in _value:
-                                # _handle_upstream_dependency(this_index, sublayer, path, edge_color)
-                                upstream_dependencies.append((layer, this_index, sublayer, path, edge_color))
+                        elif isinstance(_value, dict):
+                            from pprint import pformat
+                            from collections import ChainMap
+                            if _key=="variantSelection":
+                                fontcolor=_EDGE_COLORS[_key]['color']
+                            display_overrides = {}
+                            display_dict = ChainMap(display_overrides, _value)
+                            if "identifier" in _value:
+                                display_overrides['identifier'] = "..."  # identifiers may have the same name as our top row and are long
+                            high_lod_items.append((padding, next(counter), _key, pformat(dict(display_dict)), {
+                                "bgcolor": _BG_CELL_COLOR,
+                                "fontcolor": fontcolor,
+                            }))
                         elif isinstance(_value, list):
                             high_lod_items.append((padding, next(counter), _key, f"[{len(_value)} entries]", {
                                 "bgcolor": _BG_CELL_COLOR,
-                                "fontcolor": "#8F8F8F",
+                                "fontcolor": fontcolor,
                             }))
                         else:
-                            this_index = next(counter)
-                            high_lod_items.append((0, this_index, _key, str(_value), {
+                            high_lod_items.append((padding, next(counter), _key, (str(_value)), {
+                                "bgcolor": _BG_CELL_COLOR,
+                                "fontcolor": fontcolor,
+                            }))
+
+                    attrs['bgcolor'] = "#76B900"  # nvidia's green
+                    attrs['fontcolor'] = _BG_CELL_COLOR  # white
+                    high_lod_items.append((padding, this_spec_index, key, str(typeName), attrs))
+                    if mid_lod_items_to_extend:
+                        mid_lod_items.extend(mid_lod_items_to_extend)
+                        mid_lod_items.append((padding, this_spec_index, key, str(typeName), attrs))
+
+                def _add_separator(items):
+                    items.append((0, next(counter), "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR}))
+
+                if path.IsAbsoluteRootPath():
+                    pseudoRoot = layer.pseudoRoot
+                    mid_lod_items_to_extend = []
+                    if infoKeys:=pseudoRoot.ListInfoKeys():
+                        # wrap layer metadata with empty spaces
+                        _add_separator(high_lod_items)
+                        if mid_lod_items:
+                            _add_separator(mid_lod_items)
+                        for _key in infoKeys:
+                            if _key in {"subLayerOffsets", "comment"}:
+                                continue
+                            try:
+                                _value = pseudoRoot.GetInfo(_key)
+                            except TypeError as exc:
+                                print(f"Could not retrieve {_key} from pseudoRoot: {exc}")
+                                continue
+                            if _key == "subLayers":
+                                this_index = next(counter)
+                                high_lod_items.append((0, this_index, _key, f"@...@", {
+                                        "bgcolor": _BG_CELL_COLOR,
+                                        "fontcolor": "#8F8F8F",
+                                    }))
+                                mid_lod_items_to_extend.append((0, this_index, _key, f"@...@", {
+                                        "bgcolor": _BG_CELL_COLOR,
+                                        "fontcolor": "#8F8F8F",
+                                    }))
+                                edge_color = _EDGE_COLORS[_key]
+                                for sublayer in _value:
+                                    # _handle_upstream_dependency(this_index, sublayer, path, edge_color)
+                                    upstream_dependencies.append((layer, this_index, sublayer, path, edge_color))
+                            elif isinstance(_value, list):
+                                high_lod_items.append((padding, next(counter), _key, f"[{len(_value)} entries]", {
                                     "bgcolor": _BG_CELL_COLOR,
                                     "fontcolor": "#8F8F8F",
                                 }))
-                            if _key == "defaultPrim":
-                                visited_layer_spec_path_ports.setdefault(node_id, {})[layer.defaultPrim] = this_index  # layer_ID: {path: int}
-                    _add_separator(high_lod_items)
-                    if mid_lod_items_to_extend:
-                        mid_lod_items.extend(mid_lod_items_to_extend)
-                        _add_separator(mid_lod_items)
+                            else:
+                                this_index = next(counter)
+                                high_lod_items.append((0, this_index, _key, str(_value), {
+                                        "bgcolor": _BG_CELL_COLOR,
+                                        "fontcolor": "#8F8F8F",
+                                    }))
+                                if _key == "defaultPrim":
+                                    visited_layer_spec_path_ports.setdefault(node_id, {})[layer.defaultPrim] = this_index  # layer_ID: {path: int}
+                        _add_separator(high_lod_items)
+                        if mid_lod_items_to_extend:
+                            mid_lod_items.extend(mid_lod_items_to_extend)
+                            _add_separator(mid_lod_items)
 
-                this_spec_index = next(counter)
-                high_lod_items.append((0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
-                    'bgcolor':_BG_SPACE_COLOR,
-                    'fontcolor': "#6C6C6C",
-                }))
-                mid_lod_items.append(
-                    (0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
-                        'bgcolor': _BG_SPACE_COLOR,
+                    this_spec_index = next(counter)
+                    high_lod_items.append((0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                        'bgcolor':_BG_SPACE_COLOR,
                         'fontcolor': "#6C6C6C",
-                    })
-                )
-                low_lod_items.append(
-                    (0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
-                        'bgcolor': _BG_SPACE_COLOR,
-                        'fontcolor': "#6C6C6C",
-                    })
-                )
-                visited_layer_spec_path_ports.setdefault(node_id, {})[path] = this_spec_index  # layer_ID: {path: int}
+                    }))
+                    mid_lod_items.append(
+                        (0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                            'bgcolor': _BG_SPACE_COLOR,
+                            'fontcolor': "#6C6C6C",
+                        })
+                    )
+                    low_lod_items.append(
+                        (0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                            'bgcolor': _BG_SPACE_COLOR,
+                            'fontcolor': "#6C6C6C",
+                        })
+                    )
+                    visited_layer_spec_path_ports.setdefault(node_id, {})[path] = this_spec_index  # layer_ID: {path: int}
 
-        from itertools import count
-        counter = count()
-        layer.Traverse(layer.pseudoRoot.path, item_collector)
+            from itertools import count
+            counter = count()
+            layer.Traverse(layer.pseudoRoot.path, item_collector)
 
 
-        high_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _to_table(list(reversed(high_lod_items))):
-            high_lod_label += row
-        high_lod_label += '</table>>'
+            high_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
+            for row in _to_table(list(reversed(high_lod_items))):
+                high_lod_label += row
+            high_lod_label += '</table>>'
 
-        low_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _to_table(list(reversed(low_lod_items))):
-            low_lod_label += row
-        low_lod_label += '</table>>'
+            low_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
+            for row in _to_table(list(reversed(low_lod_items))):
+                low_lod_label += row
+            low_lod_label += '</table>>'
 
-        graph.add_node(node_id)
-        # high: full asset structure
-        graph.nodes[node_id]._lods[_graph._NodeLOD.HIGH].update(
-            label=high_lod_label,
-            ports=list(reversed([x[1] for x in high_lod_items])),  # all rows in the entries
-            items='',
-            dependencies='',
-            visited_layer_spec_path_ports='',
-        )
-        # mid: only items with plugs
-        graph.nodes[node_id]._lods[_graph._NodeLOD.MID].update(
-            items='',
-            dependencies='',
-            visited_layer_spec_path_ports='',
-        )
-        # low: only layer label
-        graph.nodes[node_id]._lods[_graph._NodeLOD.LOW].update(
-            label=low_lod_label,
-            items='',
-            dependencies='',
-            visited_layer_spec_path_ports='',
-        )
-        graph.nodes[node_id]._data.update(
-            items=high_lod_items,
-            dependencies = upstream_dependencies,
-            visited_layer_spec_path_ports=visited_layer_spec_path_ports[node_id],
-        )
+            self.add_node(node_id)
+            # high: full asset structure
+            self.nodes[node_id]._lods[_graph._NodeLOD.HIGH].update(
+                label=high_lod_label,
+                ports=list(reversed([x[1] for x in high_lod_items])),  # all rows in the entries
+                items='',
+                dependencies='',
+                visited_layer_spec_path_ports='',
+            )
+            # mid: only items with plugs
+            self.nodes[node_id]._lods[_graph._NodeLOD.MID].update(
+                items='',
+                dependencies='',
+                visited_layer_spec_path_ports='',
+            )
+            # low: only layer label
+            self.nodes[node_id]._lods[_graph._NodeLOD.LOW].update(
+                label=low_lod_label,
+                items='',
+                dependencies='',
+                visited_layer_spec_path_ports='',
+            )
+            self.nodes[node_id]._data.update(
+                items=high_lod_items,
+                dependencies = upstream_dependencies,
+                visited_layer_spec_path_ports=visited_layer_spec_path_ports[node_id],
+            )
 
-    traverse(root_layer)
-    graph.add_edges_from(edges)
-    return graph, [visited_layers[root_layer]]
+        traverse(root_layer)
+        self.add_edges_from(edges)
+        return visited_layers[root_layer]
 
 
 def _launch_asset_structure_browser(root_layer, parent, resolver_context):
     print("Loading asset structure")
-    graph, root_nodes = _asset_structure_graph(root_layer, resolver_context)
+    graph = _AssetStructureGraph(resolver_context=resolver_context)
+    root_node = graph._add_node_from_layer(root_layer)
+    root_nodes = [root_node]
     widget = QtWidgets.QDialog(parent=parent)
     widget.setWindowTitle("Asset Structure Diagram")
     splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
