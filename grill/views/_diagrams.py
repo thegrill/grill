@@ -83,9 +83,10 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             )
 
         for key in keys:
+            anchor = self.nodes[key]._data['layer']
             dependencies = self.nodes[key]._data['dependencies']
             for dependency in dependencies:
-                _handle_upstream_dependency(*dependency)
+                _handle_upstream_dependency(anchor, *dependency)
 
         self.add_edges_from(edges)
         return nodes_added
@@ -105,7 +106,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
         port_by_spec_path = {}  # {SdfPath: int}
         # make the following be: [(node_id, port_id, asset_path, prim_path, color)]
-        upstream_dependencies = list()  # [(layer, port_index, dependency_asset_path, dependency_prim_path, color)]
+        # upstream_dependencies = list()  # [(layer, port_index, dependency_asset_path, dependency_prim_path, color)]
+        upstream_dependencies = list()  # [(port_id, asset_path, prim_path, color)]
 
         high_lod_items = []
         mid_lod_items = []
@@ -169,7 +171,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                             dependency_path = dependency_arc.assetPath
                             if not dependency_path:
                                 continue
-                            upstream_dependencies.append((layer, port_index, dependency_path, dependency_arc.primPath, color))
+                            # upstream_dependencies.append((layer, port_index, dependency_path, dependency_arc.primPath, color))
+                            upstream_dependencies.append((port_index, dependency_path, dependency_arc.primPath, color))
                             # _handle_upstream_dependency(port_index, dependency_path, dependency_arc.primPath, color)
                     elif isinstance(_value, (Sdf.TokenListOp, Sdf.StringListOp)):
                         if items:=_value.GetAddedOrExplicitItems():
@@ -252,7 +255,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                             edge_color = _EDGE_COLORS[_key]
                             for sublayer in _value:
                                 # _handle_upstream_dependency(this_index, sublayer, path, edge_color)
-                                upstream_dependencies.append((layer, this_index, sublayer, path, edge_color))
+                                upstream_dependencies.append((this_index, sublayer, path, edge_color))
                         elif isinstance(_value, list):
                             high_lod_items.append((padding, next(item_counter), _key, f"[{len(_value)} entries]", {
                                 "bgcolor": _BG_CELL_COLOR,
@@ -308,12 +311,14 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         self.nodes[node_id]._lods[_graph._NodeLOD.HIGH].update(
             label=high_lod_label,
             ports=list(reversed([x[1] for x in high_lod_items])),  # all rows in the entries
+            layer='',
             items='',
             dependencies='',
             visited_layer_spec_path_ports='',
         )
         # mid: only items with plugs
         self.nodes[node_id]._lods[_graph._NodeLOD.MID].update(
+            layer='',
             items='',
             dependencies='',
             visited_layer_spec_path_ports='',
@@ -321,11 +326,13 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # low: only layer label
         self.nodes[node_id]._lods[_graph._NodeLOD.LOW].update(
             label=low_lod_label,
+            layer='',
             items='',
             dependencies='',
             visited_layer_spec_path_ports='',
         )
         self.nodes[node_id]._data.update(
+            layer=layer,
             items=high_lod_items,
             dependencies = upstream_dependencies,
             visited_layer_spec_path_ports=port_by_spec_path,
