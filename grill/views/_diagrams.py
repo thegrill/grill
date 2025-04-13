@@ -1,3 +1,4 @@
+import collections
 from itertools import count
 
 import networkx as nx
@@ -103,15 +104,16 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         item_counter = count()
 
+        # TODO: add edges when target node is self (arcs without an asset path)
         edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
         port_by_spec_path = {}  # {SdfPath: int}
-        # make the following be: [(node_id, port_id, asset_path, prim_path, color)]
-        # upstream_dependencies = list()  # [(layer, port_index, dependency_asset_path, dependency_prim_path, color)]
         upstream_dependencies = list()  # [(port_id, asset_path, prim_path, color)]
 
-        high_lod_items = []
-        mid_lod_items = []
-        low_lod_items = []
+        # high_lod_items = []
+        # mid_lod_items = []
+        # low_lod_items = []
+        # TODO: have item entries declare their LOD level, rather than 3 lists
+        all_items = []  # [(LOD, ...)]
 
         def item_collector(path):
             """Increase counter and add collected path to port_by_spec_path when:
@@ -125,184 +127,190 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 return
 
             spec = layer.GetObjectAtPath(path)
-            attrs = {}
+
+            fontcolor = "#8F8F8F"
+            attrs = {
+                "bgcolor": _BG_CELL_COLOR,
+                "fontcolor": fontcolor,
+            }
 
             prefixes = path.GetPrefixes()
-            key = spec.name
-
             if path.IsPrimPropertyPath():
                 padding = len(prefixes) - 1  # we are the parent one
                 attrs['bgcolor'] = "#FAFDF3"  # nvidia's almost white
             else:
                 padding = len(prefixes)
 
+            def _add_separator(items, LOD):
+                items.append((LOD, 0, next(item_counter), "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR}))
+
             if path.IsPrimPath():
-                this_spec_index = next(item_counter)
-                port_by_spec_path[path] = this_spec_index  # layer_ID: {path: int}
+                port_by_spec_path[path] = this_spec_index = next(item_counter)  # layer_ID: {path: int}
                 typeName = ' - '
                 mid_lod_items_to_extend = []
-                # mid_lod_entry_touched = False
-                for _key in spec.ListInfoKeys():
-                    _value = spec.GetInfo(_key)
-                    fontcolor = "#8F8F8F"
-                    if _key in {"comment",}:
+
+                for info_key in spec.ListInfoKeys():
+                    if info_key in {"comment", "documentation"}:
                         continue
-                    elif _key == "typeName":
-                        typeName = _value
-                    elif _key == "specifier":
+                    info_value = spec.GetInfo(info_key)
+                    if info_key == "typeName":
+                        typeName = info_value
+                    elif info_key == "specifier":
                         ... # change font?
-                    elif isinstance(_value, str):
-                        high_lod_items.append((padding, next(item_counter), _key, _value, {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
-                    elif isinstance(_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
+                    elif isinstance(info_value, str):
+                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, info_value, attrs))
+                        # high_lod_items.append((padding, next(item_counter), info_key, info_value, attrs))
+                    elif isinstance(info_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
                         port_index = next(item_counter)
-                        color = _EDGE_COLORS[type(_value)]
-                        high_lod_items.append((padding, port_index, _key, "@...@", {
-                            "bgcolor": _BG_CELL_COLOR,
-                            **color,
-                        }))
-                        mid_lod_items_to_extend.append((padding, port_index, _key, "@...@", {
-                            "bgcolor": _BG_CELL_COLOR,
-                            **color,
-                        }))
-                        for dependency_arc in _value.GetAddedOrExplicitItems():
+                        color = _EDGE_COLORS[type(info_value)]
+                        info_attrs = collections.ChainMap(color, attrs)
+                        all_items.append((_graph._NodeLOD.MID, padding, port_index, info_key, "@...@", info_attrs))
+                        # high_lod_items.append((padding, port_index, info_key, "@...@", info_attrs))
+                        # mid_lod_items_to_extend.append((padding, port_index, info_key, "@...@", info_attrs))
+                        for dependency_arc in info_value.GetAddedOrExplicitItems():
                             dependency_path = dependency_arc.assetPath
                             if not dependency_path:
+                                # TODO: handle internal dependency, add edges
                                 continue
-                            # upstream_dependencies.append((layer, port_index, dependency_path, dependency_arc.primPath, color))
                             upstream_dependencies.append((port_index, dependency_path, dependency_arc.primPath, color))
-                            # _handle_upstream_dependency(port_index, dependency_path, dependency_arc.primPath, color)
-                    elif isinstance(_value, (Sdf.TokenListOp, Sdf.StringListOp)):
-                        if items:=_value.GetAddedOrExplicitItems():
-                            if _key=="variantSetNames":
-                                fontcolor=_EDGE_COLORS[_key]['color']
-                            high_lod_items.append((padding, next(item_counter), _key, ", ".join(items), {
-                                "bgcolor": _BG_CELL_COLOR,
-                                "fontcolor": fontcolor,
-                            }))
-                    elif isinstance(_value, Sdf.PathListOp):
-                        # breakpoint()
+                    elif isinstance(info_value, (Sdf.TokenListOp, Sdf.StringListOp)):
+                        if items := info_value.GetAddedOrExplicitItems():
+                            if info_key == "variantSetNames":
+                                info_attrs = collections.ChainMap(dict(fontcolor=_EDGE_COLORS[info_key]['color']), attrs)
+                            else:
+                                info_attrs = attrs
+                            all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, ", ".join(items), info_attrs))
+                            # high_lod_items.append((padding, next(item_counter), info_key, ", ".join(items), info_attrs))
+                    elif isinstance(info_value, Sdf.PathListOp):
                         color = {"fontcolor": fontcolor,}
-                        if _key in _EDGE_COLORS:
-                            color = _EDGE_COLORS[_key]
-                        if items:=_value.GetAddedOrExplicitItems():
-                            high_lod_items.append((padding, next(item_counter), _key, "\n".join(map(str, items)), {
-                                "bgcolor": _BG_CELL_COLOR,
-                                **color
-                            }))
-                    elif isinstance(_value, dict):
+                        if info_key in _EDGE_COLORS:
+                            color = _EDGE_COLORS[info_key]
+                        if items:=info_value.GetAddedOrExplicitItems():
+                            info_attrs = collections.ChainMap(color, attrs)
+                            all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, "\n".join(map(str, items)), info_attrs))
+                            # high_lod_items.append((padding, next(item_counter), info_key, "\n".join(map(str, items)), info_attrs))
+                    elif isinstance(info_value, dict):
                         from pprint import pformat
                         from collections import ChainMap
-                        if _key=="variantSelection":
-                            fontcolor=_EDGE_COLORS[_key]['color']
+                        if info_key == "variantSelection":
+                            info_attrs = collections.ChainMap(dict(fontcolor=_EDGE_COLORS[info_key]['color']), attrs)
+                        else:
+                            info_attrs = attrs
                         display_overrides = {}
-                        display_dict = ChainMap(display_overrides, _value)
-                        if "identifier" in _value:
+                        display_dict = ChainMap(display_overrides, info_value)
+                        if "identifier" in info_value:
                             display_overrides['identifier'] = "..."  # identifiers may have the same name as our top row and are long
-                        high_lod_items.append((padding, next(item_counter), _key, pformat(dict(display_dict)), {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
-                    elif isinstance(_value, list):
-                        high_lod_items.append((padding, next(item_counter), _key, f"[{len(_value)} entries]", {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
+                        # high_lod_items.append((padding, next(item_counter), info_key, pformat(dict(display_dict)), info_attrs))
+                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, pformat(dict(display_dict)), info_attrs))
+                    elif isinstance(info_value, list):
+                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", attrs))
+                        # high_lod_items.append((padding, next(item_counter), info_key, f"[{len(info_value)} entries]", attrs))
                     else:
-                        high_lod_items.append((padding, next(item_counter), _key, (str(_value)), {
-                            "bgcolor": _BG_CELL_COLOR,
-                            "fontcolor": fontcolor,
-                        }))
+                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, (str(info_value)), attrs))
+                        # high_lod_items.append((padding, next(item_counter), info_key, (str(info_value)), attrs))
 
-                attrs['bgcolor'] = "#76B900"  # nvidia's green
-                attrs['fontcolor'] = _BG_CELL_COLOR  # white
-                high_lod_items.append((padding, this_spec_index, key, str(typeName), attrs))
-                if mid_lod_items_to_extend:
-                    mid_lod_items.extend(mid_lod_items_to_extend)
-                    mid_lod_items.append((padding, this_spec_index, key, str(typeName), attrs))
+                prim_attrs = {
+                    'bgcolor': "#76B900",  # nvidia's green
+                    'fontcolor': _BG_CELL_COLOR,  # white
+                }
+                all_items.append((_graph._NodeLOD.MID, padding, this_spec_index, spec.name, str(typeName), prim_attrs))
+                # high_lod_items.append((padding, this_spec_index, spec.name, str(typeName), prim_attrs))
+                # if mid_lod_items_to_extend:
+                #     mid_lod_items.extend(mid_lod_items_to_extend)
+                #     mid_lod_items.append((padding, this_spec_index, spec.name, str(typeName), prim_attrs))
 
-            def _add_separator(items):
-                items.append((0, next(item_counter), "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR}))
-
-            if path.IsAbsoluteRootPath():
+            elif path.IsAbsoluteRootPath():
                 pseudoRoot = layer.pseudoRoot
                 mid_lod_items_to_extend = []
-                if infoKeys:=pseudoRoot.ListInfoKeys():
+                if set(infoKeys:=pseudoRoot.ListInfoKeys())-{"subLayerOffsets", "comment", "documentation"}:
                     # wrap layer metadata with empty spaces
-                    _add_separator(high_lod_items)
-                    if mid_lod_items:
-                        _add_separator(mid_lod_items)
-                    for _key in infoKeys:
-                        if _key in {"subLayerOffsets", "comment"}:
+                    _add_separator(all_items, _graph._NodeLOD.MID)
+                    # if mid_lod_items:
+                    #     _add_separator(mid_lod_items)
+                    for info_key in infoKeys:
+                        if info_key in {"subLayerOffsets", "comment", "documentation"}:
                             continue
                         try:
-                            _value = pseudoRoot.GetInfo(_key)
+                            info_value = pseudoRoot.GetInfo(info_key)
                         except TypeError as exc:
-                            print(f"Could not retrieve {_key} from pseudoRoot: {exc}")
+                            print(f"Could not retrieve {info_key} from pseudoRoot: {exc}")
                             continue
-                        if _key == "subLayers":
+                        if info_key == "subLayers":
                             this_index = next(item_counter)
-                            high_lod_items.append((0, this_index, _key, f"@...@", {
+                            all_items.append((_graph._NodeLOD.MID, 0, this_index, info_key, f"@...@", {
                                     "bgcolor": _BG_CELL_COLOR,
                                     "fontcolor": "#8F8F8F",
                                 }))
-                            mid_lod_items_to_extend.append((0, this_index, _key, f"@...@", {
-                                    "bgcolor": _BG_CELL_COLOR,
-                                    "fontcolor": "#8F8F8F",
-                                }))
-                            edge_color = _EDGE_COLORS[_key]
-                            for sublayer in _value:
+                            # high_lod_items.append((0, this_index, info_key, f"@...@", {
+                            #         "bgcolor": _BG_CELL_COLOR,
+                            #         "fontcolor": "#8F8F8F",
+                            #     }))
+                            # mid_lod_items_to_extend.append((0, this_index, info_key, f"@...@", {
+                            #         "bgcolor": _BG_CELL_COLOR,
+                            #         "fontcolor": "#8F8F8F",
+                            #     }))
+                            edge_color = _EDGE_COLORS[info_key]
+                            for sublayer in info_value:
                                 # _handle_upstream_dependency(this_index, sublayer, path, edge_color)
                                 upstream_dependencies.append((this_index, sublayer, path, edge_color))
-                        elif isinstance(_value, list):
-                            high_lod_items.append((padding, next(item_counter), _key, f"[{len(_value)} entries]", {
+                        elif isinstance(info_value, list):
+                            # high_lod_items.append((padding, next(item_counter), info_key, f"[{len(info_value)} entries]", {
+                            #     "bgcolor": _BG_CELL_COLOR,
+                            #     "fontcolor": "#8F8F8F",
+                            # }))
+                            all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", {
                                 "bgcolor": _BG_CELL_COLOR,
                                 "fontcolor": "#8F8F8F",
                             }))
                         else:
                             this_index = next(item_counter)
-                            high_lod_items.append((0, this_index, _key, str(_value), {
+                            # high_lod_items.append((0, this_index, info_key, str(info_value), {
+                            #         "bgcolor": _BG_CELL_COLOR,
+                            #         "fontcolor": "#8F8F8F",
+                            #     }))
+                            all_items.append((_graph._NodeLOD.HIGH, 0, this_index, info_key, str(info_value), {
                                     "bgcolor": _BG_CELL_COLOR,
                                     "fontcolor": "#8F8F8F",
                                 }))
-                            if _key == "defaultPrim":
+                            if info_key == "defaultPrim":
                                 port_by_spec_path[layer.defaultPrim] = this_index  # layer_ID: {path: int}
-                    _add_separator(high_lod_items)
-                    if mid_lod_items_to_extend:
-                        mid_lod_items.extend(mid_lod_items_to_extend)
-                        _add_separator(mid_lod_items)
+                    _add_separator(all_items, _graph._NodeLOD.MID)
+                    # if mid_lod_items_to_extend:
+                    #     mid_lod_items.extend(mid_lod_items_to_extend)
+                    #     _add_separator(mid_lod_items)
 
                 this_spec_index = next(item_counter)
-                high_lod_items.append((0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                all_items.append((_graph._NodeLOD.LOW, 0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
                     'bgcolor':_BG_SPACE_COLOR,
                     'fontcolor': "#6C6C6C",
                 }))
-                mid_lod_items.append(
-                    (0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
-                        'bgcolor': _BG_SPACE_COLOR,
-                        'fontcolor': "#6C6C6C",
-                    })
-                )
-                low_lod_items.append(
-                    (0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
-                        'bgcolor': _BG_SPACE_COLOR,
-                        'fontcolor': "#6C6C6C",
-                    })
-                )
+                # high_lod_items.append((0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                #     'bgcolor':_BG_SPACE_COLOR,
+                #     'fontcolor': "#6C6C6C",
+                # }))
+                # mid_lod_items.append((0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                #         'bgcolor': _BG_SPACE_COLOR,
+                #         'fontcolor': "#6C6C6C",
+                #     })
+                # )
+                # low_lod_items.append((0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                #         'bgcolor': _BG_SPACE_COLOR,
+                #         'fontcolor': "#6C6C6C",
+                #     })
+                # )
                 port_by_spec_path[path] = this_spec_index  # layer_ID: {path: int}
 
         layer.Traverse(layer.pseudoRoot.path, item_collector)
 
 
         high_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _to_table(list(reversed(high_lod_items))):
+        # for row in _to_table(list(reversed(high_lod_items))):
+        for row in _to_table(list(reversed(all_items))):
             high_lod_label += row
         high_lod_label += '</table>>'
 
         low_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _to_table(list(reversed(low_lod_items))):
+        for row in _to_table(list(reversed([i for i in all_items if i[0] == _graph._NodeLOD.LOW]))):
             low_lod_label += row
         low_lod_label += '</table>>'
 
@@ -310,7 +318,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # high: full asset structure
         self.nodes[node_id]._lods[_graph._NodeLOD.HIGH].update(
             label=high_lod_label,
-            ports=list(reversed([x[1] for x in high_lod_items])),  # all rows in the entries
+            ports=list(reversed([x[2] for x in all_items])),  # all rows in the entries
             layer='',
             items='',
             dependencies='',
@@ -333,7 +341,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         )
         self.nodes[node_id]._data.update(
             layer=layer,
-            items=high_lod_items,
+            items=all_items,
             dependencies = upstream_dependencies,
             visited_layer_spec_path_ports=port_by_spec_path,
         )

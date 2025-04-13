@@ -497,9 +497,9 @@ _BG_SPACE_COLOR = "#FAFAFA"
 _BG_CELL_COLOR = "#FFFFFF"
 
 def _to_table(items):
-    span = max(x[0] for x in items) + 2
+    span = max(x[1] for x in items) + 2
     width = 50
-    for index, (padding, internal_index, key, value, attrs) in enumerate(items):
+    for index, (LOD, padding, internal_index, key, value, attrs) in enumerate(items):
         key_port = f"C0R{internal_index}"
         value_port = f"C1R{internal_index}"
 
