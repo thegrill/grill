@@ -105,11 +105,11 @@ class DynamicNodeAttributes(ChainMap):
     def __init__(self, high, mid, low):
         super().__init__(high, mid, low)
         self._lods = {
+            _NodeLOD.HIGH: high,
             _NodeLOD.LOW: low,
             _NodeLOD.MID: mid,
-            _NodeLOD.HIGH: high,
         }
-        self._currentLOD = _NodeLOD.LOW
+        self._currentLOD = _NodeLOD.HIGH
         self._data = {}
         self.maps = deque(chain(self._lods.values(), [self._data]))
 
@@ -610,32 +610,31 @@ class GraphView(_GraphicsViewport):
             lod = subgraph.nodes[node_id].lod
             if lod == _NodeLOD.MID:
                 # lod = _NodeLOD.MID
-                items = subgraph.nodes[node_id]._data.get('items')
-                if items:
-                    ports_of_interest = set()
-                    for predecessor in subgraph.predecessors(node_id):
-                        # headport is what we need to keep (as it belongs to this node)
-                        for port_idx, data in subgraph.adj[predecessor][node_id].items():
-                            headport_key = data['headport']
-                            if isinstance(headport_key, str) and headport_key.startswith("C0R"):
-                                headport_key = int(headport_key.removeprefix("C0R"))
-                            ports_of_interest.add(headport_key)
+                items = subgraph.nodes[node_id]._data['items']
+                ports_of_interest = set()
+                for predecessor in subgraph.predecessors(node_id):
+                    # headport is what we need to keep (as it belongs to this node)
+                    for port_idx, data in subgraph.adj[predecessor][node_id].items():
+                        headport_key = data['headport']
+                        if isinstance(headport_key, str) and headport_key.startswith("C0R"):
+                            headport_key = int(headport_key.removeprefix("C0R"))
+                        ports_of_interest.add(headport_key)
 
-                    for successor in subgraph.successors(node_id):
-                        for port_idx, data in subgraph.adj[node_id][successor].items():
-                            tailport_key = data['tailport']
-                            if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
-                                tailport_key = int(tailport_key.removeprefix("C1R"))
-                            ports_of_interest.add(tailport_key)
+                for successor in subgraph.successors(node_id):
+                    for port_idx, data in subgraph.adj[node_id][successor].items():
+                        tailport_key = data['tailport']
+                        if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
+                            tailport_key = int(tailport_key.removeprefix("C1R"))
+                        ports_of_interest.add(tailport_key)
 
-                    mid_items = [i for i in reversed(items) if (i[1] in ports_of_interest) or (i[3] == _core._TOTAL_SPAN)]
-                    ports = [x[1] for x in mid_items]
-                    mid_lod_label = f'<<table BORDER="4" COLOR="{_core._BORDER_COLOR}" bgcolor="{_core._BG_SPACE_COLOR}" CELLSPACING="0">'
-                    for row in _core._to_table(mid_items):
-                        mid_lod_label += row
-                    mid_lod_label += '</table>>'
-                    subgraph.nodes[node_id]._lods[lod]['label'] = mid_lod_label
-                    subgraph.nodes[node_id]._lods[lod]['ports'] = ports
+                mid_items = [i for i in reversed(items) if (i[2] in ports_of_interest) or (i[4] == _core._TOTAL_SPAN)]
+                ports = [x[2] for x in mid_items]
+                mid_lod_label = f'<<table BORDER="4" COLOR="{_core._BORDER_COLOR}" bgcolor="{_core._BG_SPACE_COLOR}" CELLSPACING="0">'
+                for row in _core._to_table(mid_items):
+                    mid_lod_label += row
+                mid_lod_label += '</table>>'
+                subgraph.nodes[node_id]._lods[lod]['label'] = mid_lod_label
+                subgraph.nodes[node_id]._lods[lod]['ports'] = ports
 
             # subgraph.nodes[node_id].lod = lod
 
