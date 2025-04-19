@@ -588,6 +588,12 @@ class GraphView(_GraphicsViewport):
 
         self.view((key,))
 
+    def setLOD(self, node_indices, lod: _NodeLOD):
+        for node_id in node_indices:
+            self.nodes[node_id].lod = lod
+        # graph_view.view(graph_view._viewing)
+        # TODO: update the LOD label (html) of nodes here
+
     def view(self, node_indices: tuple):
         self._viewing = frozenset(node_indices)
         graph = self._graph
