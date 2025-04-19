@@ -1,3 +1,10 @@
+"""
+TODO:
+ - Make fast switch of LOD on interactive graph
+ - Internal edges
+
+
+"""
 import collections
 from itertools import count
 
@@ -7,9 +14,6 @@ from pxr import Pcp, Sdf, Ar, Tf
 
 from ._qt import QtWidgets, QtCore
 from . import _graph, description, _core
-
-
-_to_table = _core._to_table
 
 
 _TOTAL_SPAN = _core._TOTAL_SPAN
@@ -93,9 +97,9 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         return nodes_added
 
     def _add_node_from_layer(self, layer):
-        """Will add a node with LOD capabilities to the current graph from a given USD layer.
+        """Add a node with LOD capabilities to the current graph from a given USD layer, then return the node ID.
 
-        If layer has been added, add it and do nothing else.
+        If layer has been added, do nothing else other than returning the node ID.
         """
         if layer in (loaded_layers := self._node_by_layer_mapping):
             return loaded_layers[layer]
@@ -109,9 +113,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         port_by_spec_path = {}  # {SdfPath: int}
         upstream_dependencies = list()  # [(port_id, asset_path, prim_path, color)]
 
-        # high_lod_items = []
-        # mid_lod_items = []
-        # low_lod_items = []
         # TODO: have item entries declare their LOD level, rather than 3 lists
         all_items = []  # [(LOD, ...)]
 
@@ -304,13 +305,12 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
 
         high_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        # for row in _to_table(list(reversed(high_lod_items))):
-        for row in _to_table(list(reversed(all_items))):
+        for row in _core._to_table(list(reversed(all_items))):
             high_lod_label += row
         high_lod_label += '</table>>'
 
         low_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _to_table(list(reversed([i for i in all_items if i[0] == _graph._NodeLOD.LOW]))):
+        for row in _core._to_table(list(reversed([i for i in all_items if i[0] == _graph._NodeLOD.LOW]))):
             low_lod_label += row
         low_lod_label += '</table>>'
 
@@ -350,8 +350,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         return node_id
 
 
-def _launch_asset_structure_browser(root_layer, parent, resolver_context):
-    print("Loading asset structure")
+def _launch_asset_structure_browser(root_layer, parent, resolver_context, recursive=False):
+    print(f"Loading asset structure, {locals()}")
     graph = _AssetStructureGraph(resolver_context=resolver_context)
     root_node = graph._add_node_from_layer(root_layer)
     root_nodes = [root_node]
@@ -377,9 +377,10 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context):
         selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
         print(f"{selection_keys=}")
         if selection_keys:
-            for node_id in selection_keys:
-                graph.nodes[node_id].lod = lod
-            graph_view.view(graph_view._viewing)
+            # for node_id in selection_keys:
+            #     graph.nodes[node_id].lod = lod
+            # graph_view.view(graph_view._viewing)
+            graph_view.setLOD(selection_keys, lod)
             for node_id in selection_keys:
                 graph_view._nodes_map[node_id].setSelected(True)
 
@@ -431,7 +432,11 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context):
             widget_on_splitter_layout.addWidget(graph_controls_frame)
             widget_on_splitter_layout.addWidget(child)
             widget_on_splitter.setLayout(widget_on_splitter_layout)
-            nodes_to_view = root_nodes
+            if recursive:
+                graph._expand_dependencies(root_nodes, recursive=recursive)
+                nodes_to_view = graph.nodes
+            else:
+                nodes_to_view = root_nodes
             # nodes_to_view = graph.nodes
         child.view(nodes_to_view)
         child.setMinimumWidth(150)
@@ -456,12 +461,13 @@ if __name__ == "__main__":
     else:
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Model-Country-rnd-main-Inherits-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\grill\tests\mini_test_bed\Catalogue-world-test.1.usda")
-        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Model-Place-rnd-main-GoldenKroneHotel-lead-base-whole.1.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Model-Place-rnd-main-GoldenKroneHotel-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\fragment\geo\modelling\book_magazine01\geo_modelling_book_magazine01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\mini_test_bed\main-Taxonomy-test.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:/write/code/git/easy-edgedb/chapter10/assets/dracula-3d-Model-City-rnd-main-Bistritz-lead-base-whole.1.usda")
-        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
 
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
         # 26.200 <module>  grill\views\_diagrams.py:1
@@ -480,7 +486,7 @@ if __name__ == "__main__":
         # │           [13 frames hidden]  <class 'networkx, networkx, pydot, <b...
         # ├─ 3.761 _asset_structure_graph  grill\views\_diagrams.py:109
 
-        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
         # before lazy loading:
         # 13.936 <module>  grill\views\_diagrams.py:1
         # ├─ 9.501 _asset_structure_graph  grill\views\_diagrams.py:118
@@ -572,7 +578,8 @@ if __name__ == "__main__":
     #           Collapse all plugs into the first one
     # 4. All nodes / edges need to be computed for SVG
     # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
-    widget = _launch_asset_structure_browser(layer, None, None)
+    widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
+    # widget.
     # profiler.stop()
     # profiler.print()
     # import pathlib
