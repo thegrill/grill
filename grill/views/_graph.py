@@ -131,13 +131,13 @@ class _Node(QtWidgets.QGraphicsTextItem):
     # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
     def __init__(self, parent=None, label="", color="", fillcolor="", ports: tuple = (), visible=True):
         """
-        ports: Tuple of port names
+        ports: Tuple of graphviz port names
         """
         super().__init__(parent)
-        self._edges = {}  # Edge: port_identifier
+        self._edges = {}  # {Edge: port_identifier}
         self._ports = dict(zip(ports, range(len(ports)))) or {}  # {port_graphviz_identifier: index_for_edge_connectivity}
-        self._active_ports_by_side = dict()  # {index: {left[int]: {}, right[int]: {}}
-        self._port_items = {}  # {index: (QEllipse, QEllipse)}
+        self._active_ports_by_side = dict()  # {port_name: {left[int]: {}, right[int]: {}}
+        self._port_items = {}  # {port_name: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
         self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
@@ -198,9 +198,10 @@ class _Node(QtWidgets.QGraphicsTextItem):
         painter.drawRoundedRect(*round_args)
         return super().paint(painter, option, widget)
 
-    def add_edge(self, edge: _Edge, port: int):
-        graphviz_port = next((k for k, v in self._ports.items() if v==port), None)
-        self._edges[edge] = graphviz_port
+    def add_edge(self, edge: _Edge, port):
+        if port is not None and port not in self._ports:
+            raise KeyError(f"{port=} does not exist on {self._ports=}")
+        self._edges[edge] = port
 
     def itemChange(self, change: QtWidgets.QGraphicsItem.GraphicsItemChange, value):
         if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
@@ -212,7 +213,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
         if port is None:
             return  # we're at the center, nothing to draw nor activate
         try:
-            ports_by_side = self._active_ports_by_side[port]  # {index: {left[int]: {}, right[int]: {}}
+            ports_by_side = self._active_ports_by_side[port]  # {port_name: {left[int]: {}, right[int]: {}}
         except KeyError:  # first time we're activating a port, so add a visual ellipse for it
             print(f"KEY ERRORRRRR")
             print(locals())
@@ -248,15 +249,14 @@ class _Edge(QtWidgets.QGraphicsItem):
         target.add_edge(self, target_port)
         self._source = source
         self._target = target
-        self._source_port = source_port  # port index of the source node to connect to (not the name of the port)
-        self._target_port = target_port  # port index of the source node to connect to (not the name of the port)
+        self._source_port = source_port
+        self._target_port = target_port
         self._is_source_port_used = source_port is not None
         self._is_target_port_used = target_port is not None
         self._is_cycle = source == target
 
         self._port_positions = {}
 
-        # TODO: this is the main reason of why Node._ports has {port: index}. See if it can be removed
         for node, port in (source, source_port), (target, target_port):
             self._update_port_position(node, port)
 
@@ -285,6 +285,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         self.adjust()
 
     def _update_port_position(self, node, port):
+        # TODO: this is the main reason of why Node._ports has {port: index}. See if it can be removed
         is_cycle = self._is_cycle
         bounds = node.boundingRect()
         port_positions = self._port_positions
@@ -295,9 +296,10 @@ class _Edge(QtWidgets.QGraphicsItem):
             return
 
         outer_shift = 10  # surrounding rect has ~5 px top and bottom
-        max_port_idx = max(node._ports.values(), default=0)
-        port_size = (bounds.height() - outer_shift) / (max_port_idx + 1)
-        y_pos = (port * port_size) + (port_size / 2) + (outer_shift / 2)
+        max_port_idx = len(node._ports)
+        port_index = node._ports[port]
+        port_size = (bounds.height() - outer_shift) / max_port_idx
+        y_pos = (port_index * port_size) + (port_size / 2) + (outer_shift / 2)
         port_positions[node, port] = {
             0: QtCore.QPointF(0, y_pos),  # left
             1: QtCore.QPointF(bounds.right(), y_pos),  # right
@@ -618,20 +620,11 @@ class GraphView(_GraphicsViewport):
             node_data = graph.nodes[node_id]
             assert node_data.lod
             node_data.lod = lod
-            #####
-            # if lod == _NodeLOD.MID:
-            #     items = node_data._data['items']
-            graphviz_port_by_current_qtindex = {v:k for k, v in current_ports.items()}
-            print(f"{graphviz_port_by_current_qtindex=}")
 
             new_ports = node_data['ports']
             print(f"{len(new_ports)=}")
-            print(f"{new_ports=}")
-
-            graphviz_port_by_new_qtindex = dict(zip(range(len(new_ports)), new_ports))
-            qnode._ports = dict(zip(new_ports, range(len(new_ports))))
-
-            new_ports_dict = qnode._ports  # {port name identifier: port index}
+            qnode._ports = new_ports_dict = dict(zip(new_ports, range(len(new_ports))))
+            print(f"{new_ports_dict=}")
 
             label = node_data['label']
             label = _adjust_graphviz_html_table_label(label)
@@ -648,40 +641,31 @@ class GraphView(_GraphicsViewport):
             for edge in qnode._edges:
                 print("NODE EDGEs")
                 pp(qt_edges)
-                if qnode is edge._source:
-                    current_qt_port = edge._source_port
-                    print(f"{current_qt_port=}")
-                    if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
-                        new_qt_port = 0
-                    else:
-                        current_graphviz_port = qnode._edges[edge]
-                        new_qt_port = new_ports_dict[current_graphviz_port]
-                    edge._source_port = new_qt_port
-                    edge._is_source_port_used = new_qt_port is not None
-                    ports_to_move.setdefault(edge, []).append(
-                        ((qnode, current_qt_port), (qnode, new_qt_port)),
-                    )
-                    old_edge_port_positions.setdefault(edge, {}).update(edge._port_positions)
-                if qnode is edge._target:
-                    current_qt_port = edge._target_port
-                    print(f"{current_qt_port=}")
-                    if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
-                        new_qt_port = 0
-                    else:
-                        current_graphviz_port = qnode._edges[edge]
-                        new_qt_port = new_ports_dict[current_graphviz_port]
-                    edge._target_port = new_qt_port
-                    edge._is_target_port_used = new_qt_port is not None
-                    ports_to_move.setdefault(edge, []).append(
-                        ((qnode, current_qt_port), (qnode, new_qt_port)),
-                    )
-                    old_edge_port_positions.setdefault(edge, {}).update(edge._port_positions)
+                from functools import partial
+                for neighbor, port, setter in (
+                        (edge._source, edge._source_port, partial(setattr, edge, "_source_port")),
+                        (edge._target, edge._target_port, partial(setattr, edge, "_target_port")),
+                ):
+                    if qnode is neighbor:
+                        print(f"{port=}")
+                        # visual plugged port can change between LOW and MID / HIGH
+                        if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
+                            new_qt_port = next(iter(new_ports_dict))
+                        else:
+                            new_qt_port = qnode._edges[edge]
+                        print(f"{new_qt_port=}")
+                        setter(new_qt_port)
+                        ports_to_move.setdefault(edge, []).append(
+                            ((qnode, port), (qnode, new_qt_port)),
+                        )
+                        old_edge_port_positions.setdefault(edge, {}).update(edge._port_positions)
 
             for edge, port_data in ports_to_move.items():
                 for (n, old_port), (n, new_port) in port_data:
-                    qnode._active_ports_by_side[new_port] = old_active_ports_by_side[old_port]
-                    qnode._port_items[new_port] = old_port_items[old_port]
-                    edge._port_positions[n, new_port] = old_edge_port_positions[edge][n, old_port]
+                    if old_port != new_port:
+                        qnode._active_ports_by_side[new_port] = old_active_ports_by_side[old_port]
+                        qnode._port_items[new_port] = old_port_items[old_port]
+                        edge._port_positions[n, new_port] = old_edge_port_positions[edge][n, old_port]
                     edge._update_port_position(qnode, new_port)
 
             for edge in qnode._edges:
@@ -824,13 +808,14 @@ class GraphView(_GraphicsViewport):
             kwargs = dict()
             if source._ports or target._ports:
                 if (headport_key:=edge_data.get('headport')) is not None:
+                    # TODO: this is for asset structure tables with 2 columns. Assess on how to handle this better
                     if isinstance(headport_key, str) and headport_key.startswith("C0R"):
                         headport_key = int(headport_key.removeprefix("C0R"))
-                    kwargs['target_port'] = target._ports[headport_key]
+                    kwargs['target_port'] = headport_key
                 if (tailport_key := edge_data.get('tailport')) is not None:
                     if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
                         tailport_key = int(tailport_key.removeprefix("C1R"))
-                    kwargs['source_port'] = source._ports[tailport_key]
+                    kwargs['source_port'] = tailport_key
 
             edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
             self.scene().addItem(edge)
