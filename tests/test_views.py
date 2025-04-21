@@ -654,7 +654,8 @@ class TestViews(unittest.TestCase):
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
         def _use_test_dot(subgraph, fp):
-            shutil.copy(Path(__file__).parent / "test_data/_mini_graph.dot", fp)
+            source_path = Path(__file__).parent / "test_data/_mini_graph.dot"
+            fp.write(source_path.read_text(encoding="utf-8"))
 
         def _use_test_svg(self, filepath):
             return self._on_dot_result(str(Path(__file__).parent / "test_data/_mini_graph.svg"))
