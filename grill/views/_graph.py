@@ -130,9 +130,12 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
     # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
     def __init__(self, parent=None, label="", color="", fillcolor="", ports: tuple = (), visible=True):
+        """
+        ports: Tuple of port names
+        """
         super().__init__(parent)
-        self._edges = []
-        self._ports = dict(zip(ports, range(len(ports)))) or {}  # {identifier: index}
+        self._edges = {}  # Edge: port_identifier
+        self._ports = dict(zip(ports, range(len(ports)))) or {}  # {port_graphviz_identifier: index_for_edge_connectivity}
         self._active_ports_by_side = dict()  # {index: {left[int]: {}, right[int]: {}}
         self._port_items = {}  # {index: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
@@ -195,8 +198,9 @@ class _Node(QtWidgets.QGraphicsTextItem):
         painter.drawRoundedRect(*round_args)
         return super().paint(painter, option, widget)
 
-    def add_edge(self, edge: _Edge):
-        self._edges.append(edge)
+    def add_edge(self, edge: _Edge, port: int):
+        graphviz_port = next((k for k, v in self._ports.items() if v==port), None)
+        self._edges[edge] = graphviz_port
 
     def itemChange(self, change: QtWidgets.QGraphicsItem.GraphicsItemChange, value):
         if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
@@ -210,6 +214,8 @@ class _Node(QtWidgets.QGraphicsTextItem):
         try:
             ports_by_side = self._active_ports_by_side[port]  # {index: {left[int]: {}, right[int]: {}}
         except KeyError:  # first time we're activating a port, so add a visual ellipse for it
+            print(f"KEY ERRORRRRR")
+            print(locals())
             radius = 4
 
             def _add_port_item():
@@ -236,33 +242,23 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
 class _Edge(QtWidgets.QGraphicsItem):
     def __init__(self, source: _Node, target: _Node, *, source_port: int = None, target_port: int = None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
+        """Source port: index of the source node to connect to"""
         super().__init__(parent)
-        source.add_edge(self)
-        target.add_edge(self)
+        source.add_edge(self, source_port)
+        target.add_edge(self, target_port)
         self._source = source
         self._target = target
-        self._source_port = source_port
-        self._target_port = target_port
+        self._source_port = source_port  # port index of the source node to connect to (not the name of the port)
+        self._target_port = target_port  # port index of the source node to connect to (not the name of the port)
         self._is_source_port_used = source_port is not None
         self._is_target_port_used = target_port is not None
-        self._is_cycle = is_cycle = source == target
+        self._is_cycle = source == target
 
-        self._port_positions = port_positions = {}
-        outer_shift = 10  # surrounding rect has ~5 px top and bottom
+        self._port_positions = {}
 
         # TODO: this is the main reason of why Node._ports has {port: index}. See if it can be removed
-        for node, port, max_port_idx in (source, source_port, max(source._ports.values(), default=0)), (target, target_port, max(target._ports.values(), default=0)):
-            bounds = node.boundingRect()
-            if port is None:
-                port_positions[node, port] = {None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()}
-                continue
-            # max_port_idx can be 0, so we add 1 since this needs to be 1-index based
-            port_size = (bounds.height() - outer_shift) / (max_port_idx + 1)
-            y_pos = (port * port_size) + (port_size / 2) + (outer_shift / 2)
-            port_positions[node, port] = {
-                0: QtCore.QPointF(0, y_pos),  # left
-                1: QtCore.QPointF(bounds.right(), y_pos),  # right
-            }
+        for node, port in (source, source_port), (target, target_port):
+            self._update_port_position(node, port)
 
         self._width = 1.5
         self._arrow_size = 15
@@ -287,6 +283,25 @@ class _Edge(QtWidgets.QGraphicsItem):
             self._brush.setColor(main_color)
 
         self.adjust()
+
+    def _update_port_position(self, node, port):
+        is_cycle = self._is_cycle
+        bounds = node.boundingRect()
+        port_positions = self._port_positions
+        if port is None:
+            port_positions[node, port] = {
+                None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()
+            }
+            return
+
+        outer_shift = 10  # surrounding rect has ~5 px top and bottom
+        max_port_idx = max(node._ports.values(), default=0)
+        port_size = (bounds.height() - outer_shift) / (max_port_idx + 1)
+        y_pos = (port * port_size) + (port_size / 2) + (outer_shift / 2)
+        port_positions[node, port] = {
+            0: QtCore.QPointF(0, y_pos),  # left
+            1: QtCore.QPointF(bounds.right(), y_pos),  # right
+        }
 
     def boundingRect(self) -> QtCore.QRectF:
         """Override from QtWidgets.QGraphicsItem
@@ -589,10 +604,105 @@ class GraphView(_GraphicsViewport):
         self.view((key,))
 
     def setLOD(self, node_indices, lod: _NodeLOD):
+        print(f"Setting LOD")
+        print(f"{locals()}")
+        nodes_map = self._nodes_map
+        graph = self._graph
         for node_id in node_indices:
-            self.nodes[node_id].lod = lod
-        # graph_view.view(graph_view._viewing)
-        # TODO: update the LOD label (html) of nodes here
+            node_data = graph.nodes[node_id]
+            assert node_data.lod
+            node_data.lod = lod
+
+            qnode = nodes_map[node_id]
+            # keep track of current ports in qnode
+            # edge ports are the actual KEYS
+            current_ports = qnode._ports
+            print(f"{current_ports=}")
+            #####
+            if lod == _NodeLOD.MID:
+                items = node_data._data['items']
+                ports_of_interest = set()
+                for predecessor in graph.predecessors(node_id):
+                    # headport is what we need to keep (as it belongs to this node)
+                    for port_idx, data in graph.adj[predecessor][node_id].items():
+                        headport_key = data['headport']
+                        if isinstance(headport_key, str) and headport_key.startswith("C0R"):
+                            headport_key = int(headport_key.removeprefix("C0R"))
+                        ports_of_interest.add(headport_key)
+
+                for successor in graph.successors(node_id):
+                    for port_idx, data in graph.adj[node_id][successor].items():
+                        tailport_key = data['tailport']
+                        if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
+                            tailport_key = int(tailport_key.removeprefix("C1R"))
+                        ports_of_interest.add(tailport_key)
+
+                mid_items = [i for i in reversed(items) if (i[2] in ports_of_interest) or (i[4] == _core._TOTAL_SPAN)]
+                ports = [x[2] for x in mid_items]
+                mid_lod_label = f'<<table BORDER="4" COLOR="{_core._BORDER_COLOR}" bgcolor="{_core._BG_SPACE_COLOR}" CELLSPACING="0">'
+                for row in _core._to_table(mid_items):
+                    mid_lod_label += row
+                mid_lod_label += '</table>>'
+                node_data._lods[lod]['label'] = mid_lod_label
+                node_data._lods[lod]['ports'] = ports
+
+            graphviz_port_by_current_qtindex = {v:k for k, v in current_ports.items()}
+            print(f"{graphviz_port_by_current_qtindex=}")
+
+            new_ports = node_data._lods[lod]['ports']
+            print(f"{len(new_ports)=}")
+            graphviz_port_by_new_qtindex = dict(zip(range(len(new_ports)), new_ports))
+            qnode._ports = dict(zip(new_ports, range(len(new_ports))))
+            new_ports_dict = qnode._ports  # {port name identifier: port index}
+            label = node_data['label']
+            label = _adjust_graphviz_html_table_label(label)
+            qnode.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
+
+            old_active_ports_by_side = dict(qnode._active_ports_by_side)
+            old_port_items = dict(qnode._port_items)
+
+            ports_to_move = dict()  # old: new
+
+            old_edge_port_positions = dict()
+            qt_edges = qnode._edges
+
+            for edge in qnode._edges:
+                if qnode is edge._source:
+                    current_qt_port = edge._source_port
+                    if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
+                        new_qt_port = 0
+                    else:
+                        current_graphviz_port = qnode._edges[edge]
+                        new_qt_port = new_ports_dict[current_graphviz_port]
+                    edge._source_port = new_qt_port
+                    edge._is_source_port_used = new_qt_port is not None
+                    ports_to_move.setdefault(edge, []).append(
+                        ((qnode, current_qt_port), (qnode, new_qt_port)),
+                    )
+                    old_edge_port_positions.setdefault(edge, {}).update(edge._port_positions)
+                if qnode is edge._target:
+                    current_qt_port = edge._target_port
+                    if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
+                        new_qt_port = 0
+                    else:
+                        current_graphviz_port = qnode._edges[edge]
+                        new_qt_port = new_ports_dict[current_graphviz_port]
+                    edge._target_port = new_qt_port
+                    edge._is_target_port_used = new_qt_port is not None
+                    ports_to_move.setdefault(edge, []).append(
+                        ((qnode, current_qt_port), (qnode, new_qt_port)),
+                    )
+                    old_edge_port_positions.setdefault(edge, {}).update(edge._port_positions)
+
+            for edge, port_data in ports_to_move.items():
+                for (n, old_port), (n, new_port) in port_data:
+                    qnode._active_ports_by_side[new_port] = old_active_ports_by_side[old_port]
+                    qnode._port_items[new_port] = old_port_items[old_port]
+                    edge._port_positions[n, new_port] = old_edge_port_positions[edge][n, old_port]
+                    edge._update_port_position(qnode, new_port)
+
+            for edge in qnode._edges:
+                edge.adjust()
 
     def view(self, node_indices: tuple):
         self._viewing = frozenset(node_indices)
@@ -609,40 +719,6 @@ class GraphView(_GraphicsViewport):
             filters['filter_edge'] = self.filter_edges
         if filters:
             subgraph = nx.subgraph_view(subgraph, **filters)
-
-        for node_id in subgraph.nodes:
-            if not hasattr(subgraph.nodes[node_id], "lod"):
-                continue
-            lod = subgraph.nodes[node_id].lod
-            if lod == _NodeLOD.MID:
-                # lod = _NodeLOD.MID
-                items = subgraph.nodes[node_id]._data['items']
-                ports_of_interest = set()
-                for predecessor in subgraph.predecessors(node_id):
-                    # headport is what we need to keep (as it belongs to this node)
-                    for port_idx, data in subgraph.adj[predecessor][node_id].items():
-                        headport_key = data['headport']
-                        if isinstance(headport_key, str) and headport_key.startswith("C0R"):
-                            headport_key = int(headport_key.removeprefix("C0R"))
-                        ports_of_interest.add(headport_key)
-
-                for successor in subgraph.successors(node_id):
-                    for port_idx, data in subgraph.adj[node_id][successor].items():
-                        tailport_key = data['tailport']
-                        if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
-                            tailport_key = int(tailport_key.removeprefix("C1R"))
-                        ports_of_interest.add(tailport_key)
-
-                mid_items = [i for i in reversed(items) if (i[2] in ports_of_interest) or (i[4] == _core._TOTAL_SPAN)]
-                ports = [x[2] for x in mid_items]
-                mid_lod_label = f'<<table BORDER="4" COLOR="{_core._BORDER_COLOR}" bgcolor="{_core._BG_SPACE_COLOR}" CELLSPACING="0">'
-                for row in _core._to_table(mid_items):
-                    mid_lod_label += row
-                mid_lod_label += '</table>>'
-                subgraph.nodes[node_id]._lods[lod]['label'] = mid_lod_label
-                subgraph.nodes[node_id]._lods[lod]['ports'] = ports
-
-            # subgraph.nodes[node_id].lod = lod
 
         self._load_graph(subgraph)
 
