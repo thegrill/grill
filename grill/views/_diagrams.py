@@ -9,20 +9,22 @@ TODO:
 
 """
 import collections
+from pprint import pformat
 from itertools import count
+from functools import partial
 
 import networkx as nx
 
 from pxr import Pcp, Sdf, Ar, Tf
 
 from ._qt import QtWidgets, QtCore
-from . import _graph, description, _core
+from . import _graph, description
 
 
-_TOTAL_SPAN = _core._TOTAL_SPAN
-_BORDER_COLOR = _core._BORDER_COLOR
-_BG_SPACE_COLOR = _core._BG_SPACE_COLOR
-_BG_CELL_COLOR = _core._BG_CELL_COLOR
+_TOTAL_SPAN = _graph._TOTAL_SPAN
+_BORDER_COLOR = _graph._BORDER_COLOR
+_BG_SPACE_COLOR = _graph._BG_SPACE_COLOR
+_BG_CELL_COLOR = _graph._BG_CELL_COLOR
 
 _EDGE_COLORS = {
     "subLayers": description._color_attrs("gray"),
@@ -46,6 +48,7 @@ def _find_layer(path, anchor, resolver_context):
             return layer
 
 
+
 class _AssetStructureGraph(nx.MultiDiGraph):
     node_attr_dict_factory = lambda self: _graph.DynamicNodeAttributes({}, {}, {})
 
@@ -62,7 +65,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
     def _expand_dependencies(self, keys, *, recursive=False):
         resolver_context = self._resolver_context
-        edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
+        edges = list()
+        current_nodes = set(self.nodes)
         nodes_added = set()
         def _add_edges(src_node, src_port, tgt_node, tgt_port, attrs):
             edges.append((src_node, tgt_node, {
@@ -92,10 +96,13 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         for key in keys:
             anchor = self.nodes[key]._data['layer']
             dependencies = self.nodes[key]._data['dependencies']
-            for dependency in dependencies:
-                _handle_upstream_dependency(anchor, *dependency)
+            for port_with_dependency, port_dependencies in dependencies.items():
+                for dependency_info in port_dependencies:
+                    _handle_upstream_dependency(anchor, port_with_dependency, *dependency_info)
 
         self.add_edges_from(edges)
+        for node in nodes_added - current_nodes:
+            self._prepare_for_display(node)
         return nodes_added
 
     def _add_node_from_layer(self, layer):
@@ -109,11 +116,10 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         loaded_layers[layer] = node_id = len(loaded_layers)
 
         item_counter = count()
-
         # TODO: add edges when target node is self (arcs without an asset path)
         edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
         port_by_spec_path = {}  # {SdfPath: int}
-        upstream_dependencies = list()  # [(port_id, asset_path, prim_path, color)]
+        upstream_dependencies = dict()  # port_id: [(asset_path, prim_path, color)]
 
         # TODO: have item entries declare their LOD level, rather than 3 lists
         all_items = []  # [(LOD, ...)]
@@ -144,7 +150,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 padding = len(prefixes)
 
             def _add_separator(items, LOD):
-                items.append((LOD, 0, next(item_counter), "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR}))
+                items.append(_graph._TableItem(LOD, 0, next(item_counter), "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR}))
 
             if path.IsPrimPath():
                 port_by_spec_path[path] = this_spec_index = next(item_counter)  # layer_ID: {path: int}
@@ -158,53 +164,53 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                     elif info_key == "specifier":
                         ... # change font?
                     elif isinstance(info_value, str):
-                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, info_value, attrs))
+                        all_items.append(
+                            _graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, info_value, attrs)
+                        )
                     elif isinstance(info_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
                         port_index = next(item_counter)
                         color = _EDGE_COLORS[type(info_value)]
                         info_attrs = collections.ChainMap(color, attrs)
-                        all_items.append((_graph._NodeLOD.MID, padding, port_index, info_key, "@...@", info_attrs))
+                        all_items.append(_graph._TableItem(_graph._NodeLOD.MID, padding, port_index, info_key, "@...@", info_attrs))
                         for dependency_arc in info_value.GetAddedOrExplicitItems():
                             dependency_path = dependency_arc.assetPath
                             if not dependency_path:
                                 # TODO: handle internal dependency, add edges
                                 continue
-                            upstream_dependencies.append((port_index, dependency_path, dependency_arc.primPath, color))
+                            upstream_dependencies.setdefault(port_index, []).append((dependency_path, dependency_arc.primPath, color))
                     elif isinstance(info_value, (Sdf.TokenListOp, Sdf.StringListOp)):
                         if items := info_value.GetAddedOrExplicitItems():
                             if info_key == "variantSetNames":
                                 info_attrs = collections.ChainMap(dict(fontcolor=_EDGE_COLORS[info_key]['color']), attrs)
                             else:
                                 info_attrs = attrs
-                            all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, ", ".join(items), info_attrs))
+                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, ", ".join(items), info_attrs))
                     elif isinstance(info_value, Sdf.PathListOp):
                         color = {"fontcolor": fontcolor,}
                         if info_key in _EDGE_COLORS:
                             color = _EDGE_COLORS[info_key]
                         if items:=info_value.GetAddedOrExplicitItems():
                             info_attrs = collections.ChainMap(color, attrs)
-                            all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, "\n".join(map(str, items)), info_attrs))
+                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, "\n".join(map(str, items)), info_attrs))
                     elif isinstance(info_value, dict):
-                        from pprint import pformat
-                        from collections import ChainMap
                         if info_key == "variantSelection":
                             info_attrs = collections.ChainMap(dict(fontcolor=_EDGE_COLORS[info_key]['color']), attrs)
                         else:
                             info_attrs = attrs
                         display_overrides = {}
-                        display_dict = ChainMap(display_overrides, info_value)
+                        display_dict = collections.ChainMap(display_overrides, info_value)
                         if "identifier" in info_value:
                             display_overrides['identifier'] = "..."  # identifiers may have the same name as our top row and are long
-                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, pformat(dict(display_dict)), info_attrs))
+                        all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, pformat(dict(display_dict)), info_attrs))
                     elif isinstance(info_value, list):
-                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", attrs))
+                        all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", attrs))
                     else:
-                        all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, (str(info_value)), attrs))
+                        all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, (str(info_value)), attrs))
                 prim_attrs = {
                     'bgcolor': "#76B900",  # nvidia's green
                     'fontcolor': _BG_CELL_COLOR,  # white
                 }
-                all_items.append((_graph._NodeLOD.MID, padding, this_spec_index, spec.name, str(typeName), prim_attrs))
+                all_items.append(_graph._TableItem(_graph._NodeLOD.MID, padding, this_spec_index, spec.name, str(typeName), prim_attrs))
 
             elif path.IsAbsoluteRootPath():
                 pseudoRoot = layer.pseudoRoot
@@ -221,21 +227,21 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                             continue
                         if info_key == "subLayers":
                             this_index = next(item_counter)
-                            all_items.append((_graph._NodeLOD.MID, 0, this_index, info_key, f"@...@", {
+                            all_items.append(_graph._TableItem(_graph._NodeLOD.MID, 0, this_index, info_key, f"@...@", {
                                     "bgcolor": _BG_CELL_COLOR,
                                     "fontcolor": "#8F8F8F",
                                 }))
                             edge_color = _EDGE_COLORS[info_key]
                             for sublayer in info_value:
-                                upstream_dependencies.append((this_index, sublayer, path, edge_color))
+                                upstream_dependencies.setdefault(this_index, []).append((sublayer, path, edge_color))
                         elif isinstance(info_value, list):
-                            all_items.append((_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", {
+                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", {
                                 "bgcolor": _BG_CELL_COLOR,
                                 "fontcolor": "#8F8F8F",
                             }))
                         else:
                             this_index = next(item_counter)
-                            all_items.append((_graph._NodeLOD.HIGH, 0, this_index, info_key, str(info_value), {
+                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, 0, this_index, info_key, str(info_value), {
                                     "bgcolor": _BG_CELL_COLOR,
                                     "fontcolor": "#8F8F8F",
                                 }))
@@ -244,7 +250,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                     _add_separator(all_items, _graph._NodeLOD.MID)
 
                 this_spec_index = next(item_counter)
-                all_items.append((_graph._NodeLOD.LOW, 0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                all_items.append(_graph._TableItem(_graph._NodeLOD.LOW, 0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
                     'bgcolor':_BG_SPACE_COLOR,
                     'fontcolor': "#6C6C6C",
                 }))
@@ -253,22 +259,52 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         layer.Traverse(layer.pseudoRoot.path, item_collector)
 
+        self.add_node(node_id)
+        self.add_edges_from(edges)  # internal edges
+        self.nodes[node_id]._data.update(
+            layer=layer,
+            items=all_items,
+            dependencies=upstream_dependencies,
+            visited_layer_spec_path_ports=port_by_spec_path,
+        )
+        return node_id
+
+    def _prepare_for_display(self, node_id):
+        if node_id not in self.nodes:
+            raise RuntimeError(locals())
+        all_items = self.nodes[node_id]._data['items']
+        upstream_dependencies = self.nodes[node_id]._data['dependencies']
+
         high_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _core._to_table(list(reversed(all_items))):
+        for row in _graph._to_table(list(reversed(all_items))):
             high_lod_label += row
         high_lod_label += '</table>>'
 
+        ports_of_interest = set()
+        for predecessor in self.predecessors(node_id):
+            # headport is what we need to keep (as it belongs to this node)
+            for port_idx, data in self.adj[predecessor][node_id].items():
+                headport_key = data['headport']
+                if isinstance(headport_key, str) and headport_key.startswith("C0R"):
+                    headport_key = int(headport_key.removeprefix("C0R"))
+                ports_of_interest.add(headport_key)
+
+        mid_items = [i for i in all_items if ((i.lod in _graph._NodeLOD.LOW | _graph._NodeLOD.MID) and (i.port_index in upstream_dependencies)) or (i.value == _TOTAL_SPAN) or i.port_index in ports_of_interest]
+        mid_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
+        for row in _graph._to_table(list(reversed(mid_items))):
+            mid_lod_label += row
+        mid_lod_label += '</table>>'
+
+        low_items = [i for i in all_items if i.lod == _graph._NodeLOD.LOW]
         low_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        low_items = [i for i in all_items if i[0] == _graph._NodeLOD.LOW]
-        for row in _core._to_table(list(reversed(low_items))):
+        for row in _graph._to_table(list(reversed(low_items))):
             low_lod_label += row
         low_lod_label += '</table>>'
 
-        self.add_node(node_id)
         # high: full asset structure
         self.nodes[node_id]._lods[_graph._NodeLOD.HIGH].update(
             label=high_lod_label,
-            ports=list(reversed([x[2] for x in all_items])),  # all rows in the entries
+            ports=list(reversed([x.port_index for x in all_items])),  # all rows in the entries
             layer='',
             items='',
             dependencies='',
@@ -276,6 +312,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         )
         # mid: only items with plugs
         self.nodes[node_id]._lods[_graph._NodeLOD.MID].update(
+            label=mid_lod_label,
+            ports=list(reversed([x.port_index for x in mid_items])),
             layer='',
             items='',
             dependencies='',
@@ -284,33 +322,24 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # low: only layer label
         self.nodes[node_id]._lods[_graph._NodeLOD.LOW].update(
             label=low_lod_label,
-            ports=list(reversed([x[2] for x in low_items])),
+            ports=list(reversed([x.port_index for x in low_items])),
             layer='',
             items='',
             dependencies='',
             visited_layer_spec_path_ports='',
         )
-        self.nodes[node_id]._data.update(
-            layer=layer,
-            items=all_items,
-            dependencies = upstream_dependencies,
-            visited_layer_spec_path_ports=port_by_spec_path,
-        )
-
-        self.add_edges_from(edges)
-        return node_id
 
 
 def _launch_asset_structure_browser(root_layer, parent, resolver_context, recursive=False):
     print(f"Loading asset structure, {locals()}")
     graph = _AssetStructureGraph(resolver_context=resolver_context)
     root_node = graph._add_node_from_layer(root_layer)
+    graph._prepare_for_display(root_node)
     root_nodes = [root_node]
     widget = QtWidgets.QDialog(parent=parent)
     widget.setWindowTitle("Asset Structure Diagram")
     splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
-    from functools import partial
     def _expand_dependencies(graph_view, recursive):
         selection = set(graph_view.scene().selectedItems())
         selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
@@ -416,6 +445,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:/write/code/git/easy-edgedb/chapter10/assets/dracula-3d-Model-City-rnd-main-Bistritz-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
@@ -528,7 +558,8 @@ if __name__ == "__main__":
     #           Collapse all plugs into the first one
     # 4. All nodes / edges need to be computed for SVG
     # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
-    widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
+    # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
+    widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
     # widget.
     # profiler.stop()
     # profiler.print()

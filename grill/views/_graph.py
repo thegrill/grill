@@ -106,8 +106,8 @@ class DynamicNodeAttributes(ChainMap):
         super().__init__(high, mid, low)
         self._lods = {
             _NodeLOD.HIGH: high,
-            _NodeLOD.LOW: low,
             _NodeLOD.MID: mid,
+            _NodeLOD.LOW: low,
         }
         self._currentLOD = _NodeLOD.HIGH
         self._data = {}
@@ -609,51 +609,30 @@ class GraphView(_GraphicsViewport):
         nodes_map = self._nodes_map
         graph = self._graph
         for node_id in node_indices:
-            node_data = graph.nodes[node_id]
-            assert node_data.lod
-            node_data.lod = lod
-
             qnode = nodes_map[node_id]
             # keep track of current ports in qnode
             # edge ports are the actual KEYS
             current_ports = qnode._ports
             print(f"{current_ports=}")
+
+            node_data = graph.nodes[node_id]
+            assert node_data.lod
+            node_data.lod = lod
             #####
-            if lod == _NodeLOD.MID:
-                items = node_data._data['items']
-                ports_of_interest = set()
-                for predecessor in graph.predecessors(node_id):
-                    # headport is what we need to keep (as it belongs to this node)
-                    for port_idx, data in graph.adj[predecessor][node_id].items():
-                        headport_key = data['headport']
-                        if isinstance(headport_key, str) and headport_key.startswith("C0R"):
-                            headport_key = int(headport_key.removeprefix("C0R"))
-                        ports_of_interest.add(headport_key)
-
-                for successor in graph.successors(node_id):
-                    for port_idx, data in graph.adj[node_id][successor].items():
-                        tailport_key = data['tailport']
-                        if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
-                            tailport_key = int(tailport_key.removeprefix("C1R"))
-                        ports_of_interest.add(tailport_key)
-
-                mid_items = [i for i in reversed(items) if (i[2] in ports_of_interest) or (i[4] == _core._TOTAL_SPAN)]
-                ports = [x[2] for x in mid_items]
-                mid_lod_label = f'<<table BORDER="4" COLOR="{_core._BORDER_COLOR}" bgcolor="{_core._BG_SPACE_COLOR}" CELLSPACING="0">'
-                for row in _core._to_table(mid_items):
-                    mid_lod_label += row
-                mid_lod_label += '</table>>'
-                node_data._lods[lod]['label'] = mid_lod_label
-                node_data._lods[lod]['ports'] = ports
-
+            # if lod == _NodeLOD.MID:
+            #     items = node_data._data['items']
             graphviz_port_by_current_qtindex = {v:k for k, v in current_ports.items()}
             print(f"{graphviz_port_by_current_qtindex=}")
 
-            new_ports = node_data._lods[lod]['ports']
+            new_ports = node_data['ports']
             print(f"{len(new_ports)=}")
+            print(f"{new_ports=}")
+
             graphviz_port_by_new_qtindex = dict(zip(range(len(new_ports)), new_ports))
             qnode._ports = dict(zip(new_ports, range(len(new_ports))))
+
             new_ports_dict = qnode._ports  # {port name identifier: port index}
+
             label = node_data['label']
             label = _adjust_graphviz_html_table_label(label)
             qnode.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
@@ -665,10 +644,13 @@ class GraphView(_GraphicsViewport):
 
             old_edge_port_positions = dict()
             qt_edges = qnode._edges
-
+            from pprint import pp
             for edge in qnode._edges:
+                print("NODE EDGEs")
+                pp(qt_edges)
                 if qnode is edge._source:
                     current_qt_port = edge._source_port
+                    print(f"{current_qt_port=}")
                     if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
                         new_qt_port = 0
                     else:
@@ -682,6 +664,7 @@ class GraphView(_GraphicsViewport):
                     old_edge_port_positions.setdefault(edge, {}).update(edge._port_positions)
                 if qnode is edge._target:
                     current_qt_port = edge._target_port
+                    print(f"{current_qt_port=}")
                     if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
                         new_qt_port = 0
                     else:
@@ -1033,6 +1016,104 @@ class _GraphSVGViewer(_DotViewer):
         self.sticky_nodes.clear()
         self._graph = graph
 
+
+
+####
+import html
+_TOTAL_SPAN = object()
+_BORDER_COLOR = "#E0E0E0"
+_BG_SPACE_COLOR = "#FAFAFA"
+_BG_CELL_COLOR = "#FFFFFF"
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class _TableItem:
+    lod: _NodeLOD.HIGH
+    padding: int
+    port_index: int
+    key: str
+    value: str
+    display_attributes: dict
+
+
+def _to_table(items: list[_TableItem]):
+    span = max(x.padding for x in items) + 2
+    width = 50
+    # for index, (LOD, padding, internal_index, key, value, attrs) in enumerate(items):
+    for index, item in enumerate(items):
+        LOD = item.lod
+        padding = item.padding
+        internal_index = item.port_index
+        key = item.key
+        value = item.value
+        attrs = item.display_attributes
+        key_port = f"C0R{internal_index}"
+        value_port = f"C1R{internal_index}"
+
+        more_attrs = ''
+        if bgcolor:=attrs.get("bgcolor"):
+            more_attrs+= f' BGCOLOR="{bgcolor}"'
+        font_entry = ''
+        font_closure = ''
+        if fontcolor:=attrs.get("fontcolor"):
+            font_entry = f'<FONT COLOR="{fontcolor}">'
+            font_closure = '</FONT>'
+        fontstyle_entry = ''
+        fontstyle_closure = ''
+        # if attrs.get("fontstyle") == 'bold':
+        #     fontstyle_entry = '<B>'
+        #     fontstyle_closure = '</B>'
+
+        safe_key = html.escape(key)
+        # zero based + 2 for each side: key and value
+        span_in_row = ((span-2) * 3) if value is _TOTAL_SPAN else span
+        if value is _TOTAL_SPAN:
+            if not key:
+                display_cell_template = '<TD HEIGHT="10" BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+            else:
+                display_cell_template = '<TD BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+        else:
+            display_cell_template = '<TD BORDER="1" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+
+        key_entry = display_cell_template.format(
+            _BORDER_COLOR=_BORDER_COLOR,
+            span_in_row=span_in_row,
+            port=key_port,
+            width=width,
+            more_attrs=more_attrs,
+            font_entry=font_entry,
+            fontstyle_entry=fontstyle_entry,
+            safe_entry=safe_key,
+            fontstyle_closure=fontstyle_closure,
+            font_closure=font_closure,
+        )
+        if value is _TOTAL_SPAN:
+            identation_entry = ''
+            tail_entry = ''
+            value_entry = ''
+        else:
+            span_entry = f'<TD BORDER="0" BGCOLOR="{_BG_SPACE_COLOR}"></TD>'
+            identation_entry = span_entry * padding
+            tail_entry = span_entry * (span - padding - 1)
+            safe_value = html.escape(value).replace("\n", "<br/>")
+            value_entry = display_cell_template.format(
+                _BORDER_COLOR=_BORDER_COLOR,
+                span_in_row=span_in_row,
+                port=value_port,
+                width=width,
+                more_attrs=more_attrs,
+                font_entry=font_entry,
+                fontstyle_entry=fontstyle_entry,
+                safe_entry=safe_value,
+                fontstyle_closure=fontstyle_closure,
+                font_closure=font_closure,
+            )
+        display_entry = f'{key_entry}{value_entry}'
+        row = f'<TR>{identation_entry}{display_entry}{tail_entry}</TR>'
+        yield row
+###
 
 if _GRAPHV_VIEW_VIA_SVG:
     _GraphViewer = _GraphSVGViewer
