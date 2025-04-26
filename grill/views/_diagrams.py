@@ -343,11 +343,9 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
     def _expand_dependencies(graph_view, recursive):
         selection = set(graph_view.scene().selectedItems())
         selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
-        print(f"{selection_keys=}")
         if selection_keys:
             nodes_added = graph._expand_dependencies(selection_keys, recursive=recursive)
             if recursive:
-                print(f"{recursive=}, {nodes_added=}")
                 selection_keys.update(nodes_added)
         next_to_view = set(graph_view._viewing).union(selection_keys)
         graph_view.view(next_to_view)
@@ -355,7 +353,6 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
     def _set_lod(graph_view, lod):
         selection = set(graph_view.scene().selectedItems())
         selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
-        print(f"{selection_keys=}")
         if selection_keys:
             graph_view.setLOD(selection_keys, lod)
             for node_id in selection_keys:
@@ -416,6 +413,36 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
                 nodes_to_view = root_nodes
             # nodes_to_view = graph.nodes
         child.view(nodes_to_view)
+        print(f"{nodes_to_view=}")
+
+
+        ### This fails with a keyerror atm
+        # Traceback (most recent call last):
+        #   File "A:\write\code\git\grill\grill\views\_diagrams.py", line 353, in _expand_dependencies
+        #     graph_view.view(next_to_view)
+        #     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 690, in view
+        #     self._load_graph(subgraph)
+        #     ~~~~~~~~~~~~~~~~^^^^^^^^^^
+        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 820, in _load_graph
+        #     edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
+        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 248, in __init__
+        #     source.add_edge(self, source_port)
+        #     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 203, in add_edge
+        #     raise KeyError(f"{port=} does not exist on {self._ports=}")
+        # KeyError: 'port=1 does not exist on self._ports={5: 0}'
+        
+        # TODO: make this a test
+        child.setLOD(root_nodes, _graph._NodeLOD.LOW)
+        nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
+        new_nodes_to_view=set(root_nodes).union(nodes_added)
+
+        nodes_added = graph._expand_dependencies([1], recursive=False)
+        new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
+
+        child.view(new_nodes_to_view)
+        ###
         child.setMinimumWidth(150)
         splitter.addWidget(widget_on_splitter)
 
@@ -445,6 +472,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:/write/code/git/easy-edgedb/chapter10/assets/dracula-3d-Model-City-rnd-main-Bistritz-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
