@@ -110,7 +110,7 @@ class DynamicNodeAttributes(ChainMap):
             _NodeLOD.LOW: low,
         }
         self._currentLOD = _NodeLOD.HIGH
-        self._data = {}
+        self._data = ChainMap({}, {})
         self.maps = deque(chain(self._lods.values(), [self._data]))
 
 
@@ -128,12 +128,53 @@ class DynamicNodeAttributes(ChainMap):
 
 class _Node(QtWidgets.QGraphicsTextItem):
 
+    def __repr__(self):
+        return f"{type(self).__name__}({self._name})"
+
     # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
-    def __init__(self, parent=None, label="", color="", fillcolor="", ports: tuple = (), visible=True):
+    def __init__(self, node_name, node_data, parent=None):
         """
         ports: Tuple of graphviz port names
         """
         super().__init__(parent)
+        self._name = node_name
+        ports = node_data.get('ports', ())
+        if hasattr(node_data, "_lods"):
+            # these are all the possible ports, while _ports may have only
+            ports = node_data._lods[_NodeLOD.HIGH]['ports']
+        else:
+            ports = node_data.get('ports', ())
+        # nodes_attrs = ChainMap(node_data, graph_node_attrs)
+        if (shape := node_data.get('shape')) == 'record':
+            try:
+                label = node_data['label']
+            except KeyError:
+                raise ValueError(
+                    f"'label' must be supplied when 'record' shape is set for node: '{node_name}' with data: {node_data}")
+            if ports:
+                raise ValueError(
+                    f"record 'shape' and 'ports' are mutually exclusive, pick one for node: '{node_name}' with data: {node_data}")
+            try:
+                ports = _get_ports_from_label(label)
+            except ValueError as exc:
+                raise ValueError(
+                    f"In order to use the 'record' shape, a record 'label' in the form of: '{{<port1>text1|<port2>text2}}' must be used") from exc
+            label = _get_html_table_from_ports(**ports)
+        else:
+            label = node_data.get('label')
+            if shape in {'none', 'plaintext'}:
+                if not label:
+                    raise ValueError(
+                        f"A label must be provided for when using 'none' or 'plaintext' shapes for {node_name}, {node_data=}")
+                label = _adjust_graphviz_html_table_label(label)
+            elif not label:
+                label = str(node_name)
+
+        color=node_data.get("color", "")
+        fillcolor=node_data.get("fillcolor", "white")
+        visible=node_data.get('style', "") != "invis"
+
+        self._data = node_data
         self._edges = {}  # {Edge: port_identifier}
         self._ports = dict(zip(ports, range(len(ports)))) or {}  # {port_graphviz_identifier: index_for_edge_connectivity}
         self._active_ports_by_side = dict()  # {port_name: {left[int]: {}, right[int]: {}}
@@ -141,7 +182,6 @@ class _Node(QtWidgets.QGraphicsTextItem):
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
         self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
-        # self.setHtml(label)
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
         # https://bugreports.qt.io/browse/QTBUG-89563
@@ -199,8 +239,14 @@ class _Node(QtWidgets.QGraphicsTextItem):
         return super().paint(painter, option, widget)
 
     def add_edge(self, edge: _Edge, port):
-        if port is not None and port not in self._ports:
-            raise KeyError(f"{port=} does not exist on {self._ports=}")
+        if hasattr(self._data, "_lods"):
+            # these are all the possible ports, while _ports may have only
+            ports = self._data._lods[_NodeLOD.HIGH]['ports']
+        else:
+            ports = self._ports
+
+        if port is not None and port not in ports:
+            raise KeyError(f"{port=} does not exist on {ports=}")
         self._edges[edge] = port
 
     def itemChange(self, change: QtWidgets.QGraphicsItem.GraphicsItemChange, value):
@@ -212,20 +258,23 @@ class _Node(QtWidgets.QGraphicsTextItem):
     def _activatePort(self, edge, port, side, position):
         if port is None:
             return  # we're at the center, nothing to draw nor activate
+
         try:
             ports_by_side = self._active_ports_by_side[port]  # {port_name: {left[int]: {}, right[int]: {}}
         except KeyError:  # first time we're activating a port, so add a visual ellipse for it
-            print(f"KEY ERRORRRRR")
-            print(locals())
             radius = 4
 
-            def _add_port_item():
-                item = QtWidgets.QGraphicsEllipseItem(-radius, -radius, 2 * radius, 2 * radius)
+            def _add_port_item(this_side):
+                class PortPlugItem(QtWidgets.QGraphicsEllipseItem):
+                    def __repr__(this):
+                        return f"Item({self}, {port=}, {this_side})"
+                item = PortPlugItem(-radius, -radius, 2 * radius, 2 * radius)
                 item.setPen(_NO_PEN)
+                item.setZValue(self.zValue())
                 self.scene().addItem(item)
                 return item
 
-            self._port_items[port] = (_add_port_item(), _add_port_item())
+            self._port_items[port] = (_add_port_item("left"), _add_port_item("right"))
             self._active_ports_by_side[port] = ports_by_side = {0: dict(), 1: dict()}
 
         ports_by_side[side][edge] = True
@@ -242,6 +291,9 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
 
 class _Edge(QtWidgets.QGraphicsItem):
+    def __repr__(self):
+        return f"{type(self).__name__}(source={self._source}, target={self._target}, source_port={self._source_port}, target_port={self._target_port})"
+
     def __init__(self, source: _Node, target: _Node, *, source_port: int = None, target_port: int = None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
         """Source port: index of the source node to connect to"""
         super().__init__(parent)
@@ -297,7 +349,12 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         outer_shift = 10  # surrounding rect has ~5 px top and bottom
         max_port_idx = len(node._ports)
-        port_index = node._ports[port]
+
+        if len(node._ports) == 1:
+            port_index = next(iter(node._ports.values()))
+        else:
+            port_index = node._ports[port]
+
         port_size = (bounds.height() - outer_shift) / max_port_idx
         y_pos = (port_index * port_size) + (port_size / 2) + (outer_shift / 2)
         port_positions[node, port] = {
@@ -532,10 +589,14 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
             event.accept()
         elif event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.NoModifier:
             self._rubber_band.hide()
+            print("\nSELECTED:")
             for item in self._get_items_in_rubber_band():
                 item.setSelected(True)
+                print(item)
             if clicked_item:=self.itemAt(event.pos()):
                 clicked_item.setSelected(True)
+                print(clicked_item)
+
         return super().mouseReleaseEvent(event)
 
     def _get_items_in_rubber_band(self):
@@ -615,16 +676,16 @@ class GraphView(_GraphicsViewport):
             # keep track of current ports in qnode
             # edge ports are the actual KEYS
             current_ports = qnode._ports
-            print(f"{current_ports=}")
 
             node_data = graph.nodes[node_id]
             assert node_data.lod
             node_data.lod = lod
 
             new_ports = node_data['ports']
-            print(f"{len(new_ports)=}")
-            qnode._ports = new_ports_dict = dict(zip(new_ports, range(len(new_ports))))
-            print(f"{new_ports_dict=}")
+            if len(new_ports) == 1:
+                qnode._ports = new_ports_dict = dict.fromkeys(new_ports, 0)
+            else:
+                qnode._ports = new_ports_dict = dict(zip(new_ports, range(len(new_ports))))
 
             label = node_data['label']
             label = _adjust_graphviz_html_table_label(label)
@@ -635,38 +696,19 @@ class GraphView(_GraphicsViewport):
 
             ports_to_move = dict()  # old: new
 
-            old_edge_port_positions = dict()
             qt_edges = qnode._edges
-            from pprint import pp
+
             for edge in qnode._edges:
-                print("NODE EDGEs")
-                pp(qt_edges)
-                from functools import partial
-                for neighbor, port, setter in (
-                        (edge._source, edge._source_port, partial(setattr, edge, "_source_port")),
-                        (edge._target, edge._target_port, partial(setattr, edge, "_target_port")),
+                for neighbor, port in (
+                        (edge._source, edge._source_port),
+                        (edge._target, edge._target_port),
                 ):
                     if qnode is neighbor:
-                        print(f"{port=}")
-                        # visual plugged port can change between LOW and MID / HIGH
-                        if lod == _NodeLOD.LOW and len(new_ports_dict) == 1:
-                            new_qt_port = next(iter(new_ports_dict))
-                        else:
-                            new_qt_port = qnode._edges[edge]
-                        print(f"{new_qt_port=}")
-                        setter(new_qt_port)
-                        ports_to_move.setdefault(edge, []).append(
-                            ((qnode, port), (qnode, new_qt_port)),
-                        )
-                        old_edge_port_positions.setdefault(edge, {}).update(edge._port_positions)
+                        ports_to_move.setdefault(edge, []).append(port)
 
-            for edge, port_data in ports_to_move.items():
-                for (n, old_port), (n, new_port) in port_data:
-                    if old_port != new_port:
-                        qnode._active_ports_by_side[new_port] = old_active_ports_by_side[old_port]
-                        qnode._port_items[new_port] = old_port_items[old_port]
-                        edge._port_positions[n, new_port] = old_edge_port_positions[edge][n, old_port]
-                    edge._update_port_position(qnode, new_port)
+            for edge, ports in ports_to_move.items():
+                for each_port in ports:
+                    edge._update_port_position(qnode, each_port)
 
             for edge in qnode._edges:
                 edge.adjust()
@@ -747,36 +789,12 @@ class GraphView(_GraphicsViewport):
 
         def _add_node(nx_node):
             node_data = graph.nodes[nx_node]
-            ports = node_data.get('ports', ())
-            nodes_attrs = ChainMap(node_data, graph_node_attrs)
-            if (shape := nodes_attrs.get('shape')) == 'record':
-                try:
-                    label = node_data['label']
-                except KeyError:
-                    raise ValueError(f"'label' must be supplied when 'record' shape is set for node: '{nx_node}' with data: {node_data}")
-                if ports:
-                    raise ValueError(f"record 'shape' and 'ports' are mutually exclusive, pick one for node: '{nx_node}' with data: {node_data}")
-                try:
-                    ports = _get_ports_from_label(label)
-                except ValueError as exc:
-                    raise ValueError(f"In order to use the 'record' shape, a record 'label' in the form of: '{{<port1>text1|<port2>text2}}' must be used") from exc
-                label = _get_html_table_from_ports(**ports)
+            if isinstance(node_data, DynamicNodeAttributes):
+                node_data._data.maps.append(graph_node_attrs)
+                nodes_attrs = node_data
             else:
-                label = node_data.get('label')
-                if shape in {'none', 'plaintext'}:
-                    if not label:
-                        raise ValueError(f"A label must be provided for when using 'none' or 'plaintext' shapes for {nx_node}, {node_data=}")
-                    label = _adjust_graphviz_html_table_label(label)
-                elif not label:
-                    label = str(nx_node)
-
-            item = _Node(
-                label=label,
-                color=nodes_attrs.get("color", ""),
-                fillcolor=nodes_attrs.get("fillcolor", "white"),
-                ports=ports,
-                visible=nodes_attrs.get('style', "") != "invis",
-            )
+                nodes_attrs = ChainMap(node_data, graph_node_attrs)
+            item = _Node(node_name=nx_node, node_data=nodes_attrs)
             item.linkActivated.connect(self._graph_url_changed)
             self.scene().addItem(item)
             return item
@@ -784,6 +802,8 @@ class GraphView(_GraphicsViewport):
         max_y = max(pos[1] for pos in positions.values())
         for nx_node in graph:
             self._nodes_map[nx_node] = node = _add_node(nx_node)
+            node.setZValue(len(self._nodes_map))
+            print(f"{node.zValue()=}")
             x_pos, y_pos = positions[nx_node]
             # SVG and dot have inverted coordinates, let's flip Y
             y_pos = max_y - y_pos
