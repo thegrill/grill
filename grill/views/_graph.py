@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import math
 import enum
+import sys
 import typing
 import logging
 import tempfile
@@ -1032,8 +1033,12 @@ _BG_CELL_COLOR = "#FFFFFF"
 
 from dataclasses import dataclass
 
+_item_cls_kwargs = dict(frozen=True)
+if sys.version_info.minor > 9:
+    _item_cls_kwargs.update(slots=True)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(**_item_cls_kwargs)
 class _TableItem:
     lod: _NodeLOD.HIGH
     padding: int
