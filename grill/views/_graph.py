@@ -301,7 +301,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._target_port = target_port
         self._is_source_port_used = source_port is not None
         self._is_target_port_used = target_port is not None
-        self._is_cycle = source == target
+        self._is_cycle = source == target and ((source_port == target_port) or (target_port is None))
 
         self._port_positions = {}
 
@@ -312,7 +312,10 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._arrow_size = 15
         self._bidirectional_shift = 20 if is_bidirectional else 0
         self._line = QtCore.QLineF()
-        self.setZValue(-1)
+        if self._is_source_port_used and self._is_target_port_used:
+            self.setZValue(source.zValue())
+        else:
+            self.setZValue(-1)
 
         self._spline_path = QtGui.QPainterPath() if (self._is_source_port_used or self._is_target_port_used) else None
 
@@ -389,7 +392,10 @@ class _Edge(QtWidgets.QGraphicsItem):
         is_source_port_used = self._is_source_port_used
         is_target_port_used = self._is_target_port_used
         source_side = source_on_left if is_source_port_used else None
-        target_side = not source_side if is_target_port_used else None
+        if self._source == self._target:
+            target_side = source_side if is_target_port_used else None
+        else:
+            target_side = not source_side if is_target_port_used else None
         source_point = source_pos + self._port_positions[self._source, self._source_port][source_side]
         target_point = target_pos + self._port_positions[self._target, self._target_port][target_side]
 
@@ -423,11 +429,15 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._line = line = QtCore.QLineF(source_point, target_point)
         if self._spline_path:
             length = line.length()
+            # if self._source == self._target:
+            #     falloff = 2
+            # else:
+            #     falloff = (length / 100) ** 2 if length < 100 else 1
             falloff = (length / 100) ** 2 if length < 100 else 1
             control_point_shift = (1 if source_on_left else -1) * 75 * falloff
 
             control_point1 = source_point + QtCore.QPointF(control_point_shift, 0) if is_source_port_used else source_point
-            control_point2 = target_point + QtCore.QPointF(-control_point_shift, 0) if is_target_port_used else target_point
+            control_point2 = target_point + QtCore.QPointF((-control_point_shift if self._source != self._target else control_point_shift), 0) if is_target_port_used else target_point
 
             self._spline_path = QtGui.QPainterPath()
             self._spline_path.moveTo(source_point)
@@ -783,6 +793,8 @@ class GraphView(_GraphicsViewport):
         for nx_node in graph:
             self._nodes_map[nx_node] = node = _add_node(nx_node)
             node.setZValue(len(self._nodes_map))
+            # print(f"{node=}")
+            # print(f"{node.zValue()=}")
             x_pos, y_pos = positions[nx_node]
             # SVG and dot have inverted coordinates, let's flip Y
             y_pos = max_y - y_pos
