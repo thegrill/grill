@@ -110,6 +110,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
         port_by_spec_path = {}  # {SdfPath: int}
         upstream_dependencies = dict()  # port_id: [(asset_path, prim_path, color)]
+        internal_dependencies = dict()  # port_id: [(prim_path, color)]
         all_items = {}  # port_index: _TableItem
 
         def item_collector(path):
@@ -172,12 +173,15 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                                 info_attrs = attrs
                             all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, ", ".join(items), info_attrs)
                     elif isinstance(info_value, Sdf.PathListOp):
+                        port_index = next(item_counter)
                         color = {"fontcolor": fontcolor,}
                         if info_key in _EDGE_COLORS:
                             color = _EDGE_COLORS[info_key]
                         if items:=info_value.GetAddedOrExplicitItems():
                             info_attrs = collections.ChainMap(color, attrs)
-                            all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, "\n".join(map(str, items)), info_attrs)
+                            all_items[port_index] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, "\n".join(map(str, items)), info_attrs)
+                            for each_item in items:
+                                internal_dependencies.setdefault(port_index, []).append((each_item, color))
                     elif isinstance(info_value, dict):
                         if info_key == "variantSelection":
                             info_attrs = collections.ChainMap(dict(fontcolor=_EDGE_COLORS[info_key]['color']), attrs)
@@ -246,6 +250,20 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         layer.Traverse(layer.pseudoRoot.path, item_collector)
 
         self.add_node(node_id)
+
+        def _add_edge(src_node, src_port, tgt_node, tgt_port, attrs):
+            # TODO: add composition arc to the key
+            tailport = f"C1R{src_port}"
+            headport = f"C0R{tgt_port}" if tgt_port is not None else None
+            self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
+
+        for source_port, dependencies in internal_dependencies.items():
+            for spec_path, color in dependencies:
+                if spec_path not in port_by_spec_path:
+                    continue
+                target_port = port_by_spec_path[spec_path]
+                _add_edge(node_id, source_port, node_id, target_port, color)
+
         self.add_edges_from(edges)  # internal edges
         self.nodes[node_id]._data.update(
             layer=layer,
@@ -375,8 +393,8 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
         nodes_to_view = graph.nodes
     else:
         nodes_to_view = root_nodes
-    # for cls in _graph._GraphSVGViewer,:
-    for cls in _graph.GraphView, _graph._GraphSVGViewer:
+    # for cls in _graph.GraphView, _graph._GraphSVGViewer:
+    for cls in _graph.GraphView,:
         print(f"initializing {cls}")
         child = cls(parent=widget)
         child._graph = graph
@@ -464,6 +482,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:/write/code/git/easy-edgedb/chapter10/assets/dracula-3d-Model-City-rnd-main-Bistritz-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
@@ -579,7 +598,7 @@ if __name__ == "__main__":
     # 4. All nodes / edges need to be computed for SVG
     # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
-    widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
+    widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
     # widget.
     profiler.stop()
     profiler.print()
