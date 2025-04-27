@@ -258,6 +258,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
 
         for source_port, dependencies in internal_dependencies.items():
+            # TODO: does not work yet with LOD
+            continue
             for spec_path, color in dependencies:
                 if spec_path not in port_by_spec_path:
                     continue
