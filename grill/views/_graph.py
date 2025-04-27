@@ -132,20 +132,20 @@ class _Node(QtWidgets.QGraphicsTextItem):
     def __repr__(self):
         return f"{type(self).__name__}({self._name})"
 
-    # Note: keep 'label' as an argument to use as much as possible as-is for clients to provide their own HTML style
     def __init__(self, node_name, node_data, parent=None):
         """
-        ports: Tuple of graphviz port names
+        node_name in the networkx graph
+        node_data from the networkx graph
         """
         super().__init__(parent)
         self._name = node_name
-        ports = node_data.get('ports', ())
         if hasattr(node_data, "_lods"):
             # these are all the possible ports, while _ports may have only
-            ports = node_data._lods[_NodeLOD.HIGH]['ports']
+            ports = node_data._data['ports'][node_data.lod]
         else:
             ports = node_data.get('ports', ())
-        # nodes_attrs = ChainMap(node_data, graph_node_attrs)
+            ports = dict(zip(ports, range(len(ports))))
+
         if (shape := node_data.get('shape')) == 'record':
             try:
                 label = node_data['label']
@@ -156,11 +156,12 @@ class _Node(QtWidgets.QGraphicsTextItem):
                 raise ValueError(
                     f"record 'shape' and 'ports' are mutually exclusive, pick one for node: '{node_name}' with data: {node_data}")
             try:
-                ports = _get_ports_from_label(label)
+                port_items = _get_ports_from_label(label)
             except ValueError as exc:
                 raise ValueError(
                     f"In order to use the 'record' shape, a record 'label' in the form of: '{{<port1>text1|<port2>text2}}' must be used") from exc
-            label = _get_html_table_from_ports(**ports)
+            label = _get_html_table_from_ports(**port_items)
+            ports = dict(zip(ports, range(len(ports))))
         else:
             label = node_data.get('label')
             if shape in {'none', 'plaintext'}:
@@ -177,7 +178,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
         self._data = node_data
         self._edges = {}  # {Edge: port_identifier}
-        self._ports = dict(zip(ports, range(len(ports)))) or {}  # {port_graphviz_identifier: index_for_edge_connectivity}
+        self._ports = ports  # {port_graphviz_identifier: index_for_edge_connectivity}
         self._active_ports_by_side = dict()  # {port_name: {left[int]: {}, right[int]: {}}
         self._port_items = {}  # {port_name: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
@@ -240,13 +241,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
         return super().paint(painter, option, widget)
 
     def add_edge(self, edge: _Edge, port):
-        if hasattr(self._data, "_lods"):
-            # these are all the possible ports, while _ports may have only
-            ports = self._data._lods[_NodeLOD.HIGH]['ports']
-        else:
-            ports = self._ports
-
-        if port is not None and port not in ports:
+        if port is not None and port not in (ports:=self._ports):
             raise KeyError(f"{port=} does not exist on {ports=}")
         self._edges[edge] = port
 
@@ -311,7 +306,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._port_positions = {}
 
         for node, port in (source, source_port), (target, target_port):
-            self._update_port_position(node, port)
+            self._update_plug_position_for_port(node, port)
 
         self._width = 1.5
         self._arrow_size = 15
@@ -337,7 +332,7 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         self.adjust()
 
-    def _update_port_position(self, node, port):
+    def _update_plug_position_for_port(self, node, port):
         # TODO: this is the main reason of why Node._ports has {port: index}. See if it can be removed
         is_cycle = self._is_cycle
         bounds = node.boundingRect()
@@ -349,12 +344,8 @@ class _Edge(QtWidgets.QGraphicsItem):
             return
 
         outer_shift = 10  # surrounding rect has ~5 px top and bottom
-        max_port_idx = len(node._ports)
-
-        if len(node._ports) == 1:
-            port_index = next(iter(node._ports.values()))
-        else:
-            port_index = node._ports[port]
+        max_port_idx = max(node._ports.values()) + 1
+        port_index = node._ports[port]
 
         port_size = (bounds.height() - outer_shift) / max_port_idx
         y_pos = (port_index * port_size) + (port_size / 2) + (outer_shift / 2)
@@ -590,13 +581,10 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
             event.accept()
         elif event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.NoModifier:
             self._rubber_band.hide()
-            print("\nSELECTED:")
             for item in self._get_items_in_rubber_band():
                 item.setSelected(True)
-                print(item)
             if clicked_item:=self.itemAt(event.pos()):
                 clicked_item.setSelected(True)
-                print(clicked_item)
 
         return super().mouseReleaseEvent(event)
 
@@ -668,36 +656,24 @@ class GraphView(_GraphicsViewport):
         self.view((key,))
 
     def setLOD(self, node_indices, lod: _NodeLOD):
-        print(f"Setting LOD")
-        print(f"{locals()}")
         nodes_map = self._nodes_map
         graph = self._graph
         for node_id in node_indices:
-            qnode = nodes_map[node_id]
-            # keep track of current ports in qnode
-            # edge ports are the actual KEYS
-            current_ports = qnode._ports
-
             node_data = graph.nodes[node_id]
             assert node_data.lod
-            node_data.lod = lod
+            if node_data.lod == lod:  # nothing to change
+                continue
+            qnode = nodes_map[node_id]
+            node_data.lod = lod  # switches attributes below
 
-            new_ports = node_data['ports']
-            if len(new_ports) == 1:
-                qnode._ports = new_ports_dict = dict.fromkeys(new_ports, 0)
-            else:
-                qnode._ports = new_ports_dict = dict(zip(new_ports, range(len(new_ports))))
+            qnode._ports = node_data._data['ports'][lod]
 
             label = node_data['label']
             label = _adjust_graphviz_html_table_label(label)
+            # large items display the old label until forcing a re-draw. Clearing the cache seems the most reliable fix
+            qnode.setCacheMode(QtWidgets.QGraphicsItem.NoCache)
             qnode.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
-
-            old_active_ports_by_side = dict(qnode._active_ports_by_side)
-            old_port_items = dict(qnode._port_items)
-
-            ports_to_move = dict()  # old: new
-
-            qt_edges = qnode._edges
+            qnode.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
             for edge in qnode._edges:
                 for neighbor, port in (
@@ -705,11 +681,7 @@ class GraphView(_GraphicsViewport):
                         (edge._target, edge._target_port),
                 ):
                     if qnode is neighbor:
-                        ports_to_move.setdefault(edge, []).append(port)
-
-            for edge, ports in ports_to_move.items():
-                for each_port in ports:
-                    edge._update_port_position(qnode, each_port)
+                        edge._update_plug_position_for_port(qnode, port)
 
             for edge in qnode._edges:
                 edge.adjust()
@@ -773,15 +745,22 @@ class GraphView(_GraphicsViewport):
             return
 
         try:  # exit early if pydot is not installed, needed for positions
-            positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
-        except ImportError as exc:
-            message = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
-            print(message)
-            text_item = QtWidgets.QGraphicsTextItem()
-            text_item.setPlainText(message)
-            text_item.setTextInteractionFlags(_default_text_interaction)
-            self.scene().addItem(text_item)
-            return
+            positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+        except ImportError as pygraphviz_exc:
+            print("pygraphviz not found, trying pydot as a fallback")
+            try:
+                # TODO: this call is very slow for large graphs (~4k nodes),
+                #   ideally this can be sped up by a nx backend or another library
+                #   viewing same graph in SVG is faster, so even calling dot directly (instead of pydot) could be it
+                positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
+            except ImportError as pydot_exc:
+                message = f"{pygraphviz_exc}\n\n{pydot_exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+                print(message)
+                text_item = QtWidgets.QGraphicsTextItem()
+                text_item.setPlainText(message)
+                text_item.setTextInteractionFlags(_default_text_interaction)
+                self.scene().addItem(text_item)
+                return
 
         print("LOADING GRAPH")
         self._nodes_map.clear()
@@ -804,7 +783,6 @@ class GraphView(_GraphicsViewport):
         for nx_node in graph:
             self._nodes_map[nx_node] = node = _add_node(nx_node)
             node.setZValue(len(self._nodes_map))
-            print(f"{node.zValue()=}")
             x_pos, y_pos = positions[nx_node]
             # SVG and dot have inverted coordinates, let's flip Y
             y_pos = max_y - y_pos
@@ -997,9 +975,17 @@ class _GraphSVGViewer(_DotViewer):
         fd, fp = tempfile.mkstemp()
         try:
             with open(fp, "w", encoding="utf-8") as fobj:
-                nx.nx_pydot.write_dot(subgraph, fobj)
-        except ImportError as exc:
-            error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+                nx.nx_agraph.write_dot(subgraph, fobj)
+        except ImportError as pygraphviz_exc:
+            print("Could not write with pygraphviz. Attempting pydot.")
+            error = f"{pygraphviz_exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+            try:
+                with open(fp, "w", encoding="utf-8") as fobj:
+                    nx.nx_pydot.write_dot(subgraph, fobj)
+            except ImportError as pydot_exc:
+                error = f"{pygraphviz_exc}\n\n{error}"
+            else:
+                error = ""
         else:
             error = ""
         return error, fp
@@ -1042,25 +1028,21 @@ if sys.version_info.minor > 9:
 class _TableItem:
     lod: _NodeLOD.HIGH
     padding: int
-    port_index: int
     key: str
     value: str
     display_attributes: dict
 
 
-def _to_table(items: list[_TableItem]):
-    span = max(x.padding for x in items) + 2
+def _to_table(items: dict[int, _TableItem]):
+    span = max(x.padding for x in items.values()) + 2
     width = 50
-    # for index, (LOD, padding, internal_index, key, value, attrs) in enumerate(items):
-    for index, item in enumerate(items):
-        LOD = item.lod
+    for port_index, item in items.items():
         padding = item.padding
-        internal_index = item.port_index
         key = item.key
         value = item.value
         attrs = item.display_attributes
-        key_port = f"C0R{internal_index}"
-        value_port = f"C1R{internal_index}"
+        key_port = f"C0R{port_index}"
+        value_port = f"C1R{port_index}"
 
         more_attrs = ''
         if bgcolor:=attrs.get("bgcolor"):
@@ -1122,7 +1104,7 @@ def _to_table(items: list[_TableItem]):
             )
         display_entry = f'{key_entry}{value_entry}'
         row = f'<TR>{identation_entry}{display_entry}{tail_entry}</TR>'
-        yield row
+        yield port_index, row
 ###
 
 if _GRAPHV_VIEW_VIA_SVG:
