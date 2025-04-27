@@ -1,11 +1,9 @@
 """
 TODO:
- - Compute all ports upon Node initialization
- - Include all upstream dependencies ports in MID, even if they are not expanded yet
  - perfrig and assembly fragments from the stoat display artifacts on plugged ports when switching LODs
  - Internal edges
  - Button for autolayout
- - ensure initializing the graph as "low" > "mid" > "high" works OK
+ - Avoid loading / instantiating nodes already loaded when expanding dependencies
 
 """
 import collections
@@ -18,7 +16,7 @@ import networkx as nx
 from pxr import Pcp, Sdf, Ar, Tf
 
 from ._qt import QtWidgets, QtCore
-from . import _graph, description
+from . import _graph, description, _core
 
 
 _TOTAL_SPAN = _graph._TOTAL_SPAN
@@ -65,15 +63,14 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
     def _expand_dependencies(self, keys, *, recursive=False):
         resolver_context = self._resolver_context
-        edges = list()
         current_nodes = set(self.nodes)
         nodes_added = set()
-        def _add_edges(src_node, src_port, tgt_node, tgt_port, attrs):
-            edges.append((src_node, tgt_node, {
-                "tailport": f"C1R{src_port}",
-                "headport": f"C0R{tgt_port}" if tgt_port is not None else None,
-                **attrs,
-            }))
+
+        def _add_edge(src_node, src_port, tgt_node, tgt_port, attrs):
+            # TODO: add composition arc to the key
+            tailport = f"C1R{src_port}"
+            headport = f"C0R{tgt_port}" if tgt_port is not None else None
+            self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
 
         def _handle_upstream_dependency(anchor, spec_index, asset_path, spec_path, edge_attrs):
             if not (dependency_layer := _find_layer(asset_path, anchor, resolver_context)):
@@ -83,15 +80,9 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             nodes_added.add(node_added)
             if recursive:
                 nodes_added.update(self._expand_dependencies({node_added}, recursive=True))
-            _add_edges(
-                key,
-                spec_index,
-                node_added,
-                self.nodes[node_added]._data['visited_layer_spec_path_ports'][
-                    spec_path or dependency_layer.defaultPrim
-                    ],
-                edge_attrs
-            )
+
+            target_port = self.nodes[node_added]._data['visited_layer_spec_path_ports'][spec_path or dependency_layer.defaultPrim]
+            _add_edge(key, spec_index, node_added, target_port, edge_attrs)
 
         for key in keys:
             anchor = self.nodes[key]._data['layer']
@@ -100,7 +91,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 for dependency_info in port_dependencies:
                     _handle_upstream_dependency(anchor, port_with_dependency, *dependency_info)
 
-        self.add_edges_from(edges)
         for node in nodes_added - current_nodes:
             self._prepare_for_display(node)
         return nodes_added
@@ -120,9 +110,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
         port_by_spec_path = {}  # {SdfPath: int}
         upstream_dependencies = dict()  # port_id: [(asset_path, prim_path, color)]
-
-        # TODO: have item entries declare their LOD level, rather than 3 lists
-        all_items = []  # [(LOD, ...)]
+        all_items = {}  # port_index: _TableItem
 
         def item_collector(path):
             """Increase counter and add collected path to port_by_spec_path when:
@@ -150,7 +138,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 padding = len(prefixes)
 
             def _add_separator(items, LOD):
-                items.append(_graph._TableItem(LOD, 0, next(item_counter), "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR}))
+                items[next(item_counter)] = _graph._TableItem(LOD, 0, "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR})
 
             if path.IsPrimPath():
                 port_by_spec_path[path] = this_spec_index = next(item_counter)  # layer_ID: {path: int}
@@ -164,14 +152,12 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                     elif info_key == "specifier":
                         ... # change font?
                     elif isinstance(info_value, str):
-                        all_items.append(
-                            _graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, info_value, attrs)
-                        )
+                        all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, info_value, attrs)
                     elif isinstance(info_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
                         port_index = next(item_counter)
                         color = _EDGE_COLORS[type(info_value)]
                         info_attrs = collections.ChainMap(color, attrs)
-                        all_items.append(_graph._TableItem(_graph._NodeLOD.MID, padding, port_index, info_key, "@...@", info_attrs))
+                        all_items[port_index]= _graph._TableItem(_graph._NodeLOD.MID, padding, info_key, "@...@", info_attrs)
                         for dependency_arc in info_value.GetAddedOrExplicitItems():
                             dependency_path = dependency_arc.assetPath
                             if not dependency_path:
@@ -184,14 +170,14 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                                 info_attrs = collections.ChainMap(dict(fontcolor=_EDGE_COLORS[info_key]['color']), attrs)
                             else:
                                 info_attrs = attrs
-                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, ", ".join(items), info_attrs))
+                            all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, ", ".join(items), info_attrs)
                     elif isinstance(info_value, Sdf.PathListOp):
                         color = {"fontcolor": fontcolor,}
                         if info_key in _EDGE_COLORS:
                             color = _EDGE_COLORS[info_key]
                         if items:=info_value.GetAddedOrExplicitItems():
                             info_attrs = collections.ChainMap(color, attrs)
-                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, "\n".join(map(str, items)), info_attrs))
+                            all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, "\n".join(map(str, items)), info_attrs)
                     elif isinstance(info_value, dict):
                         if info_key == "variantSelection":
                             info_attrs = collections.ChainMap(dict(fontcolor=_EDGE_COLORS[info_key]['color']), attrs)
@@ -201,16 +187,16 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                         display_dict = collections.ChainMap(display_overrides, info_value)
                         if "identifier" in info_value:
                             display_overrides['identifier'] = "..."  # identifiers may have the same name as our top row and are long
-                        all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, pformat(dict(display_dict)), info_attrs))
+                        all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, pformat(dict(display_dict)), info_attrs)
                     elif isinstance(info_value, list):
-                        all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", attrs))
+                        all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, f"[{len(info_value)} entries]", attrs)
                     else:
-                        all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, (str(info_value)), attrs))
+                        all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, (str(info_value)), attrs)
                 prim_attrs = {
                     'bgcolor': "#76B900",  # nvidia's green
                     'fontcolor': _BG_CELL_COLOR,  # white
                 }
-                all_items.append(_graph._TableItem(_graph._NodeLOD.MID, padding, this_spec_index, spec.name, str(typeName), prim_attrs))
+                all_items[this_spec_index] = _graph._TableItem(_graph._NodeLOD.MID, padding, spec.name, str(typeName), prim_attrs)
 
             elif path.IsAbsoluteRootPath():
                 pseudoRoot = layer.pseudoRoot
@@ -227,33 +213,33 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                             continue
                         if info_key == "subLayers":
                             this_index = next(item_counter)
-                            all_items.append(_graph._TableItem(_graph._NodeLOD.MID, 0, this_index, info_key, f"@...@", {
+                            all_items[this_index] = _graph._TableItem(_graph._NodeLOD.MID, 0, info_key, f"@...@", {
                                     "bgcolor": _BG_CELL_COLOR,
                                     "fontcolor": "#8F8F8F",
-                                }))
+                                })
                             edge_color = _EDGE_COLORS[info_key]
                             for sublayer in info_value:
                                 upstream_dependencies.setdefault(this_index, []).append((sublayer, path, edge_color))
                         elif isinstance(info_value, list):
-                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, padding, next(item_counter), info_key, f"[{len(info_value)} entries]", {
+                            all_items[next(item_counter)] = _graph._TableItem(_graph._NodeLOD.HIGH, padding, info_key, f"[{len(info_value)} entries]", {
                                 "bgcolor": _BG_CELL_COLOR,
                                 "fontcolor": "#8F8F8F",
-                            }))
+                            })
                         else:
                             this_index = next(item_counter)
-                            all_items.append(_graph._TableItem(_graph._NodeLOD.HIGH, 0, this_index, info_key, str(info_value), {
+                            all_items[this_index] = _graph._TableItem(_graph._NodeLOD.HIGH, 0, info_key, str(info_value), {
                                     "bgcolor": _BG_CELL_COLOR,
                                     "fontcolor": "#8F8F8F",
-                                }))
+                                })
                             if info_key == "defaultPrim":
                                 port_by_spec_path[layer.defaultPrim] = this_index  # layer_ID: {path: int}
                     _add_separator(all_items, _graph._NodeLOD.MID)
 
                 this_spec_index = next(item_counter)
-                all_items.append(_graph._TableItem(_graph._NodeLOD.LOW, 0, this_spec_index, layer.GetDisplayName(), _TOTAL_SPAN, {
+                all_items[this_spec_index] = _graph._TableItem(_graph._NodeLOD.LOW, 0, layer.GetDisplayName(), _TOTAL_SPAN, {
                     'bgcolor':_BG_SPACE_COLOR,
                     'fontcolor': "#6C6C6C",
-                }))
+                })
 
                 port_by_spec_path[path] = this_spec_index  # layer_ID: {path: int}
 
@@ -263,7 +249,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         self.add_edges_from(edges)  # internal edges
         self.nodes[node_id]._data.update(
             layer=layer,
-            items=all_items,
+            items=dict(reversed(all_items.items())),
             dependencies=upstream_dependencies,
             visited_layer_spec_path_ports=port_by_spec_path,
         )
@@ -275,8 +261,10 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         all_items = self.nodes[node_id]._data['items']
         upstream_dependencies = self.nodes[node_id]._data['dependencies']
 
+        high_ports = dict()
         high_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _graph._to_table(list(reversed(all_items))):
+        for row_index, (port_id, row) in enumerate(_graph._to_table(all_items)):
+            high_ports[port_id] = row_index
             high_lod_label += row
         high_lod_label += '</table>>'
 
@@ -289,22 +277,32 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                     headport_key = int(headport_key.removeprefix("C0R"))
                 ports_of_interest.add(headport_key)
 
-        mid_items = [i for i in all_items if ((i.lod in _graph._NodeLOD.LOW | _graph._NodeLOD.MID) and (i.port_index in upstream_dependencies)) or (i.value == _TOTAL_SPAN) or i.port_index in ports_of_interest]
+        mid_ports = dict()
+        mid_items = {index: item for index, item in all_items.items() if ((item.lod in _graph._NodeLOD.LOW | _graph._NodeLOD.MID) and (index in upstream_dependencies)) or (item.value == _TOTAL_SPAN) or index in ports_of_interest}
         mid_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _graph._to_table(list(reversed(mid_items))):
+        for row_index, (port_id, row) in enumerate(_graph._to_table(mid_items)):
+            mid_ports[port_id] = row_index
             mid_lod_label += row
         mid_lod_label += '</table>>'
 
-        low_items = [i for i in all_items if i.lod == _graph._NodeLOD.LOW]
+        low_ports = dict.fromkeys(mid_ports, 0)  # mid ports has all external connectsion, low collapses all of them
+        low_items = {index: item for index, item in all_items.items() if item.lod == _graph._NodeLOD.LOW}
         low_lod_label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
-        for row in _graph._to_table(list(reversed(low_items))):
+        for __, row in _graph._to_table(low_items):
             low_lod_label += row
         low_lod_label += '</table>>'
 
+        self.nodes[node_id]._data.update(
+            ports={
+                _graph._NodeLOD.HIGH:high_ports,
+                _graph._NodeLOD.MID:mid_ports,
+                _graph._NodeLOD.LOW:low_ports,
+            }
+        )
         # high: full asset structure
         self.nodes[node_id]._lods[_graph._NodeLOD.HIGH].update(
             label=high_lod_label,
-            ports=list(reversed([x.port_index for x in all_items])),  # all rows in the entries
+            ports='',
             layer='',
             items='',
             dependencies='',
@@ -313,7 +311,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # mid: only items with plugs
         self.nodes[node_id]._lods[_graph._NodeLOD.MID].update(
             label=mid_lod_label,
-            ports=list(reversed([x.port_index for x in mid_items])),
+            ports='',
             layer='',
             items='',
             dependencies='',
@@ -322,7 +320,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # low: only layer label
         self.nodes[node_id]._lods[_graph._NodeLOD.LOW].update(
             label=low_lod_label,
-            ports=list(reversed([x.port_index for x in low_items])),
+            ports='',
             layer='',
             items='',
             dependencies='',
@@ -341,14 +339,18 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
     splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
     def _expand_dependencies(graph_view, recursive):
-        selection = set(graph_view.scene().selectedItems())
-        selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
-        if selection_keys:
-            nodes_added = graph._expand_dependencies(selection_keys, recursive=recursive)
-            if recursive:
-                selection_keys.update(nodes_added)
-        next_to_view = set(graph_view._viewing).union(selection_keys)
-        graph_view.view(next_to_view)
+        with _core.wait():
+            selection = set(graph_view.scene().selectedItems())
+            selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
+            if selection_keys:
+                nodes_added = graph._expand_dependencies(selection_keys, recursive=recursive)
+                if recursive:
+                    selection_keys.update(nodes_added)
+                if not nodes_added:
+                    print("Nothing new to view")
+                    return
+                next_to_view = set(graph_view._viewing).union(selection_keys)
+                graph_view.view(next_to_view)
 
     def _set_lod(graph_view, lod):
         selection = set(graph_view.scene().selectedItems())
@@ -368,12 +370,17 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
             raise RuntimeError(error)
         print(f"Exported to {svg_fp}")
 
-    # for cls in _graph.GraphView, _graph._GraphSVGViewer:
-    for cls in _graph.GraphView,:
+    if recursive:
+        graph._expand_dependencies(root_nodes, recursive=recursive)
+        nodes_to_view = graph.nodes
+    else:
+        nodes_to_view = root_nodes
+    # for cls in _graph._GraphSVGViewer,:
+    for cls in _graph.GraphView, _graph._GraphSVGViewer:
+        print(f"initializing {cls}")
         child = cls(parent=widget)
         child._graph = graph
         if cls == _graph._GraphSVGViewer:
-            nodes_to_view = graph.nodes
             widget_on_splitter = child
         else:
             widget_on_splitter = QtWidgets.QFrame()
@@ -406,49 +413,34 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
             widget_on_splitter_layout.addWidget(graph_controls_frame)
             widget_on_splitter_layout.addWidget(child)
             widget_on_splitter.setLayout(widget_on_splitter_layout)
-            if recursive:
-                graph._expand_dependencies(root_nodes, recursive=recursive)
-                nodes_to_view = graph.nodes
-            else:
-                nodes_to_view = root_nodes
-            # nodes_to_view = graph.nodes
+
+        print(f"Viewing {len(nodes_to_view)}")
         child.view(nodes_to_view)
-        print(f"{nodes_to_view=}")
-
-
-        ### This fails with a keyerror atm
-        # Traceback (most recent call last):
-        #   File "A:\write\code\git\grill\grill\views\_diagrams.py", line 353, in _expand_dependencies
-        #     graph_view.view(next_to_view)
-        #     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
-        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 690, in view
-        #     self._load_graph(subgraph)
-        #     ~~~~~~~~~~~~~~~~^^^^^^^^^^
-        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 820, in _load_graph
-        #     edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
-        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 248, in __init__
-        #     source.add_edge(self, source_port)
-        #     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
-        #   File "A:\write\code\git\grill\grill\views\_graph.py", line 203, in add_edge
-        #     raise KeyError(f"{port=} does not exist on {self._ports=}")
-        # KeyError: 'port=1 does not exist on self._ports={5: 0}'
-        
-        # TODO: make this a test
-        child.setLOD(root_nodes, _graph._NodeLOD.LOW)
+        print(f"finished initializing {cls}")
+        child.setMinimumWidth(150)
+        splitter.addWidget(widget_on_splitter)
+        continue
+        # TODO: make the below a test
+        if hasattr(child, "setLOD"):
+            child.setLOD(root_nodes, _graph._NodeLOD.LOW)
         nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
         new_nodes_to_view=set(root_nodes).union(nodes_added)
 
-        nodes_added = graph._expand_dependencies([1], recursive=False)
+        # TODO: update view once dependencies have been updated from code
+        nodes_added = graph._expand_dependencies(nodes_added, recursive=False)
         new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
 
+        child.view(new_nodes_to_view)  # calling this after setLOD fails
+        if hasattr(child, "setLOD"):
+            child.setLOD([1], _graph._NodeLOD.LOW)
+            child.setLOD(nodes_added, _graph._NodeLOD.MID)
+
+        nodes_added = graph._expand_dependencies(new_nodes_to_view, recursive=False)
+        new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
         child.view(new_nodes_to_view)
-        ###
-        child.setMinimumWidth(150)
-        splitter.addWidget(widget_on_splitter)
 
     layout = QtWidgets.QHBoxLayout()
     layout.addWidget(splitter)
-    print("Showing window")
     widget.setLayout(layout)
     widget.show()
     return widget
@@ -543,10 +535,10 @@ if __name__ == "__main__":
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     app = QtWidgets.QApplication([])
 
-    # print("Loading asset structure")
-    # from pyinstrument import Profiler
-    # profiler = Profiler()
-    # profiler.start()
+    print("Loading asset structure")
+    from pyinstrument import Profiler
+    profiler = Profiler()
+    profiler.start()
     # graph, root_nodes = _asset_structure_graph(layer)
 
     # widget = QtWidgets.QFrame()
@@ -587,10 +579,222 @@ if __name__ == "__main__":
     # 4. All nodes / edges need to be computed for SVG
     # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
-    widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
+    widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
     # widget.
-    # profiler.stop()
-    # profiler.print()
-    # import pathlib
-    # profiler.write_html(pathlib.Path(__file__).parent / "instrument.html")
+    profiler.stop()
+    profiler.print()
+    import pathlib
+    profiler.write_html(pathlib.Path(__file__).parent / "instrument.html")
     app.exec_()
+
+
+
+    # Creating svg for: C:\Users\CHRIST~1\AppData\Local\Temp\tmpgpqehe7u
+    #
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 19:42:05  Samples:  358936
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 398.849   CPU time: 386.922
+    # /   _/                      v5.0.0
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:541
+    #
+    # 398.849 <module>  grill\views\_diagrams.py:1
+    # └─ 398.849 _launch_asset_structure_browser  grill\views\_diagrams.py:333
+    #    ├─ 367.536 GraphView.view  grill\views\_graph.py:694
+    #    │  └─ 367.526 GraphView._load_graph  grill\views\_graph.py:736
+    #    │     ├─ 347.481 graphviz_layout  networkx\drawing\nx_pydot.py:241
+    #    │     │     [195 frames hidden]  networkx, pydot, pyparsing, subproces...
+    #    │     ├─ 14.197 _add_node  grill\views\_graph.py:795
+    #    │     │  └─ 14.165 _Node.__init__  grill\views\_graph.py:136
+    #    │     │     └─ 13.538 _Node.setHtml  <built-in>
+    #    │     └─ 5.025 _Edge.__init__  grill\views\_graph.py:297
+    #    ├─ 19.050 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  └─ 18.080 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │     └─ 18.056 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │        └─ 17.064 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │           └─ 17.058 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │              └─ 16.069 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                 └─ 16.055 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                    └─ 15.051 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                       └─ 15.033 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                          └─ 13.838 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                             └─ 13.826 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                                └─ 12.792 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                                   └─ 12.768 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                                      └─ 11.762 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                                         └─ 11.735 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                                            └─ 10.711 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                                               └─ 10.696 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                                                  └─ 9.598 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                                                     └─ 9.432 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                                                        └─ 8.512 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                                                           └─ 7.982 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                                                              └─ 7.012 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │                                                                 └─ 5.816 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │                                                                    └─ 4.907 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    └─ 11.369 _GraphSVGViewer.view  grill\views\_graph.py:1010
+    #       └─ 11.369 _GraphSVGViewer._subgraph_dot_path  grill\views\_graph.py:983
+    #          └─ 11.355 func  networkx\utils\decorators.py:787
+    #                [10 frames hidden]  <class 'networkx, networkx, pydot
+    # python=8.8 GB RAM
+    #   7.7 GB AssetStructure Diagram
+    #   1.0 GB QtWebEngine Process
+
+
+    # with pygraphviz:
+    # Creating svg for: C:\Users\CHRIST~1\AppData\Local\Temp\tmpkj44jdgf
+    #
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 20:14:30  Samples:  27421
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 42.551    CPU time: 39.734
+    # /   _/                      v5.0.0
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:541
+    #
+    # 42.550 <module>  grill\views\_diagrams.py:1
+    # └─ 42.550 _launch_asset_structure_browser  grill\views\_diagrams.py:333
+    #    ├─ 22.237 GraphView.view  grill\views\_graph.py:694
+    #    │  └─ 22.226 GraphView._load_graph  grill\views\_graph.py:736
+    #    │     ├─ 10.457 _add_node  grill\views\_graph.py:772
+    #    │     │  └─ 10.455 _Node.__init__  grill\views\_graph.py:136
+    #    │     │     └─ 10.430 _Node.setHtml  <built-in>
+    #    │     ├─ 8.491 graphviz_layout  networkx\drawing\nx_agraph.py:226
+    #    │     │     [7 frames hidden]  networkx, pygraphviz, threading, <bui...
+    #    │     └─ 2.651 _Edge.__init__  grill\views\_graph.py:297
+    #    │        ├─ 1.502 _Edge.adjust  grill\views\_graph.py:384
+    #    │        │  └─ 0.918 _Node._activatePort  grill\views\_graph.py:258
+    #    │        │     └─ 0.728 _add_port_item  grill\views\_graph.py:267
+    #    │        └─ 0.786 [self]  grill\views\_graph.py
+    #    ├─ 17.224 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  ├─ 16.244 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │  └─ 16.241 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     ├─ 15.266 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │  └─ 15.261 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     ├─ 14.254 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │  └─ 14.240 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     ├─ 13.275 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │  └─ 13.259 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     ├─ 12.268 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │  └─ 12.256 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     ├─ 11.284 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │  └─ 11.269 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     ├─ 10.299 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │     │  └─ 10.277 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     ├─ 9.320 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │     │     │  └─ 9.309 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     ├─ 8.358 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │     │     │     │  └─ 8.200 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     ├─ 7.367 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │     │     │     │     │  └─ 6.941 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     ├─ 6.119 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │     │     │     │     │     │  ├─ 5.148 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  ├─ 4.360 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  ├─ 3.443 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  │  └─ 2.923 _handle_upstream_dependency  grill\views\_diagrams.py:76
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  │     ├─ 2.046 _find_layer  grill\views\_diagrams.py:38
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  │     └─ 0.428 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  └─ 0.599 _find_layer  grill\views\_diagrams.py:38
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  └─ 0.549 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │     │     │     │     │     │     │     │  └─ 0.749 _find_layer  grill\views\_diagrams.py:38
+    #    │  │     │     │     │     │     │     │     │     │     │     └─ 0.728 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │     │     │     │     │     │     │        └─ 0.499 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     │     │     │     │     │     │     │     └─ 0.832 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │     │     │     │     │     │        └─ 0.549 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     │     │     │     │     │     │     └─ 0.941 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │     │     │     │     │        └─ 0.611 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     │     │     │     │     │     └─ 0.947 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │     │     │     │        └─ 0.639 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     │     │     │     │     └─ 0.965 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │     │     │        └─ 0.649 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     │     │     │     └─ 0.967 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │     │        └─ 0.635 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     │     │     └─ 0.989 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │     │        └─ 0.664 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     │     └─ 0.960 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │     │        └─ 0.621 _to_table  grill\views\_graph.py:1034
+    #    │  │     │     └─ 1.003 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │     │        └─ 0.633 _to_table  grill\views\_graph.py:1034
+    #    │  │     └─ 0.972 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │  │        └─ 0.642 _to_table  grill\views\_graph.py:1034
+    #    │  └─ 0.976 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:260
+    #    │     └─ 0.624 _to_table  grill\views\_graph.py:1034
+    #    └─ 2.681 _GraphSVGViewer.view  grill\views\_graph.py:990
+    #       └─ 2.680 _GraphSVGViewer._subgraph_dot_path  grill\views\_graph.py:960
+    #          └─ 2.668 write_dot  networkx\drawing\nx_agraph.py:183
+    #                [8 frames hidden]  networkx, pygraphviz
+
+
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 22:13:22  Samples:  23828
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 38.716    CPU time: 35.766
+    # /   _/                      v5.0.1
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:541
+    #
+    # 38.716 <module>  grill\views\_diagrams.py:1
+    # └─ 38.716 _launch_asset_structure_browser  grill\views\_diagrams.py:331
+    #    ├─ 19.722 GraphView.view  grill\views\_graph.py:688
+    #    │  └─ 19.710 GraphView._load_graph  grill\views\_graph.py:730
+    #    │     ├─ 10.318 _add_node  grill\views\_graph.py:769
+    #    │     │  └─ 10.318 _Node.__init__  grill\views\_graph.py:135
+    #    │     │     └─ 10.291 _Node.setHtml  <built-in>
+    #    │     ├─ 7.837 graphviz_layout  networkx\drawing\nx_agraph.py:226
+    #    │     │     [6 frames hidden]  networkx, pygraphviz, threading, <bui...
+    #    │     └─ 1.300 _Edge.__init__  grill\views\_graph.py:292
+    #    │        └─ 0.968 _Edge.adjust  grill\views\_graph.py:379
+    #    │           └─ 0.814 _Node._activatePort  grill\views\_graph.py:253
+    #    │              └─ 0.712 _add_port_item  grill\views\_graph.py:262
+    #    ├─ 17.437 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  ├─ 16.496 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │  └─ 16.494 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     ├─ 15.556 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │  └─ 15.553 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     ├─ 14.581 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │  └─ 14.566 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     ├─ 13.629 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │  └─ 13.616 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     ├─ 12.638 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │  └─ 12.629 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     ├─ 11.660 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │  └─ 11.644 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     ├─ 10.640 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │     │  └─ 10.614 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     ├─ 9.636 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │     │     │  └─ 9.621 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     ├─ 8.613 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │     │     │     │  └─ 8.454 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     ├─ 7.583 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │     │     │     │     │  └─ 7.104 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     ├─ 6.320 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │     │     │     │     │     │  ├─ 5.271 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  ├─ 4.492 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  ├─ 3.534 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  │  └─ 3.067 _handle_upstream_dependency  grill\views\_diagrams.py:75
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  │     ├─ 2.164 _find_layer  grill\views\_diagrams.py:38
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  │     └─ 0.431 _AssetStructureGraph._expand_dependencies  grill\views\_diagrams.py:64
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  │  └─ 0.669 _find_layer  grill\views\_diagrams.py:38
+    #    │  │     │     │     │     │     │     │     │     │     │     │  │  └─ 0.545 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │     │     │     │     │     │     │     │  └─ 0.785 _find_layer  grill\views\_diagrams.py:38
+    #    │  │     │     │     │     │     │     │     │     │     │     └─ 0.702 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │     │     │     │     │     │     │        └─ 0.466 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     │     │     │     │     │     │     │     └─ 0.866 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │     │     │     │     │     │        └─ 0.562 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     │     │     │     │     │     │     └─ 1.002 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │     │     │     │     │        └─ 0.687 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     │     │     │     │     │     └─ 0.972 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │     │     │     │        └─ 0.654 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     │     │     │     │     └─ 1.001 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │     │     │        └─ 0.655 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     │     │     │     └─ 0.963 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │     │        └─ 0.645 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     │     │     └─ 0.975 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │     │        └─ 0.634 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     │     └─ 0.930 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │     │        └─ 0.632 _to_table  grill\views\_graph.py:1035
+    #    │  │     │     └─ 0.968 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │     │        └─ 0.637 _to_table  grill\views\_graph.py:1035
+    #    │  │     └─ 0.935 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │  │        └─ 0.622 _to_table  grill\views\_graph.py:1035
+    #    │  └─ 0.938 _AssetStructureGraph._prepare_for_display  grill\views\_diagrams.py:258
+    #    │     └─ 0.637 _to_table  grill\views\_graph.py:1035
+    #    └─ 1.250 _GraphSVGViewer.view  grill\views\_graph.py:992
+    #       └─ 1.250 _GraphSVGViewer._subgraph_dot_path  grill\views\_graph.py:957
+    #          └─ 1.237 write_dot  networkx\drawing\nx_agraph.py:183
+    #                [2 frames hidden]  networkx, pygraphviz
