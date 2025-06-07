@@ -13,7 +13,7 @@ import mayaUsd
 import maya.OpenMayaUI as omui
 import maya.api.OpenMaya as om
 
-from . import description as _description, sheets as _sheets, create as _create, _core, stats as _stats
+from . import description as _description, sheets as _sheets, create as _create, _core, stats as _stats, _diagrams
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
 
 
@@ -79,6 +79,16 @@ def _connections_viewer():
     return widget
 
 
+def _asset_structure_viewer():
+    usd_proxies = cmds.ls(typ='mayaUsdProxyShape', l=True)
+    stage = next((mayaUsd.ufe.getStage(node) for node in usd_proxies), None)
+    context = stage.GetPathResolverContext()
+    parent_widget = _main_window()
+    layer = stage.GetRootLayer()
+    browser = _diagrams._launch_asset_structure_browser(layer, parent_widget, context)
+    return browser
+
+
 @cache
 def create_menu():
     print(f"Creating The Grill menu.")
@@ -94,6 +104,7 @@ def create_menu():
             ("Prim Composition", _prim_composition),
             ("Connections Viewer", _connections_viewer),
             ("LayerStack Composition", _stage_on_widget(_description.LayerStackComposition)),
+            ("Asset Structure Viewer", _asset_structure_viewer),
             ("Stage Stats", _stage_on_widget(_stats.StageStats, _cache=False)),
     ):
         cmds.menuItem(title, command=partial(show, launcher), parent=menu)
