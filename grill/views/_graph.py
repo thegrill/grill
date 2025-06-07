@@ -665,6 +665,20 @@ class GraphView(_GraphicsViewport):
 
         self.view((key,))
 
+    def keyPressEvent(self, event):
+        selection = set(self.scene().selectedItems())
+        selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
+        print(selection)
+        if (lod_value:={
+            QtCore.Qt.Key_1: _NodeLOD.LOW,
+            QtCore.Qt.Key_2: _NodeLOD.MID,
+            QtCore.Qt.Key_3: _NodeLOD.HIGH,
+        }.get(event.key(), None)):
+            self.setLOD(selection_keys, lod_value)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
     def setLOD(self, node_indices, lod: _NodeLOD):
         nodes_map = self._nodes_map
         graph = self._graph
