@@ -589,12 +589,13 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
             self._dragging = False
             QtWidgets.QApplication.restoreOverrideCursor()
             event.accept()
-        elif event.button() == QtCore.Qt.LeftButton and event.modifiers() == QtCore.Qt.NoModifier:
+        elif event.button() == QtCore.Qt.LeftButton:
             self._rubber_band.hide()
-            for item in self._get_items_in_rubber_band():
-                item.setSelected(True)
-            if clicked_item:=self.itemAt(event.pos()):
-                clicked_item.setSelected(True)
+            if event.modifiers() == QtCore.Qt.NoModifier or event.modifiers() == QtCore.Qt.ShiftModifier:
+                if event.modifiers() == QtCore.Qt.NoModifier:
+                    self.scene().clearSelection()
+                for item in set(self._get_items_in_rubber_band()).union(self.items(event.pos())):
+                    item.setSelected(True)
 
         return super().mouseReleaseEvent(event)
 
