@@ -81,16 +81,26 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
             target_port = self.nodes[node_added]._data['visited_layer_spec_path_ports'][spec_path or dependency_layer.defaultPrim]
             _add_edge(key, spec_index, node_added, target_port, edge_attrs)
+            return node_added
 
+        new_nodes_lods = {}
         for key in keys:
-            anchor = self.nodes[key]._data['layer']
-            dependencies = self.nodes[key]._data['dependencies']
+            source_node = self.nodes[key]
+            anchor_layer = source_node._data['layer']
+            dependencies = source_node._data['dependencies']
+            source_node_lod = source_node.lod
+
             for port_with_dependency, port_dependencies in dependencies.items():
                 for dependency_info in port_dependencies:
-                    _handle_upstream_dependency(anchor, port_with_dependency, *dependency_info)
+                    new_node = _handle_upstream_dependency(anchor_layer, port_with_dependency, *dependency_info)
+                    if new_node:
+                        new_nodes_lods[new_node] = source_node_lod
 
         for node in nodes_added - current_nodes:
             self._prepare_for_display(node)
+            # change LOD last after LOD maps have been initialized (on prepare for display)
+            self.nodes[node].lod = new_nodes_lods[node]
+
         return nodes_added
 
     def _add_node_from_layer(self, layer):
@@ -421,8 +431,6 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             print(f"initializing {cls}")
             child = cls(parent=self)
             child._graph = graph
-            child.setFocusPolicy(QtCore.Qt.StrongFocus)
-            child.setFocus(QtCore.Qt.TabFocusReason)
             self.setFocusProxy(child)
             if cls == _graph._GraphSVGViewer:
                 widget_on_splitter = child
@@ -430,13 +438,13 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
                 widget_on_splitter = QtWidgets.QFrame()
                 graph_controls_frame = QtWidgets.QFrame()
                 graph_controls_layout = QtWidgets.QHBoxLayout()
-                high_btn = QtWidgets.QPushButton("As High")
+                high_btn = QtWidgets.QPushButton("⩩")
                 high_btn.clicked.connect(partial(child._set_lod, _graph._NodeLOD.HIGH))
 
-                mid_btn = QtWidgets.QPushButton("As Mid")
+                mid_btn = QtWidgets.QPushButton("═")
                 mid_btn.clicked.connect(partial(child._set_lod, _graph._NodeLOD.MID))
 
-                low_btn = QtWidgets.QPushButton("As Low")
+                low_btn = QtWidgets.QPushButton("─")
                 low_btn.clicked.connect(partial(child._set_lod, _graph._NodeLOD.LOW))
                 graph_controls_layout.addWidget(low_btn)
                 graph_controls_layout.addWidget(mid_btn)
