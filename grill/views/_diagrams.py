@@ -1,9 +1,7 @@
 """
 TODO:
- - perfrig and assembly fragments from the stoat display artifacts on plugged ports when switching LODs
  - Internal edges
  - Button for autolayout
- - Avoid loading / instantiating nodes already loaded when expanding dependencies
 
 """
 import collections
@@ -349,40 +347,47 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
 
 def _launch_asset_structure_browser(root_layer, parent, resolver_context, recursive=False):
-    print(f"Loading asset structure, {locals()}")
-    graph = _AssetStructureGraph(resolver_context=resolver_context)
-    root_node = graph._add_node_from_layer(root_layer)
-    graph._prepare_for_display(root_node)
-    root_nodes = [root_node]
-    widget = QtWidgets.QDialog(parent=parent)
-    widget.setWindowTitle("Asset Structure Diagram")
-    splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+    widget = _AssetStructureBrowser(root_layer, resolver_context, recursive=recursive, parent=parent)
+    widget.show()
+    return widget
 
-    def _expand_dependencies(graph_view, recursive):
+
+class _AssetStructureGraphView(_graph.GraphView):
+    def keyPressEvent(self, event):
+        selection = set(self.scene().selectedItems())
+        selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
+        print(selection)
+        if event.key() == QtCore.Qt.Key_X:
+            self._expand_dependencies(False)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def _expand_dependencies(self, recursive):
         with _core.wait():
-            selection = set(graph_view.scene().selectedItems())
-            selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
+            selection = set(self.scene().selectedItems())
+            selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
             if selection_keys:
-                nodes_added = graph._expand_dependencies(selection_keys, recursive=recursive)
+                nodes_added = self._graph._expand_dependencies(selection_keys, recursive=recursive)
                 if recursive:
                     selection_keys.update(nodes_added)
                 if not nodes_added:
                     print("Nothing new to view")
                     return
-                next_to_view = set(graph_view._viewing).union(selection_keys)
-                graph_view.view(next_to_view)
+                next_to_view = set(self._viewing).union(selection_keys)
+                self.view(next_to_view)
 
-    def _set_lod(graph_view, lod):
-        selection = set(graph_view.scene().selectedItems())
-        selection_keys = set(k for k, v in graph_view._nodes_map.items() if v in selection)
+    def _set_lod(self, lod):
+        selection = set(self.scene().selectedItems())
+        selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
         if selection_keys:
-            graph_view.setLOD(selection_keys, lod)
+            self.setLOD(selection_keys, lod)
             for node_id in selection_keys:
-                graph_view._nodes_map[node_id].setSelected(True)
+                self._nodes_map[node_id].setSelected(True)
 
-    def _export_svg(graph_view):
+    def _export_svg(self):
         _graph._GraphSVGViewer._subgraph_dot_path.cache_clear()
-        error, dot_path = _graph._GraphSVGViewer._subgraph_dot_path(graph_view, graph_view._viewing)
+        error, dot_path = _graph._GraphSVGViewer._subgraph_dot_path(self, self._viewing)
         if error:
             raise RuntimeError(error)
         error, svg_fp = _graph._dot_2_svg(dot_path)
@@ -390,80 +395,98 @@ def _launch_asset_structure_browser(root_layer, parent, resolver_context, recurs
             raise RuntimeError(error)
         print(f"Exported to {svg_fp}")
 
-    if recursive:
-        graph._expand_dependencies(root_nodes, recursive=recursive)
-        nodes_to_view = graph.nodes
-    else:
-        nodes_to_view = root_nodes
-    # for cls in _graph.GraphView, _graph._GraphSVGViewer:
-    for cls in _graph.GraphView,:
-        print(f"initializing {cls}")
-        child = cls(parent=widget)
-        child._graph = graph
-        if cls == _graph._GraphSVGViewer:
-            widget_on_splitter = child
+
+class _AssetStructureBrowser(QtWidgets.QDialog):
+    def __init__(self, root_layer, resolver_context, recursive=False, parent=None):
+        super().__init__(parent)
+
+
+        print(f"Loading asset structure, {locals()}")
+        self._graph = graph = _AssetStructureGraph(resolver_context=resolver_context)
+        root_node = graph._add_node_from_layer(root_layer)
+        graph._prepare_for_display(root_node)
+        root_nodes = [root_node]
+        self.setWindowTitle("Asset Structure Diagram")
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+
+        if recursive:
+            graph._expand_dependencies(root_nodes, recursive=recursive)
+            nodes_to_view = graph.nodes
         else:
-            widget_on_splitter = QtWidgets.QFrame()
-            graph_controls_frame = QtWidgets.QFrame()
-            graph_controls_layout = QtWidgets.QHBoxLayout()
-            high_btn = QtWidgets.QPushButton("As High")
-            high_btn.clicked.connect(partial(_set_lod, child, _graph._NodeLOD.HIGH))
+            nodes_to_view = root_nodes
+        # for cls in _graph.GraphView, _graph._GraphSVGViewer:
+        # for cls in _graph.GraphView,:
+        for cls in _AssetStructureGraphView,:
+            # for cls in _graph.GraphView,:
+            print(f"initializing {cls}")
+            child = cls(parent=self)
+            child._graph = graph
+            child.setFocusPolicy(QtCore.Qt.StrongFocus)
+            child.setFocus(QtCore.Qt.TabFocusReason)
+            self.setFocusProxy(child)
+            if cls == _graph._GraphSVGViewer:
+                widget_on_splitter = child
+            else:
+                widget_on_splitter = QtWidgets.QFrame()
+                graph_controls_frame = QtWidgets.QFrame()
+                graph_controls_layout = QtWidgets.QHBoxLayout()
+                high_btn = QtWidgets.QPushButton("As High")
+                high_btn.clicked.connect(partial(child._set_lod, _graph._NodeLOD.HIGH))
 
-            mid_btn = QtWidgets.QPushButton("As Mid")
-            mid_btn.clicked.connect(partial(_set_lod, child, _graph._NodeLOD.MID))
+                mid_btn = QtWidgets.QPushButton("As Mid")
+                mid_btn.clicked.connect(partial(child._set_lod, _graph._NodeLOD.MID))
 
-            low_btn = QtWidgets.QPushButton("As Low")
-            low_btn.clicked.connect(partial(_set_lod, child, _graph._NodeLOD.LOW))
-            graph_controls_layout.addWidget(low_btn)
-            graph_controls_layout.addWidget(mid_btn)
-            graph_controls_layout.addWidget(high_btn)
-            graph_controls_layout.addStretch()
-            expand_next_dependencies_btn = QtWidgets.QPushButton("Expand Next Dependencies")
-            expand_next_dependencies_btn.clicked.connect(partial(_expand_dependencies, child, recursive=False))
-            graph_controls_layout.addWidget(expand_next_dependencies_btn)
-            expand_all_dependencies_btn = QtWidgets.QPushButton("Expand All Dependencies")
-            expand_all_dependencies_btn.clicked.connect(partial(_expand_dependencies, child, recursive=True))
-            graph_controls_layout.addWidget(expand_all_dependencies_btn)
-            graph_controls_layout.addStretch()
-            export_svg_btn = QtWidgets.QPushButton("Export SVG")
-            export_svg_btn.clicked.connect(partial(_export_svg, child))
-            graph_controls_layout.addWidget(export_svg_btn)
-            graph_controls_frame.setLayout(graph_controls_layout)
-            widget_on_splitter_layout = QtWidgets.QVBoxLayout()
-            widget_on_splitter_layout.addWidget(graph_controls_frame)
-            widget_on_splitter_layout.addWidget(child)
-            widget_on_splitter.setLayout(widget_on_splitter_layout)
+                low_btn = QtWidgets.QPushButton("As Low")
+                low_btn.clicked.connect(partial(child._set_lod, _graph._NodeLOD.LOW))
+                graph_controls_layout.addWidget(low_btn)
+                graph_controls_layout.addWidget(mid_btn)
+                graph_controls_layout.addWidget(high_btn)
+                graph_controls_layout.addStretch()
+                expand_next_dependencies_btn = QtWidgets.QPushButton("Expand Next Dependencies")
+                # expand_next_dependencies_btn.clicked.connect(partial(_expand_dependencies, child, recursive=False))
+                expand_next_dependencies_btn.clicked.connect(partial(child._expand_dependencies, recursive=False))
+                graph_controls_layout.addWidget(expand_next_dependencies_btn)
+                expand_all_dependencies_btn = QtWidgets.QPushButton("Expand All Dependencies")
+                expand_all_dependencies_btn.clicked.connect(partial(child._expand_dependencies, recursive=True))
+                graph_controls_layout.addWidget(expand_all_dependencies_btn)
+                graph_controls_layout.addStretch()
+                export_svg_btn = QtWidgets.QPushButton("Export SVG")
+                export_svg_btn.clicked.connect(child._export_svg)
+                graph_controls_layout.addWidget(export_svg_btn)
+                graph_controls_frame.setLayout(graph_controls_layout)
+                widget_on_splitter_layout = QtWidgets.QVBoxLayout()
+                widget_on_splitter_layout.addWidget(graph_controls_frame)
+                widget_on_splitter_layout.addWidget(child)
+                widget_on_splitter.setLayout(widget_on_splitter_layout)
 
-        print(f"Viewing {len(nodes_to_view)}")
-        child.view(nodes_to_view)
-        print(f"finished initializing {cls}")
-        child.setMinimumWidth(150)
-        splitter.addWidget(widget_on_splitter)
-        continue
-        # TODO: make the below a test
-        if hasattr(child, "setLOD"):
-            child.setLOD(root_nodes, _graph._NodeLOD.LOW)
-        nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
-        new_nodes_to_view=set(root_nodes).union(nodes_added)
+            print(f"Viewing {len(nodes_to_view)}")
+            child.view(nodes_to_view)
+            print(f"finished initializing {cls}")
+            child.setMinimumWidth(150)
+            splitter.addWidget(widget_on_splitter)
+            continue
+            # TODO: make the below a test
+            if hasattr(child, "setLOD"):
+                child.setLOD(root_nodes, _graph._NodeLOD.LOW)
+            nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
+            new_nodes_to_view = set(root_nodes).union(nodes_added)
 
-        # TODO: update view once dependencies have been updated from code
-        nodes_added = graph._expand_dependencies(nodes_added, recursive=False)
-        new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
+            # TODO: update view once dependencies have been updated from code
+            nodes_added = graph._expand_dependencies(nodes_added, recursive=False)
+            new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
 
-        child.view(new_nodes_to_view)  # calling this after setLOD fails
-        if hasattr(child, "setLOD"):
-            child.setLOD([1], _graph._NodeLOD.LOW)
-            child.setLOD(nodes_added, _graph._NodeLOD.MID)
+            child.view(new_nodes_to_view)  # calling this after setLOD fails
+            if hasattr(child, "setLOD"):
+                child.setLOD([1], _graph._NodeLOD.LOW)
+                child.setLOD(nodes_added, _graph._NodeLOD.MID)
 
-        nodes_added = graph._expand_dependencies(new_nodes_to_view, recursive=False)
-        new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
-        child.view(new_nodes_to_view)
+            nodes_added = graph._expand_dependencies(new_nodes_to_view, recursive=False)
+            new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
+            child.view(new_nodes_to_view)
 
-    layout = QtWidgets.QHBoxLayout()
-    layout.addWidget(splitter)
-    widget.setLayout(layout)
-    widget.show()
-    return widget
+        layout = QtWidgets.QHBoxLayout()
+        layout.addWidget(splitter)
+        self.setLayout(layout)
 
 
 if __name__ == "__main__":
@@ -480,10 +503,10 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Model-Place-rnd-main-GoldenKroneHotel-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\fragment\geo\modelling\book_magazine01\geo_modelling_book_magazine01.usda")
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\mini_test_bed\main-Taxonomy-test.1.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\mini_test_bed\main-Taxonomy-test.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:/write/code/git/easy-edgedb/chapter10/assets/dracula-3d-Model-City-rnd-main-Bistritz-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
-        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
