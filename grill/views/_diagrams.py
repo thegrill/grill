@@ -44,9 +44,8 @@ def _find_layer(path, anchor, resolver_context):
             return layer
 
 
-
 class _AssetStructureGraph(nx.MultiDiGraph):
-    node_attr_dict_factory = lambda self: _graph.DynamicNodeAttributes({}, {}, {})
+    node_attr_dict_factory = lambda self: _graph.DynamicNodeAttributes()
 
     def __init__(self, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
         super().__init__(*args, **kwargs)
@@ -61,7 +60,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
     def _expand_dependencies(self, keys, *, recursive=False):
         resolver_context = self._resolver_context
-        current_nodes = set(self.nodes)
         nodes_added = set()
 
         def _add_edge(src_node, src_port, tgt_node, tgt_port, attrs):
@@ -70,20 +68,20 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             headport = f"C0R{tgt_port}" if tgt_port is not None else None
             self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
 
-        def _handle_upstream_dependency(anchor, spec_index, asset_path, spec_path, edge_attrs):
+        def _handle_upstream_dependency(anchor, spec_index, asset_path, spec_path, edge_attrs, lod):
             if not (dependency_layer := _find_layer(asset_path, anchor, resolver_context)):
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor}")
                 return
             node_added = self._add_node_from_layer(dependency_layer)
+            assert self.nodes[node_added].lod
+            self.nodes[node_added].lod = lod
             nodes_added.add(node_added)
             if recursive:
                 nodes_added.update(self._expand_dependencies({node_added}, recursive=True))
 
             target_port = self.nodes[node_added]._data['visited_layer_spec_path_ports'][spec_path or dependency_layer.defaultPrim]
             _add_edge(key, spec_index, node_added, target_port, edge_attrs)
-            return node_added
 
-        new_nodes_lods = {}
         for key in keys:
             source_node = self.nodes[key]
             anchor_layer = source_node._data['layer']
@@ -92,14 +90,12 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
             for port_with_dependency, port_dependencies in dependencies.items():
                 for dependency_info in port_dependencies:
-                    new_node = _handle_upstream_dependency(anchor_layer, port_with_dependency, *dependency_info)
-                    if new_node:
-                        new_nodes_lods[new_node] = source_node_lod
+                    _handle_upstream_dependency(anchor_layer, port_with_dependency, *dependency_info, source_node_lod)
 
-        for node in nodes_added - current_nodes:
+        # prepare for display once all nodes have been added to the graph, this sets up plug GUI connections
+        # do all visited nodes in case handling upstream dependencies has introduced new edges
+        for node in nodes_added:
             self._prepare_for_display(node)
-            # change LOD last after LOD maps have been initialized (on prepare for display)
-            self.nodes[node].lod = new_nodes_lods[node]
 
         return nodes_added
 
@@ -473,24 +469,34 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             child.setMinimumWidth(150)
             splitter.addWidget(widget_on_splitter)
             continue
-            # TODO: make the below a test
-            if hasattr(child, "setLOD"):
-                child.setLOD(root_nodes, _graph._NodeLOD.LOW)
-            nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
-            new_nodes_to_view = set(root_nodes).union(nodes_added)
-
-            # TODO: update view once dependencies have been updated from code
-            nodes_added = graph._expand_dependencies(nodes_added, recursive=False)
-            new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
-
-            child.view(new_nodes_to_view)  # calling this after setLOD fails
-            if hasattr(child, "setLOD"):
-                child.setLOD([1], _graph._NodeLOD.LOW)
-                child.setLOD(nodes_added, _graph._NodeLOD.MID)
-
-            nodes_added = graph._expand_dependencies(new_nodes_to_view, recursive=False)
-            new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
-            child.view(new_nodes_to_view)
+            # # TODO: make the below a test
+            # if hasattr(child, "setLOD"):
+            #     child.setLOD(root_nodes, _graph._NodeLOD.LOW)
+            #
+            # #### TEST recursive and lod
+            # nodes_added = graph._expand_dependencies(root_nodes, recursive=True)
+            # new_nodes_to_view = set(root_nodes).union(nodes_added)
+            # child.view(new_nodes_to_view)
+            # continue
+            # # new_nodes_to_view = child._expand_dependencies(True)
+            # # print(f"{new_nodes_to_view=}")
+            # # continue
+            # #######
+            # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
+            # new_nodes_to_view = set(root_nodes).union(nodes_added)
+            #
+            # # TODO: update view once dependencies have been updated from code
+            # nodes_added = graph._expand_dependencies(nodes_added, recursive=False)
+            # new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
+            #
+            # child.view(new_nodes_to_view)  # calling this after setLOD fails
+            # if hasattr(child, "setLOD"):
+            #     child.setLOD([1], _graph._NodeLOD.LOW)
+            #     child.setLOD(nodes_added, _graph._NodeLOD.MID)
+            #
+            # nodes_added = graph._expand_dependencies(new_nodes_to_view, recursive=False)
+            # new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
+            # child.view(new_nodes_to_view)
 
         layout = QtWidgets.QHBoxLayout()
         layout.addWidget(splitter)
@@ -514,10 +520,10 @@ if __name__ == "__main__":
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\mini_test_bed\main-Taxonomy-test.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:/write/code/git/easy-edgedb/chapter10/assets/dracula-3d-Model-City-rnd-main-Bistritz-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 

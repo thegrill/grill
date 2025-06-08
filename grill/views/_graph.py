@@ -103,16 +103,21 @@ class _NodeLOD(enum.Flag):
 
 
 class DynamicNodeAttributes(ChainMap):
-    def __init__(self, high, mid, low):
-        super().__init__(high, mid, low)
+
+    def __init__(self):
         self._lods = {
-            _NodeLOD.HIGH: high,
-            _NodeLOD.MID: mid,
-            _NodeLOD.LOW: low,
+            # Initializing these dictionaries empty leads to an error where HIGH and LOW end up being the same dictionary in the deqeue. Might be an issue with CPython?
+            # When having the below initialized as {} will lead to later calls to setLOD to fail with:
+            #   ValueError: {...} is not in deque
+            _NodeLOD.HIGH: {'label': 'high'},
+            _NodeLOD.MID: {'label': 'mid'},
+            _NodeLOD.LOW: {'label': 'low'},
         }
+        maps = self._lods.values()
+        super().__init__(*maps)
         self._currentLOD = _NodeLOD.HIGH
         self._data = ChainMap({}, {})
-        self.maps = deque(chain(self._lods.values(), [self._data]))
+        self.maps = deque(chain(maps, [self._data]))
 
 
     @property
@@ -242,7 +247,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
     def add_edge(self, edge: _Edge, port):
         if port is not None and port not in (ports:=self._ports):
-            raise KeyError(f"{port=} does not exist on {ports=}")
+            raise KeyError(f"{port=} does not exist on {ports=} of {self}")
         self._edges[edge] = port
 
     def itemChange(self, change: QtWidgets.QGraphicsItem.GraphicsItemChange, value):
@@ -293,12 +298,14 @@ class _Edge(QtWidgets.QGraphicsItem):
     def __init__(self, source: _Node, target: _Node, *, source_port: int = None, target_port: int = None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
         """Source port: index of the source node to connect to"""
         super().__init__(parent)
-        source.add_edge(self, source_port)
-        target.add_edge(self, target_port)
         self._source = source
         self._target = target
         self._source_port = source_port
         self._target_port = target_port
+
+        source.add_edge(self, source_port)
+        target.add_edge(self, target_port)
+
         self._is_source_port_used = source_port is not None
         self._is_target_port_used = target_port is not None
         self._is_cycle = source == target and ((source_port == target_port) or (target_port is None))
