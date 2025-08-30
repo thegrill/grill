@@ -87,9 +87,13 @@ def create_menu():
     def show(_launcher, *_, **__):
         return _launcher().show()
 
+    creation_menu_items = (
+        ("Create Assets", _stage_on_widget(_create.CreateAssets)),
+        ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
+    ) if _create.cook else ()
+
     for title, launcher in (
-            ("Create Assets", _stage_on_widget(_create.CreateAssets)),
-            ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
+            *creation_menu_items,
             ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
             ("Prim Composition", _prim_composition),
             ("Connections Viewer", _connections_viewer),
