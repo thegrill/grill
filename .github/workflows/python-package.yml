@@ -20,7 +20,7 @@ jobs:
             install-arguments: ". PySide2 usd-core==21.11 PyOpenGL"  # 21.11 enables AR-2.0 by default
           - python-version: "3.10"
             install-arguments: ". PySide2 usd-core==23.2 PyOpenGL"
-          - python-version: "3.12"
+          - python-version: "3.13"
             install-arguments: ".[full]"
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
         uses: ts-graphviz/setup-graphviz@v2
       - name: Install Required Libraries
         # Needed for PySide6 CI only: https://stackoverflow.com/questions/75907862/pyside6-wsl2-importerror-libegl-so-1
-        if: "matrix.python-version == '3.12'"
+        if: "matrix.python-version == '3.13'"
         run: |
           sudo apt-get install -y libegl1
       - name: Install
