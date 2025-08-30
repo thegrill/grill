@@ -1,4 +1,3 @@
-import os
 import io
 import csv
 import shutil
@@ -562,7 +561,8 @@ class TestViews(unittest.TestCase):
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
         def _use_test_dot(subgraph, fp):
-            shutil.copy(Path(__file__).parent / "test_data/_mini_graph.dot", fp)
+            source_path = Path(__file__).parent / "test_data/_mini_graph.dot"
+            fp.write(source_path.read_text(encoding="utf-8"))
 
         def _use_test_svg(self, filepath):
             return self._on_dot_result(str(Path(__file__).parent / "test_data/_mini_graph.svg"))
@@ -581,6 +581,7 @@ class TestViews(unittest.TestCase):
 
         with (
             mock.patch(f"grill.views._graph.nx.nx_pydot.write_dot", new=_use_test_dot),
+            mock.patch(f"grill.views._graph.nx.nx_agraph.write_dot", new=_use_test_dot),
             mock.patch(f"grill.views._graph._DotViewer.setDotPath", new=_use_test_svg),
             mock.patch(f"grill.views._graph.drawing.nx_pydot.graphviz_layout", new=_test_positions),
         ):
