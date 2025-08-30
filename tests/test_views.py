@@ -12,13 +12,13 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade
 from grill import usd
 
 try:
-    from grill import cook, names, create
+    from grill import cook, names
     _COOK_AVAILABLE = True
 except ImportError as exc:
     _COOK_AVAILABLE = False
     print(f"'grill.cook' module failed to import. Unable to test: {exc.msg}")
 
-from grill.views import description, sheets, _attributes, stats, _core, _graph, _qt
+from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
 from grill.views._qt import QtWidgets, QtCore, QtGui
 
 # 2024-02-03 - Python-3.12 & USD-23.11
@@ -822,6 +822,7 @@ class TestCreationViews(unittest.TestCase):
         widget._existing.table.selectAll()
         selected_items = widget._existing.table.selectedIndexes()
         self.assertEqual(len(selected_items), len(valid_data) + len(existing))
+        stage.Reload()  # We modified the taxonomy of the testbed. Reload to discard changes.
 
     def test_create_assets(self):
         stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
