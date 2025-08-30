@@ -651,6 +651,45 @@ class TestViews(unittest.TestCase):
                     child.filter_edges = lambda src, tgt, port: src not in graph.nodes
                     child.view(graph.nodes)
 
+    def test_asset_browser(self):
+        stage = Usd.Stage.Open(str(_test_bed))
+        root_layer = stage.GetRootLayer()
+        resolver_context = stage.GetPathResolverContext()
+        parent = None
+
+        graph = _diagrams._AssetStructureGraph(resolver_context=resolver_context)
+        root_node = graph._add_node_from_layer(root_layer)
+        graph._prepare_for_display(root_node)
+        root_nodes = [root_node]
+
+        widget = _diagrams._AssetStructureGraphView(parent=parent)
+        widget._graph = graph
+        widget.view(root_nodes)
+
+        widget.setLOD(root_nodes, _graph._NodeLOD.LOW)
+
+        # ensure that expanding first level of dependencies does not prevent further recursive expansion
+        # from connecting edges on existing nodes
+        nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
+        new_nodes_to_view = set(root_nodes).union(nodes_added)
+        widget.view(new_nodes_to_view)
+        widget._export_svg()
+
+        nodes_added = graph._expand_dependencies(nodes_added, recursive=True)
+        new_nodes_to_view = set(new_nodes_to_view).union(nodes_added)
+        widget.view(new_nodes_to_view)
+        widget._export_svg()
+
+        # confirm there's no issue when swapping back and forth between high, mid and low LODs
+        widget.setLOD(new_nodes_to_view, _graph._NodeLOD.HIGH)
+        widget._export_svg()
+
+        widget.setLOD(new_nodes_to_view, _graph._NodeLOD.LOW)
+        widget._export_svg()
+
+        widget.setLOD(new_nodes_to_view, _graph._NodeLOD.MID)
+        widget._export_svg()
+
     def test_zoom(self):
         """Zoom is triggered by ctrl + mouse wheel"""
         view = _graph._GraphicsViewport()
