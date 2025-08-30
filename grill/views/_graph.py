@@ -598,17 +598,17 @@ class GraphView(_GraphicsViewport):
         _default_text_interaction = QtCore.Qt.LinksAccessibleByMouse if _IS_QT5 else QtCore.Qt.TextBrowserInteraction
 
         if not _core._which("dot"):  # dot has not been installed
-            print(_DOT_ENVIRONMENT_ERROR)
+            _logger.error(_DOT_ENVIRONMENT_ERROR)
             text_item = QtWidgets.QGraphicsTextItem()
             text_item.setPlainText(_DOT_ENVIRONMENT_ERROR)
             text_item.setTextInteractionFlags(_default_text_interaction)
             self.scene().addItem(text_item)
             return
 
-        try:  # exit early if pydot is not installed, needed for positions
+        try:  # exit early if neither pygraphviz nor pydot are installed, needed for positions
             positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
         except ImportError as pygraphviz_exc:
-            print("pygraphviz not found, trying pydot as a fallback")
+            _logger.debug("pygraphviz not found, trying pydot as a fallback")
             try:
                 # TODO: this call is very slow for large graphs (~4k nodes),
                 #   ideally this can be sped up by a nx backend or another library
@@ -616,14 +616,14 @@ class GraphView(_GraphicsViewport):
                 positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
             except ImportError as pydot_exc:
                 message = f"{pygraphviz_exc}\n\n{pydot_exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
-                print(message)
+                _logger.error(message)
                 text_item = QtWidgets.QGraphicsTextItem()
                 text_item.setPlainText(message)
                 text_item.setTextInteractionFlags(_default_text_interaction)
                 self.scene().addItem(text_item)
                 return
 
-        print("LOADING GRAPH")
+        _logger.debug("LOADING GRAPH")
         self._nodes_map.clear()
         edge_color = graph.graph.get('edge', {}).get("color", "")
         graph_node_attrs = graph.graph.get('node', {})
@@ -844,7 +844,7 @@ class _GraphSVGViewer(_DotViewer):
 
         filters = {}
         if self.filter_edges:
-            print(f"{self.filter_edges=}")
+            _logger.debug(f"{self.filter_edges=}")
             filters['filter_edge'] = self.filter_edges
         if filters:
             subgraph = nx.subgraph_view(subgraph, **filters)
@@ -854,7 +854,7 @@ class _GraphSVGViewer(_DotViewer):
             with open(fp, "w", encoding="utf-8") as fobj:
                 nx.nx_agraph.write_dot(subgraph, fobj)
         except ImportError as pygraphviz_exc:
-            print("Could not write with pygraphviz. Attempting pydot.")
+            _logger.debug("Could not write with pygraphviz. Attempting pydot.")
             error = f"{pygraphviz_exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
             try:
                 with open(fp, "w", encoding="utf-8") as fobj:

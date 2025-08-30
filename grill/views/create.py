@@ -2,10 +2,10 @@ from pathlib import Path
 from functools import partial
 
 from pxr import Usd
+
 try:
     from grill import cook
 except ImportError as exc:
-    print(f"Unable to import 'grill.cook': {exc.msg}")
     cook = None
 
 from ._qt import QtWidgets, QtCore, QtGui

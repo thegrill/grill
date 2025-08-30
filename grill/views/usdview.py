@@ -1,5 +1,6 @@
 # USDView not on pypi yet, so not possible to test this on CI
 import types
+import logging
 import inspect
 import operator
 import contextvars
@@ -13,6 +14,7 @@ import grill.usd as gusd
 from ._qt import QtWidgets, QtGui
 from . import _core, _attributes, sheets as _sheets, description as _description, create as _create, stats as _stats
 
+_logger = logging.getLogger(__name__)
 _usdview_api = contextvars.ContextVar("_usdview_api")  # TODO: is there a better way?
 _description._PALETTE.set(0)  # TODO 2: same question (0 == dark, 1 == light)
 
@@ -125,7 +127,7 @@ class GrillContentBrowserLayerMenuItem(layerStackContextMenu.LayerStackContextMe
                 # We're protected by the IsEnabled method above, so don't bother checking layerPath value
                 with Ar.ResolverContextBinder(context):
                     if not (layer:=Sdf.Layer.FindOrOpen(layerPath)):  # edge case, is this possible?
-                        print(f"Could not find layer from {layerPath}")
+                        _logger.warning(f"Could not find layer from {layerPath}")
                         return
             _description._launch_content_browser([layer], usdview_api.qMainWindow, context, paths=paths)
 
@@ -299,7 +301,7 @@ class _ValueEditor(QtWidgets.QDialog):
         layout = self.layout()
         supported_primvars = {"displayColor"}
         for attr in attributes:
-            print(attr)
+            _logger.debug(attr)
             type_name = attr.GetTypeName()
             if (primvar:= UsdGeom.Primvar(attr)) and primvar.GetPrimvarName() in supported_primvars:
                 editor = _attributes._DisplayColorEditor(primvar)
@@ -341,7 +343,7 @@ class _ValueEditor(QtWidgets.QDialog):
                     what.Set(ed.isChecked())
                 editor.stateChanged.connect(partial(update, editor, attr))
             else:
-                print(f"Don't know how to edit {attr} of type {type_name}")
+                _logger.warning(f"Don't know how to edit {attr} of type {type_name}")
 
 
 class GrillPlugin(plugin.PluginContainer):
