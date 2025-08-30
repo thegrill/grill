@@ -1,6 +1,6 @@
 from maya import cmds
 
-if cmds.about(qt=True).startswith("6"):
+if hasattr(cmds, "about") and cmds.about(qt=True).startswith("6"):
     from PySide6 import QtCore
 else:
     from PySide2 import QtCore
