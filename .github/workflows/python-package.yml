@@ -14,7 +14,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.12"]
         include:
           - python-version: "3.9"
             install-arguments: ".[create] PySide2 usd-core==21.11 PyOpenGL"  # 21.11 enables AR-2.0 by default
