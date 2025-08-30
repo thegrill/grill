@@ -37,8 +37,11 @@ from collections import abc
 import networkx as nx
 from pxr import UsdGeom, Usd, Sdf, Kind, Ar
 
-from grill.tokens import ids
-from grill.names import UsdAsset
+try:
+    from grill.tokens import ids
+    from grill.names import UsdAsset
+except ImportError as exc:
+    raise ImportError("In order to use the 'grill.cook' module, the 'grill-names' package mustbe installed") from exc
 
 from .. import usd as _usd
 
