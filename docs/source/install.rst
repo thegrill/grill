@@ -7,6 +7,10 @@ Pip Install
 By default, ``grill`` won't install ``USD``, ``PySide(2|6)`` & ``PyOpenGL``. This is because
 DCC apps and other environments bundle them outside of ``pip``. To include them, use the ``[full]`` option.
 
+Similarly, ``grill`` won't install asset creation capabilities as those are opinionated. To enable these, use the ``[create]`` option.
+
+Other dependencies like ``numpy``, ``networkx`` or ``pydot`` can be skipped by using the ``--no-deps`` flag.
+
 .. tab:: Default
 
     .. code-block:: bash
@@ -18,6 +22,18 @@ DCC apps and other environments bundle them outside of ``pip``. To include them,
     .. code-block:: bash
 
         python -m pip install grill[full]
+
+.. tab:: Create
+
+    .. code-block:: bash
+
+        python -m pip install grill[create]
+
+.. tab:: No Dependencies
+
+    .. code-block:: bash
+
+        python -m pip install --no-deps grill
 
 .. note::
 
@@ -81,18 +97,24 @@ walk-through on how to start using ``The Grill`` tools with a fresh
 
       (base) C:\>conda activate grilldemo01
 
-5. Install ``grill`` via ``pip``; use the ``full`` option to use standalone.
+5. Install ``grill`` via ``pip``; use the ``[full,create]`` options to use standalone.
    Refer to the `pip install instructions <#pip-install>`_ for more details.
 
    .. code:: PowerShell
 
-      (grilldemo01) C:\>python -m pip install grill[full]
+      (grilldemo01) C:\>python -m pip install grill[full,create]
 
 6. If missing, (optionally) install `graphviz`_ via ``conda``:
 
    .. code:: PowerShell
 
       (grilldemo01) C:\>conda install conda-forge::graphviz
+
+   .. hint::
+      For graph visualization, a python library for ``graphviz`` is required. ``grill`` supports ``pydot`` and ``pygraphviz``:
+
+      - `pydot`_, is the default (installed with the ``grill`` package) but can be slower for large graphs (4k+ nodes)
+      - `pygraphviz`_, is faster but challenging to insall (visit `pygraphviz#468 <https://github.com/pygraphviz/pygraphviz/pull/468>`_ for more details)
 
 7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView**, **Maya** and **Houdini***.
 
@@ -119,6 +141,8 @@ walk-through on how to start using ``The Grill`` tools with a fresh
         The manual execution of this step might be removed in the future.
 
 .. _graphviz: http://graphviz.org
+.. _pydot: https://github.com/pydot/pydot
+.. _pygraphviz: https://pygraphviz.github.io/documentation/stable/index.html
 .. _miniconda: https://docs.conda.io/en/latest/miniconda.html
 .. _Anaconda: https://docs.anaconda.com/anaconda/user-guide/getting-started/
 .. _conda: https://docs.conda.io/projects/conda/en/latest/index.html
