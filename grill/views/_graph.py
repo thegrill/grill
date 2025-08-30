@@ -606,15 +606,22 @@ class GraphView(_GraphicsViewport):
             return
 
         try:  # exit early if pydot is not installed, needed for positions
-            positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
-        except ImportError as exc:
-            message = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
-            print(message)
-            text_item = QtWidgets.QGraphicsTextItem()
-            text_item.setPlainText(message)
-            text_item.setTextInteractionFlags(_default_text_interaction)
-            self.scene().addItem(text_item)
-            return
+            positions = drawing.nx_agraph.graphviz_layout(graph, prog='dot')
+        except ImportError as pygraphviz_exc:
+            print("pygraphviz not found, trying pydot as a fallback")
+            try:
+                # TODO: this call is very slow for large graphs (~4k nodes),
+                #   ideally this can be sped up by a nx backend or another library
+                #   viewing same graph in SVG is faster, so even calling dot directly (instead of pydot) could be it
+                positions = drawing.nx_pydot.graphviz_layout(graph, prog='dot')
+            except ImportError as pydot_exc:
+                message = f"{pygraphviz_exc}\n\n{pydot_exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+                print(message)
+                text_item = QtWidgets.QGraphicsTextItem()
+                text_item.setPlainText(message)
+                text_item.setTextInteractionFlags(_default_text_interaction)
+                self.scene().addItem(text_item)
+                return
 
         print("LOADING GRAPH")
         self._nodes_map.clear()
@@ -844,11 +851,21 @@ class _GraphSVGViewer(_DotViewer):
 
         fd, fp = tempfile.mkstemp()
         try:
-            nx.nx_pydot.write_dot(subgraph, fp)
-        except ImportError as exc:
-            error = f"{exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+            with open(fp, "w", encoding="utf-8") as fobj:
+                nx.nx_agraph.write_dot(subgraph, fobj)
+        except ImportError as pygraphviz_exc:
+            print("Could not write with pygraphviz. Attempting pydot.")
+            error = f"{pygraphviz_exc}\n\n{_DOT_ENVIRONMENT_ERROR}"
+            try:
+                with open(fp, "w", encoding="utf-8") as fobj:
+                    nx.nx_pydot.write_dot(subgraph, fobj)
+            except ImportError as pydot_exc:
+                error = f"{pydot_exc}\n\n{error}"
+            else:
+                error = ""
         else:
             error = ""
+
         return error, fp
 
     def view(self, node_indices: typing.Iterable):
