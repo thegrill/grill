@@ -9,8 +9,16 @@ from unittest import mock
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade
 
-from grill import cook, usd, names
-from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
+from grill import usd
+
+try:
+    from grill import cook, names, create
+    _COOK_AVAILABLE = True
+except ImportError as exc:
+    _COOK_AVAILABLE = False
+    print(f"'grill.cook' module failed to import. Unable to test: {exc.msg}")
+
+from grill.views import description, sheets, _attributes, stats, _core, _graph, _qt
 from grill.views._qt import QtWidgets, QtCore, QtGui
 
 # 2024-02-03 - Python-3.12 & USD-23.11
@@ -93,14 +101,6 @@ class TestViews(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-
-    def setUp(self):
-        self._tmpf = tempfile.mkdtemp()
-        self._token = cook.Repository.set(cook.Path(self._tmpf) / "repo")
-
-    def tearDown(self) -> None:
-        cook.Repository.reset(self._token)
-        shutil.rmtree(self._tmpf)
 
     @classmethod
     def tearDownClass(cls):
@@ -202,90 +202,6 @@ class TestViews(unittest.TestCase):
 
         widget.clear()
 
-    def test_create_assets(self):
-        stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
-        for each in range(1, 6):
-            cook.define_taxon(stage, f"Option{each}")
-
-        widget = create.CreateAssets()
-        widget.setStage(stage)
-
-        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
-
-        data = (
-            ['Option1', 'asset01', 'Asset 01', 'Description 01'],
-            ['Option2', 'asset02', 'Asset 02', 'Description 02'],
-            ['Option2', '',        'Asset 03', 'Description 03'],
-        )
-
-        QtWidgets.QApplication.instance().clipboard().setText('')
-        widget.sheet._pasteClipboard()
-
-        stream = io.StringIO()
-        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
-        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
-
-        widget.sheet.table.selectAll()
-        widget.sheet._pasteClipboard()
-        widget._create()
-        taxon_editor = widget.sheet._columns[0].editor(widget, None, None)
-        self.assertIsInstance(taxon_editor, QtWidgets.QComboBox)
-        widget._apply()
-
-    def test_taxonomy_editor(self):
-        class MiniAsset(names.UsdAsset):
-            drop = ('code', 'media', 'area', 'stream', 'step', 'variant', 'part')
-            DEFAULT_SUFFIX = "usda"
-
-        cook.UsdAsset = MiniAsset
-        stage = Usd.Stage.Open(str(_test_bed))
-        existing = list(cook.itaxa(stage))
-        widget = create.TaxonomyEditor()
-        # GraphView capabilities are tested elsewhere, so mock 'view' here.
-        widget._graph_view.view = lambda indices: None
-
-        widget.setStage(stage)
-
-        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
-
-        valid_data = (
-            ['NewType1', existing[0].GetName(), 'Id1', ],
-            ['NewType2', '', 'Id2', ],
-        )
-        data = valid_data + (
-            ['',         existing[0].GetName(), 'Id3', ],
-        )
-
-        QtWidgets.QApplication.instance().clipboard().setText('')
-        widget.sheet._pasteClipboard()
-
-        stream = io.StringIO()
-        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
-        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
-
-        widget.sheet.table.selectAll()
-        widget.sheet._pasteClipboard()
-        widget._create()
-
-        for name, __, __ in valid_data:
-            created = stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH).GetPrimAtPath(name)
-            self.assertTrue(created.IsValid())
-
-        sheet_model = widget.sheet.model
-        index = sheet_model.index(0, 1)
-        editor = widget.sheet._columns[1].editor(None, None, index)
-        self.assertIsInstance(editor, QtWidgets.QDialog)
-        widget.sheet._columns[1].setter(editor, sheet_model, index)
-        editor._options.selectAll()
-        menu = editor._create_context_menu()
-        menu.actions()[0].trigger()
-
-        # after creation, set stage again to test existing column
-        widget._apply()
-        widget._existing.table.selectAll()
-        selected_items = widget._existing.table.selectedIndexes()
-        self.assertEqual(len(selected_items), len(valid_data) + len(existing))
-
     def test_spreadsheet_editor(self):
         widget = sheets.SpreadsheetEditor()
         widget._model_hierarchy.setChecked(False)  # default is True
@@ -370,18 +286,9 @@ class TestViews(unittest.TestCase):
         self.assertEqual(expected_fonts, collected_fonts)
 
     def test_prim_filter_data(self):
-        stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
-        person = cook.define_taxon(stage, "Person")
-        agent = cook.define_taxon(stage, "Agent", references=(person,))
-        generic = cook.create_unit(agent, "GenericAgent")
-        with cook.unit_context(generic):
-            stage.DefinePrim(generic.GetPath().AppendChild("ChildPrim"))
-        generic_asset = cook.unit_asset(generic)
-        for each in range(10):
-            path = Sdf.Path.absoluteRootPath.AppendChild(f"Instance{each}")
-            instance = stage.DefinePrim(path)
-            instance.SetInstanceable(True)
-            instance.GetPayloads().AddPayload(generic_asset.identifier)
+        stage = Usd.Stage.Open(str(_test_bed))
+        stage.SetEditTarget(stage.GetSessionLayer())
+        instance = stage.GetPrimAtPath('/Catalogue/Model/Blocks/Block_With_Inherited_Windows/Building1/Windows/Apartment')
         instance.SetActive(False)
         instance.Unload()
         over = stage.OverridePrim("/Orphaned")
@@ -507,8 +414,9 @@ class TestViews(unittest.TestCase):
         self.assertEqual(result, "")
 
     def test_display_color_editor(self):
-        stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
-        sphere = UsdGeom.Sphere.Define(stage, "/volume")
+        stage = Usd.Stage.Open(str(_test_bed))
+        stage.SetEditTarget(stage.GetSessionLayer())
+        sphere = UsdGeom.Sphere(stage.GetPrimAtPath('/Catalogue/Model/Elements/Apartment/Geom/Volume'))
         color_var = sphere.GetDisplayColorPrimvar()
         editor = _attributes._DisplayColorEditor(color_var)
 
@@ -845,3 +753,102 @@ class TestViews(unittest.TestCase):
         self.assertEqual(last_vertical_scroll_bar, vertical_scroll_bar.value())
         self.assertEqual(last_horizontal_scroll_bar, horizontal_scroll_bar.value())
 
+
+@unittest.skipUnless(_COOK_AVAILABLE, "Unable to test without 'grill.cook' module")
+class TestCreationViews(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls._app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def setUp(self):
+        self._tmpf = tempfile.mkdtemp()
+        self._token = cook.Repository.set(cook.Path(self._tmpf) / "repo")
+
+    def tearDown(self) -> None:
+        cook.Repository.reset(self._token)
+        shutil.rmtree(self._tmpf)
+
+    def test_taxonomy_editor(self):
+        class MiniAsset(names.UsdAsset):
+            drop = ('code', 'media', 'area', 'stream', 'step', 'variant', 'part')
+            DEFAULT_SUFFIX = "usda"
+
+        cook.UsdAsset = MiniAsset
+        stage = Usd.Stage.Open(str(_test_bed))
+        existing = list(cook.itaxa(stage))
+        widget = create.TaxonomyEditor()
+        # GraphView capabilities are tested elsewhere, so mock 'view' here.
+        widget._graph_view.view = lambda indices: None
+
+        widget.setStage(stage)
+
+        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
+
+        valid_data = (
+            ['NewType1', existing[0].GetName(), 'Id1', ],
+            ['NewType2', '', 'Id2', ],
+        )
+        data = valid_data + (
+            ['',         existing[0].GetName(), 'Id3', ],
+        )
+
+        QtWidgets.QApplication.instance().clipboard().setText('')
+        widget.sheet._pasteClipboard()
+
+        stream = io.StringIO()
+        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
+        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
+
+        widget.sheet.table.selectAll()
+        widget.sheet._pasteClipboard()
+        widget._create()
+
+        for name, __, __ in valid_data:
+            created = stage.GetPrimAtPath(cook._TAXONOMY_ROOT_PATH).GetPrimAtPath(name)
+            self.assertTrue(created.IsValid())
+
+        sheet_model = widget.sheet.model
+        index = sheet_model.index(0, 1)
+        editor = widget.sheet._columns[1].editor(None, None, index)
+        self.assertIsInstance(editor, QtWidgets.QDialog)
+        widget.sheet._columns[1].setter(editor, sheet_model, index)
+        editor._options.selectAll()
+        menu = editor._create_context_menu()
+        menu.actions()[0].trigger()
+
+        # after creation, set stage again to test existing column
+        widget._apply()
+        widget._existing.table.selectAll()
+        selected_items = widget._existing.table.selectedIndexes()
+        self.assertEqual(len(selected_items), len(valid_data) + len(existing))
+
+    def test_create_assets(self):
+        stage = cook.fetch_stage(cook.UsdAsset.get_anonymous())
+        for each in range(1, 6):
+            cook.define_taxon(stage, f"Option{each}")
+
+        widget = create.CreateAssets()
+        widget.setStage(stage)
+
+        widget._amount.setValue(3)  # TODO: create 10 assets, clear tmp directory
+
+        data = (
+            ['Option1', 'asset01', 'Asset 01', 'Description 01'],
+            ['Option2', 'asset02', 'Asset 02', 'Description 02'],
+            ['Option2', '',        'Asset 03', 'Description 03'],
+        )
+
+        QtWidgets.QApplication.instance().clipboard().setText('')
+        widget.sheet._pasteClipboard()
+
+        stream = io.StringIO()
+        csv.writer(stream, delimiter=csv.excel_tab.delimiter).writerows(data)
+        QtWidgets.QApplication.instance().clipboard().setText(stream.getvalue())
+
+        widget.sheet.table.selectAll()
+        widget.sheet._pasteClipboard()
+        widget._create()
+        taxon_editor = widget.sheet._columns[0].editor(widget, None, None)
+        self.assertIsInstance(taxon_editor, QtWidgets.QComboBox)
+        widget._apply()
