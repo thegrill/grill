@@ -2,7 +2,11 @@ from pathlib import Path
 from functools import partial
 
 from pxr import Usd
-from grill import cook
+try:
+    from grill import cook
+except ImportError as exc:
+    print(f"Unable to import 'grill.cook': {exc.msg}")
+    cook = None
 
 from ._qt import QtWidgets, QtCore, QtGui
 from . import sheets as _sheets, _graph, _core
