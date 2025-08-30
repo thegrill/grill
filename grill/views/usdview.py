@@ -358,10 +358,19 @@ class GrillPlugin(plugin.PluginContainer):
                 f"Grill.{title.replace(' ', '_')}", title, partial(show, _launcher),
             )
 
+        # create views capabilities are opt-in and depend on grill-names
+        creation_menu_items = (
+            ("Create Assets", _stage_on_widget(_create.CreateAssets)),
+            ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
+        ) if _create.cook else ()
+        settings_menu_items = (
+            operator.methodcaller("addSeparator"),
+            {"Preferences": [_menu_item("Repository Path", repository_path)], },
+        ) if _create.cook else ()
+
         self._menu_items = [
             *(_menu_item(title, launcher) for (title, launcher) in (
-                ("Create Assets", _stage_on_widget(_create.CreateAssets)),
-                ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
+                *creation_menu_items,
                 ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
                 ("Prim Composition", prim_composition),
                 ("Connection Viewer", _connection_viewer),
@@ -375,8 +384,7 @@ class GrillPlugin(plugin.PluginContainer):
                 ("Stage Stats", _stage_on_widget(_stats.StageStats)),
                 ("Save Changes", save_changes),
             )),
-            operator.methodcaller("addSeparator"),
-            {"Preferences": [_menu_item("Repository Path", repository_path)],},
+            *settings_menu_items,
         ]
 
     def configureView(self, plugRegistry, plugUIBuilder):
