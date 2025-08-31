@@ -7,7 +7,7 @@ Pip Install
 By default, ``grill`` won't install ``USD``, ``PySide(2|6)`` & ``PyOpenGL``. This is because
 DCC apps and other environments bundle them outside of ``pip``. To include them, use the ``[full]`` option.
 
-Similarly, ``grill`` won't install asset creation capabilities as those are opinionated. To enable these, use the ``[create]`` option.
+Similarly, ``grill`` won't install asset creation capabilities, as those are opinionated. To enable these, use the ``[create]`` option.
 
 Other dependencies like ``numpy``, ``networkx`` or ``pydot`` can be skipped by using the ``--no-deps`` flag.
 
