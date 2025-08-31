@@ -1,7 +1,8 @@
 import hou
+import types
 import toolutils
 from functools import cache, lru_cache, partial
-from . import sheets as _sheets, description as _description, create as _create, stats as _stats, _core
+from . import sheets as _sheets, description as _description, create as _create, stats as _stats, _qt
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
 
 
@@ -111,7 +112,20 @@ def _connectable_viewer():
     return editor
 
 
-_create_assets = partial(_creator, _create.CreateAssets)
-_taxonomy_editor = partial(_creator, _create.TaxonomyEditor)
+def _requires_cook(widget_creator):
+    if not _create.cook:
+        def show():
+            _qt.QtWidgets.QMessageBox.information(
+                    hou.qt.mainWindow(), "Disabled Feature",
+                """<p>In order to create and edit assets, the <a style="color:white;" href="http://grill-names.rtfd.io">'grill-names' package</a> must be installed.</p>
+                    <p>Visit the <a style="color:white;" href="https://grill.rtfd.io/en/latest/install.html">install instructions</a> for more details.</p>
+                    """
+            )
+        return types.SimpleNamespace(show=show)
+    return _creator(widget_creator)
+
+
+_create_assets = partial(_requires_cook, _create.CreateAssets)
+_taxonomy_editor = partial(_requires_cook, _create.TaxonomyEditor)
 _layerstack_composition = _stage_on_widget(_description.LayerStackComposition)
 _stage_stats = _stage_on_widget(_stats.StageStats, _cache=False)
