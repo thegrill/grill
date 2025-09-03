@@ -114,7 +114,7 @@ walk-through on how to start using ``The Grill`` tools with a fresh
       For graph visualization, a python library for ``graphviz`` is required. ``grill`` supports ``pydot`` and ``pygraphviz``:
 
       - `pydot`_, is the default (installed with the ``grill`` package) but can be slower for large graphs (4k+ nodes)
-      - `pygraphviz`_, is faster but challenging to insall (visit `pygraphviz#468 <https://github.com/pygraphviz/pygraphviz/pull/468>`_ for more details)
+      - `pygraphviz`_, is faster but challenging to insall (visit `the docs <https://pygraphviz.github.io/documentation/stable/install.html>`_ and `pygraphviz#468 <https://github.com/pygraphviz/pygraphviz/pull/468>`_ for more details)
 
 7. You should be able to see the ``👨‍🍳 Grill`` menu in **USDView**, **Maya** and **Houdini***.
 
