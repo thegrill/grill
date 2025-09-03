@@ -1,3 +1,5 @@
+import logging
+
 from functools import cache, partial
 
 from maya import cmds
@@ -15,6 +17,8 @@ import maya.api.OpenMaya as om
 
 from . import description as _description, sheets as _sheets, create as _create, _core, stats as _stats
 _description._PALETTE.set(0)  # (0 == dark, 1 == light)
+
+_logger = logging.getLogger(__name__)
 
 
 @cache
@@ -81,15 +85,19 @@ def _connections_viewer():
 
 @cache
 def create_menu():
-    print(f"Creating The Grill menu.")
+    _logger.info(f"Creating The Grill menu.")
     menu = cmds.menu("grill", label="👨‍🍳 Grill", tearOff=True, parent="MayaWindow")
 
     def show(_launcher, *_, **__):
         return _launcher().show()
 
+    creation_menu_items = (
+        ("Create Assets", _stage_on_widget(_create.CreateAssets)),
+        ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
+    ) if _create.cook else ()
+
     for title, launcher in (
-            ("Create Assets", _stage_on_widget(_create.CreateAssets)),
-            ("Taxonomy Editor", _stage_on_widget(_create.TaxonomyEditor)),
+            *creation_menu_items,
             ("Spreadsheet Editor", _stage_on_widget(_sheets.SpreadsheetEditor)),
             ("Prim Composition", _prim_composition),
             ("Connections Viewer", _connections_viewer),

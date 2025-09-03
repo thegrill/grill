@@ -7,7 +7,12 @@ from pathlib import Path
 
 from pxr import Usd, UsdGeom, Sdf, Ar, Tf
 
-from grill import cook, names, tokens, usd
+try:
+    from grill import cook, names, tokens, usd
+    _COOK_AVAILABLE = True
+except ImportError as exc:
+    _COOK_AVAILABLE = False
+    print(f"'grill.cook' module failed to import. Unable to test: {exc.msg}")
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------
 # Ran 6 tests in 0.152s
 
-
+@unittest.skipUnless(_COOK_AVAILABLE, "Unable to test without 'grill.cook' module")
 class TestCook(unittest.TestCase):
     def setUp(self) -> None:
         tempdir = tempfile.mkdtemp()
