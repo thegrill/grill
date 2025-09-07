@@ -175,6 +175,70 @@ class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
     _subtitle = "Connections"
 
 
+class GrillPrimPrototypeMenuItem(GrillPrimCompositionMenuItem):
+
+    @property
+    def _subtitle(self):
+        return f"Select Prototype{'s' if len(self._selectionDataModel.getPrims()) > 1 else ''}"
+
+    def IsEnabled(self):
+        return any((prim.IsInstance() or prim.IsInstanceProxy()) for prim in self._selectionDataModel.getPrims())
+
+    def RunCommand(self):
+        selection_model = self._selectionDataModel
+        oldPrims = selection_model.getPrims()
+        with selection_model.batchPrimChanges:
+            selection_model.clearPrims()
+            for prim in oldPrims:
+                if prim.IsInstance() and (proto := prim.GetPrototype()):
+                    selection_model.addPrim(proto)
+                elif prim.IsInstanceProxy():
+                    selection_model.addPrim(prim.GetPrimInPrototype())
+
+
+class GrillPrimInstancesMenuItem(GrillPrimCompositionMenuItem):
+    """Recursively (e.g. traversing nested instancing) select all instances of the selected prims"""
+    _subtitle = "Select Prototype Instances"
+
+    def IsEnabled(self):
+        return any((prim.IsInstance() or prim.IsInstanceProxy() or prim.IsInPrototype()) for prim in self._selectionDataModel.getPrims())
+
+    def RunCommand(self):
+        selection_model = self._selectionDataModel
+        prims = selection_model.getPrims()
+        visited_prototypes = set()
+        all_instances = set()
+
+        def _get_instances_from_proto_child(prototype):
+            proto_path = prototype.GetPath()
+            root_path = proto_path.GetPrefixes()[0]  # contract: all root prototypes are named prims like /__Prototype_3
+            stage = prototype.GetStage()
+            proto = stage.GetPrimAtPath(root_path)
+            rel_path = proto_path.MakeRelativePath(root_path)
+            return [stage.GetPrimAtPath(instance.GetPath().AppendPath(rel_path)) for instance in proto.GetInstances()]
+
+        def _handle_prototype(prototype, instances_getter):
+            if prototype in visited_prototypes:
+                return
+            visited_prototypes.add(prototype)
+            instances = instances_getter(prototype)
+            all_instances.update(instances)
+            _collect_instances(instances)
+
+        def _collect_instances(prims):
+            for prim in prims:
+                if (is_instance := prim.IsInstance()) or prim.IsPrototype():
+                    _handle_prototype(prim.GetPrototype() if is_instance else prim, Usd.Prim.GetInstances)
+                if (is_proxy := prim.IsInstanceProxy()) or prim.IsInPrototype():  # we're beneath an instance
+                    _handle_prototype(prim.GetPrimInPrototype() if is_proxy else prim, _get_instances_from_proto_child)
+
+        with selection_model.batchPrimChanges:
+            selection_model.clearPrims()
+            _collect_instances(prims)
+            for instance in sorted(all_instances, key=lambda p: p.GetPath()):
+                print(f"{instance=}")
+                selection_model.addPrim(instance)
+
 class AllHierarchyTextMenuItem(_GrillPrimContextMenuItem):
     _include_descendants = True
     _subtitle = "All Descendants"
