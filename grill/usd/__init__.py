@@ -13,7 +13,6 @@ from itertools import chain
 from collections import abc
 
 from pxr import Usd, UsdGeom, Sdf, Plug, Ar, Tf
-from printree import TreePrinter
 
 logger = logging.getLogger(__name__)
 
@@ -294,31 +293,6 @@ def _edit_context_by_arc(prim, arc_type, path, layer):
     return edit_context(prim, query_filter, is_target)
 
 
-@contextlib.contextmanager
-def _prim_tree_printer(predicate, prims_to_include: abc.Container = frozenset()):
-    prim_entry = Usd.Prim.GetName if predicate != Usd.PrimIsModel else lambda prim: f"{prim.GetName()} ({Usd.ModelAPI(prim).GetKind()})"
-
-    class PrimTreePrinter(TreePrinter):
-        """For everything else, use usdtree from the vanilla USD toolset"""
-
-        def ftree(self, prim: Usd.Prim):
-            self.ROOT = f"{super().ROOT}{prim_entry(prim)}"
-            return super().ftree(prim)
-
-    # another duck
-    Usd.Prim.__iter__ = lambda prim: (p for p in prim.GetFilteredChildren(predicate) if not prims_to_include or p in prims_to_include)
-    Usd.Prim.items = lambda prim: ((prim_entry(p), p) for p in prim)
-    current = type(abc.Mapping).__instancecheck__  # can't unregister abc.Mapping.register, so use __instancecheck__
-
-    type(abc.Mapping).__instancecheck__ = lambda cls, inst: current(cls, inst) or (cls == abc.Mapping and type(inst) == Usd.Prim)
-    try:
-        yield PrimTreePrinter()
-    finally:
-        type(abc.Mapping).__instancecheck__ = current
-        del Usd.Prim.__iter__
-        del Usd.Prim.items
-
-
 def _format_prim_hierarchy(prims, include_descendants=True, predicate=Usd.PrimDefaultPredicate):
     for prim in prims:
         if prim.IsPseudoRoot():
@@ -328,8 +302,25 @@ def _format_prim_hierarchy(prims, include_descendants=True, predicate=Usd.PrimDe
         root_paths = dict.fromkeys(common_paths((prim.GetPath() for prim in prims)))
         prims_to_tree = (prim for prim in prims if prim.GetPath() in root_paths)
 
-    with _prim_tree_printer(predicate, set(prims) if not include_descendants else set()) as printer:
-        return "\n".join(printer.ftree(prim) for prim in prims_to_tree)
+    prim_entry = Usd.Prim.GetName if predicate != Usd.PrimIsModel else lambda prim: f"{prim.GetName()} ({Usd.ModelAPI(prim).GetKind()})"
+    prims_to_include = set(prims) if not include_descendants else set()
+
+    def ftree(prim, prefix="", last=True, buffer=None):
+        if buffer is None:  # we're at the root
+            buffer = []
+            marker, child_prefix = "┐", ""
+        elif not last:
+            marker, child_prefix = '├── ', f"{prefix}│   "
+        else:
+            marker, child_prefix = '└── ', f"{prefix}    "
+
+        buffer.append(f"{prefix}{marker}{prim_entry(prim)}")
+        for index, child in enumerate(children := prim.GetFilteredChildren(predicate)):
+            if not prims_to_include or child in prims_to_include:
+                ftree(child, child_prefix, index == len(children)-1, buffer)
+        return buffer
+
+    return "\n".join(chain.from_iterable(ftree(prim) for prim in prims_to_tree))
 
 
 # add other mesh creation utilities here?
