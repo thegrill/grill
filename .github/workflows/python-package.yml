@@ -22,9 +22,9 @@ jobs:
           - python-version: "3.13"
             install-arguments: ".[full,create]"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Set up Graphviz
@@ -41,7 +41,7 @@ jobs:
           python -m pip install ${{ matrix.install-arguments }}
       - name: Test
         run: |
-          pytest --cov .
+          PYTHONWARNINGS=error,ignore:::pyparsing pytest --cov --durations=10 .
         # https://github.com/marketplace/actions/codecov
       - name: Codecov Report
         uses: codecov/codecov-action@v4

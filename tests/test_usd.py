@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from pxr import Usd, UsdGeom, Sdf
 
@@ -16,6 +17,7 @@ import grill.usd as gusd
 # (durations < 0.001s were hidden; use -v to show these durations)
 # ----------------------------------------------------------------------
 # Ran 5 tests in 0.030s
+_test_bed = Path(__file__).parent / "mini_test_bed" / "main-world-test.1.usda"
 
 
 class TestUSD(unittest.TestCase):
@@ -103,3 +105,34 @@ class TestUSD(unittest.TestCase):
         self.assertEqual(80, len(mesh.GetPointsAttr().Get()))
         self.assertEqual(252, len(mesh.GetFaceVertexIndicesAttr().Get()))
         self.assertEqual(63, len(mesh.GetFaceVertexCountsAttr().Get()))
+
+    def test_recursive_instances(self):
+        """Confirm we can collect all instances recursively"""
+
+        paths = (
+            "/Catalogue/Model/Buildings/Multi_Story_Building/Windows/Apartment",
+            "/Catalogue/Model/Buildings/Multi_Story_Building/Windows/Apartment_blue",
+        )
+        stage = Usd.Stage.Open(str(_test_bed))
+        expected_prim_paths = {Sdf.Path(path) for path in (
+            "/Catalogue/Model/Blocks/Block/Building1/Windows/Apartment",
+            "/Catalogue/Model/Blocks/Block/Building1/Windows/Apartment_blue",
+            "/Catalogue/Model/Blocks/Block/Building2/Windows/Apartment",
+            "/Catalogue/Model/Blocks/Block/Building2/Windows/Apartment_blue",
+            "/Catalogue/Model/Blocks/Block/Building3/Windows/Apartment",
+            "/Catalogue/Model/Blocks/Block/Building3/Windows/Apartment_blue",
+            "/Catalogue/Model/Blocks/Block/Building4/Windows/Apartment",
+            "/Catalogue/Model/Blocks/Block/Building4/Windows/Apartment_blue",
+            "/Catalogue/Model/Buildings/Multi_Story_Building/Windows/Apartment",
+            "/Catalogue/Model/Buildings/Multi_Story_Building/Windows/Apartment_blue",
+            "/__Prototype_1/Windows/Apartment",
+            "/__Prototype_1/Windows/Apartment_blue",
+        )}
+        prims = (stage.GetPrimAtPath(p) for p in paths)
+        result = [instance.GetPath() for instance in gusd.iter_recursive_instances(prims)]
+
+        non_proto__result_paths = {path for path in result if not str(path).startswith("/__Prototype_")}
+        non_proto_expected_paths = {path for path in expected_prim_paths if not str(path).startswith("/__Prototype_")}
+
+        self.assertEqual(len(result), len(expected_prim_paths))
+        self.assertSetEqual(non_proto__result_paths, non_proto_expected_paths)

@@ -175,6 +175,43 @@ class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
     _subtitle = "Connections"
 
 
+class GrillSelectPrimPrototypeMenuItem(GrillPrimCompositionMenuItem):
+
+    @property
+    def _subtitle(self):
+        return f"Select Prototype{'s' if len(self._selectionDataModel.getPrims()) > 1 else ''}"
+
+    def IsEnabled(self):
+        return any((prim.IsInstance() or prim.IsInstanceProxy()) for prim in self._selectionDataModel.getPrims())
+
+    def RunCommand(self):
+        selection_model = self._selectionDataModel
+        prims = selection_model.getPrims()
+        with selection_model.batchPrimChanges:
+            selection_model.clearPrims()
+            for prim in prims:
+                if prim.IsInstance() and (proto := prim.GetPrototype()):
+                    selection_model.addPrim(proto)
+                elif prim.IsInstanceProxy():
+                    selection_model.addPrim(prim.GetPrimInPrototype())
+
+
+class GrillSelectPrimPrototypeInstancesMenuItem(GrillPrimCompositionMenuItem):
+    """Recursively (e.g. traversing nested instancing) select all instances of the selected prims"""
+    _subtitle = "Select Prototype Instances"
+
+    def IsEnabled(self):
+        return any((prim.IsInstance() or prim.IsInstanceProxy() or prim.IsInPrototype()) for prim in self._selectionDataModel.getPrims())
+
+    def RunCommand(self):
+        selection_model = self._selectionDataModel
+        prims = selection_model.getPrims()
+        with selection_model.batchPrimChanges:
+            selection_model.clearPrims()
+            for instance in sorted(gusd.iter_recursive_instances(prims), key=lambda p: p.GetPath()):
+                selection_model.addPrim(instance)
+
+
 class AllHierarchyTextMenuItem(_GrillPrimContextMenuItem):
     _include_descendants = True
     _subtitle = "All Descendants"

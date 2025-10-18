@@ -5,6 +5,10 @@ Uses :ref:`Prim Index <glossary:index>` and its utilities (:usdcpp:`PcpPrimIndex
 
 To visualize the :ref:`glossary:composition` graph, the ``graphviz`` library needs to be available in the environment.
 
+.. important::
+
+    If you experience crashes when launching this widget, it could be due to issues with ``QtWebEngine``. Try setting environment variable ``GRILL_SVG_VIEW_AS_PIXMAP=1`` to avoid use of ``QtWebEngine`` (`see environment variables <views.html#environment-variables>`_ for more details).
+
 .. tab:: USDView
 
     .. image:: images/prim_composition_usdview.gif
