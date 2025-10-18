@@ -336,22 +336,22 @@ def iter_recursive_instances(prims: abc.Iterable[Usd.Prm]) -> abc.Generator[Usd.
         rel_path = child_path.MakeRelativePath(root_path)
         return [stage.GetPrimAtPath(instance.GetPath().AppendPath(rel_path)) for instance in proto.GetInstances()]
 
-    def _handle_prototype(prototype, instances_getter):
+    def visit_prototype(prototype, instances_getter):
         if prototype in visited_prototypes:
             return
         visited_prototypes.add(prototype)
         for instance in (instances:=instances_getter(prototype)):
             yield instance
-        yield from _collect_instances(instances)
+        yield from iterate_instances(instances)
 
-    def _collect_instances(prims):
+    def iterate_instances(prims):
         for prim in prims:
             if (is_instance := prim.IsInstance()) or prim.IsPrototype():
-                yield from _handle_prototype(prim.GetPrototype() if is_instance else prim, Usd.Prim.GetInstances)
+                yield from visit_prototype(prim.GetPrototype() if is_instance else prim, Usd.Prim.GetInstances)
             if (is_proxy := prim.IsInstanceProxy()) or prim.IsInPrototype():  # we're beneath an instance
-                yield from _handle_prototype(prim.GetPrimInPrototype() if is_proxy else prim, get_instances_from_prototype_child)
+                yield from visit_prototype(prim.GetPrimInPrototype() if is_proxy else prim, get_instances_from_prototype_child)
 
-    yield from _collect_instances(prims)
+    yield from iterate_instances(prims)
 
 
 # add other mesh creation utilities here?

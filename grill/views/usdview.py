@@ -175,7 +175,7 @@ class GrillPrimConnectionViewerMenuItem(GrillPrimCompositionMenuItem):
     _subtitle = "Connections"
 
 
-class GrillPrimPrototypeMenuItem(GrillPrimCompositionMenuItem):
+class GrillSelectPrimPrototypeMenuItem(GrillPrimCompositionMenuItem):
 
     @property
     def _subtitle(self):
@@ -196,7 +196,7 @@ class GrillPrimPrototypeMenuItem(GrillPrimCompositionMenuItem):
                     selection_model.addPrim(prim.GetPrimInPrototype())
 
 
-class GrillPrimInstancesMenuItem(GrillPrimCompositionMenuItem):
+class GrillSelectPrimPrototypeInstancesMenuItem(GrillPrimCompositionMenuItem):
     """Recursively (e.g. traversing nested instancing) select all instances of the selected prims"""
     _subtitle = "Select Prototype Instances"
 
