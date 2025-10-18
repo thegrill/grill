@@ -323,7 +323,7 @@ def _format_prim_hierarchy(prims, include_descendants=True, predicate=Usd.PrimDe
     return "\n".join(chain.from_iterable(ftree(prim) for prim in prims_to_tree))
 
 
-def iter_recursive_instances(prims: abc.Iterable[Usd.Prm]) -> abc.Generator[Usd.Prim]:
+def iter_recursive_instances(prims: abc.Iterable[Usd.Prim]) -> abc.Iterator[Usd.Prim]:
     """For the given prims, recursively iterate over all instances from their prototypes."""
 
     visited_prototypes = set()
