@@ -323,6 +323,37 @@ def _format_prim_hierarchy(prims, include_descendants=True, predicate=Usd.PrimDe
     return "\n".join(chain.from_iterable(ftree(prim) for prim in prims_to_tree))
 
 
+def iter_recursive_instances(prims: abc.Iterable[Usd.Prm]) -> abc.Generator[Usd.Prim]:
+    """For the given prims, recursively iterate over all instances from their prototypes."""
+
+    visited_prototypes = set()
+
+    def get_instances_from_prototype_child(child):
+        child_path = child.GetPath()
+        root_path = child_path.GetPrefixes()[0]  # contract: all prototypes are root prims like /__Prototype_3
+        stage = child.GetStage()
+        proto = stage.GetPrimAtPath(root_path)
+        rel_path = child_path.MakeRelativePath(root_path)
+        return [stage.GetPrimAtPath(instance.GetPath().AppendPath(rel_path)) for instance in proto.GetInstances()]
+
+    def _handle_prototype(prototype, instances_getter):
+        if prototype in visited_prototypes:
+            return
+        visited_prototypes.add(prototype)
+        for instance in (instances:=instances_getter(prototype)):
+            yield instance
+        yield from _collect_instances(instances)
+
+    def _collect_instances(prims):
+        for prim in prims:
+            if (is_instance := prim.IsInstance()) or prim.IsPrototype():
+                yield from _handle_prototype(prim.GetPrototype() if is_instance else prim, Usd.Prim.GetInstances)
+            if (is_proxy := prim.IsInstanceProxy()) or prim.IsInPrototype():  # we're beneath an instance
+                yield from _handle_prototype(prim.GetPrimInPrototype() if is_proxy else prim, get_instances_from_prototype_child)
+
+    yield from _collect_instances(prims)
+
+
 # add other mesh creation utilities here?
 def _make_plane(mesh, width, depth):
     # https://github.com/marcomusy/vedo/issues/86
