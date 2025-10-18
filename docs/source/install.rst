@@ -11,7 +11,7 @@ Similarly, ``grill`` won't install asset creation capabilities, as those are opi
 
 Other dependencies like ``numpy``, ``networkx`` or ``pydot`` can be skipped by using the ``--no-deps`` flag.
 
-.. tab:: Default
+.. tab:: :iconify:`devicon:pypi` Default
 
     .. code-block:: bash
 
@@ -40,7 +40,7 @@ Other dependencies like ``numpy``, ``networkx`` or ``pydot`` can be skipped by u
     For some DCC applications (e.g. **Houdini**, **Maya**) ``pip`` needs to run
     from their corresponding python interpreters:
 
-    .. tab:: Houdini
+    .. tab:: :iconify:`file-icons:houdini` Houdini
 
         If ``pip`` is missing, `follow this guide <https://wordpress.discretization.de/houdini/home/advanced-2/installing-and-using-scipy-in-houdini/>`_.
 
@@ -48,7 +48,7 @@ Other dependencies like ``numpy``, ``networkx`` or ``pydot`` can be skipped by u
 
             hython -m pip install grill
 
-    .. tab:: Maya
+    .. tab:: :iconify:`devicon:maya` Maya
 
         Visit the `official docs <https://help.autodesk.com/view/MAYAUL/2025/ENU/?guid=GUID-72A245EC-CDB4-46AB-BEE0-4BBBF9791627>`_ for more details.
 

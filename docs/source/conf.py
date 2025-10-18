@@ -45,6 +45,7 @@ extensions = [
     'sphinx_copybutton',
     'sphinx_toggleprompt',
     'sphinx_togglebutton',
+    'sphinx_iconify',
     'sphinx_inline_tabs',
     'hoverxref.extension',
     'sphinx.ext.autosectionlabel',
