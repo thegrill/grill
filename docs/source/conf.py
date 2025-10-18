@@ -163,7 +163,7 @@ html_sidebars = {
 }
 html_title = '👨‍🍳 The Grill'
 html_theme_options = {
-    "accent_color": "sky",
+    "accent_color": "blue",
     "github_url": "https://github.com/thegrill/grill",
     "globaltoc_expand_depth": 2,
     "toctree_collapse": True,
