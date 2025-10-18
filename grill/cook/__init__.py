@@ -139,6 +139,7 @@ def define_taxon(stage: Usd.Stage, name: str, *, references: tuple[Usd.Prim] = t
     Optional ``field=value`` items can be provided for identification purposes through ``id_fields``.
 
     """
+    # This could create a new schema in the future if codeless schemas are allowed to be registered at runtime
     if name == _TAXONOMY_NAME:
         # TODO: prevent upper case lower case mismatch handle between multiple OS?
         #  (e.g. Windows considers both the same but Linux does not)
@@ -556,3 +557,9 @@ def taxonomy_graph(prims: Usd.Prim, url_id_prefix: str) -> nx.DiGraph:
 def _(stage: Usd.Stage, url_id_prefix: str) -> nx.DiGraph:
     # Convenience for the stage
     return taxonomy_graph(itaxa(stage), url_id_prefix)
+
+
+def filter_taxa(prims: abc.Iterable[Usd.Prim], taxon: Usd.Prim | str, *taxa: Usd.Prim) -> abc.Iterator[Usd.Prim]:
+    """From the given prims, yield those that are part of the given taxa."""
+    taxa_names = {i if isinstance(i, str) else i.GetName() for i in (taxon, *taxa)}
+    return (prim for prim in prims if taxa_names.intersection(prim.GetAssetInfoByKey(_ASSETINFO_TAXA_KEY) or {}))

@@ -142,6 +142,16 @@ class TestCook(unittest.TestCase):
         self.assertEqual(first_successors, {second.GetName(), third.GetName()})
         self.assertEqual(set(cook.taxonomy_graph(stage, "").nodes), set(graph_from_stage.nodes))
 
+    def test_filter_taxa(self):
+        stage = cook.fetch_stage(self.root_asset)
+        root = cook.define_taxon(stage, "Root")
+        parent, child = cook.create_many(root, ['A', 'B'])
+        another = cook.define_taxon(stage, "Another")
+        cook.create_many(another, ['C', 'D'])
+        inherited = cook.define_taxon(stage, "Inherited", references=[root])
+        grandchild = cook.create_unit(inherited, 'E')
+        self.assertSetEqual({parent, child, grandchild}, set(cook.filter_taxa(stage.Traverse(), root)))
+
     def test_asset_unit(self):
         stage = cook.fetch_stage(self.root_asset)
         taxon_name = "taxon"
