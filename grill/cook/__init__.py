@@ -406,6 +406,7 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
     # Ensure prims are defined to spawn units unto (paths might be deep e.g. /world/parent/nested/path/for/child)
     spawned = [parent_stage.DefinePrim(path) for path in paths_to_create]
     child_is_model = child.IsModel()
+    checked_parents = set()
     with Sdf.ChangeBlock():
         # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
         if child_is_model and not (parent_model := Usd.ModelAPI(parent)).IsKind(Kind.Tokens.assembly):
@@ -431,11 +432,12 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
             # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
             if child_is_model:
                 # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-                spawned_parent_rel_path = spawned_unit.GetParent().GetPath().MakeRelativePath(parent_path)
-                for parent_prefix in spawned_parent_rel_path.GetPrefixes():
-                    inner_parent = parent.GetPrimAtPath(parent_prefix)
+                inner_parent = spawned_unit.GetParent()
+                while inner_parent != parent and inner_parent not in checked_parents:
                     if not inner_parent.IsModel():
                         Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
+                        checked_parents.add(inner_parent)
+                    inner_parent = inner_parent.GetParent()
 
                 if not child.IsGroup():
                     # Sensible defaults: component prims are instanced
