@@ -730,7 +730,14 @@ class TestViews(unittest.TestCase):
         end_position = QtCore.QPoint(-5, -5)
 
         # 1. Mouse press
-        middle_button_event = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonPress, start_position, QtCore.Qt.MiddleButton, QtCore.Qt.MiddleButton, QtCore.Qt.NoModifier)
+        middle_button_event = QtGui.QMouseEvent(
+            QtCore.QEvent.MouseButtonPress,
+            start_position,
+            start_position,
+            QtCore.Qt.MiddleButton,
+            QtCore.Qt.MiddleButton,
+            QtCore.Qt.NoModifier,
+        )
         vertical_value = vertical_scroll_bar.value()
         horizontal_value = horizontal_scroll_bar.value()
         view.mousePressEvent(middle_button_event)
@@ -739,7 +746,14 @@ class TestViews(unittest.TestCase):
 
         # 2. Mouse move
         view._last_pan_pos = _graph._EVENT_POSITION_FUNC(middle_button_event) + QtCore.QPoint(10,10)
-        move_event = QtGui.QMouseEvent(QtCore.QEvent.MouseMove, end_position, QtCore.Qt.MiddleButton, QtCore.Qt.MiddleButton, QtCore.Qt.NoModifier)
+        move_event = QtGui.QMouseEvent(
+            QtCore.QEvent.MouseButtonPress,
+            end_position,
+            end_position,
+            QtCore.Qt.MiddleButton,
+            QtCore.Qt.MiddleButton,
+            QtCore.Qt.NoModifier,
+        )
         view.mouseMoveEvent(move_event)
         last_vertical_scroll_bar = vertical_scroll_bar.value()
         last_horizontal_scroll_bar = horizontal_scroll_bar.value()
