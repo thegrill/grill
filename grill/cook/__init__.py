@@ -431,9 +431,12 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
             # Action of bringing a unit from our catalogue turns parent into an assembly only if child is a model.
             if child_is_model:
                 # check for all intermediate parents of our spawned unit to ensure valid model hierarchy
-                for inner_parent in _usd.iprims(parent_stage, [parent_path], lambda p: p == spawned_unit.GetParent()):
+                spawned_parent_rel_path = spawned_unit.GetParent().GetPath().MakeRelativePath(parent_path)
+                for parent_prefix in spawned_parent_rel_path.GetPrefixes():
+                    inner_parent = parent.GetPrimAtPath(parent_prefix)
                     if not inner_parent.IsModel():
                         Usd.ModelAPI(inner_parent).SetKind(Kind.Tokens.group)
+
                 if not child.IsGroup():
                     # Sensible defaults: component prims are instanced
                     spawned_unit.SetInstanceable(True)

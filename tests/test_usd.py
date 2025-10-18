@@ -129,13 +129,10 @@ class TestUSD(unittest.TestCase):
             "/__Prototype_1/Windows/Apartment_blue",
         )}
         prims = (stage.GetPrimAtPath(p) for p in paths)
-        result = list()
-        for instance in gusd.iter_recursive_instances(prims):
-            result.append(instance.GetPath())
+        result = [instance.GetPath() for instance in gusd.iter_recursive_instances(prims)]
 
         non_proto__result_paths = {path for path in result if not str(path).startswith("/__Prototype_")}
         non_proto_expected_paths = {path for path in expected_prim_paths if not str(path).startswith("/__Prototype_")}
 
         self.assertEqual(len(result), len(expected_prim_paths))
         self.assertSetEqual(non_proto__result_paths, non_proto_expected_paths)
-
