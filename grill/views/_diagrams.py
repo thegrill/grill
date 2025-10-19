@@ -528,7 +528,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
         # 26.200 <module>  grill\views\_diagrams.py:1
         # ├─ 13.613 GraphView.view  grill\views\_graph.py:580
         # │  └─ 13.603 GraphView._load_graph  grill\views\_graph.py:622
