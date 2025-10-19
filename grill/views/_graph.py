@@ -247,7 +247,12 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
     def add_edge(self, edge: _Edge, port):
         if port is not None and port not in (ports:=self._ports):
-            raise KeyError(f"{port=} does not exist on {ports=} of {self}")
+            # TODO: add an API for this
+            if self._data.lod != _NodeLOD.HIGH and edge._source == edge._target:
+                # only in cases when we're not on HIGH lod internal connections would not be visible
+                edge.setVisible(False)
+            else:
+                raise KeyError(f"{port=} does not exist on {ports=} of {self}")
         self._edges[edge] = port
 
     def itemChange(self, change: QtWidgets.QGraphicsItem.GraphicsItemChange, value):
