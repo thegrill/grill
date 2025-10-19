@@ -263,7 +263,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         for source_port, dependencies in internal_dependencies.items():
             # TODO: does not work yet with LOD
-            continue
+            # continue
             for spec_path, color in dependencies:
                 if spec_path not in port_by_spec_path:
                     continue
@@ -468,16 +468,16 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             print(f"finished initializing {cls}")
             child.setMinimumWidth(150)
             splitter.addWidget(widget_on_splitter)
-            continue
+            # continue
             # # TODO: make the below a test
-            # if hasattr(child, "setLOD"):
-            #     child.setLOD(root_nodes, _graph._NodeLOD.LOW)
+            if hasattr(child, "setLOD"):
+                child.setLOD(root_nodes, _graph._NodeLOD.LOW)
             #
             # #### TEST recursive and lod
-            # nodes_added = graph._expand_dependencies(root_nodes, recursive=True)
-            # new_nodes_to_view = set(root_nodes).union(nodes_added)
-            # child.view(new_nodes_to_view)
-            # continue
+            nodes_added = graph._expand_dependencies(root_nodes, recursive=True)
+            new_nodes_to_view = set(root_nodes).union(nodes_added)
+            child.view(new_nodes_to_view)
+            continue
             # # new_nodes_to_view = child._expand_dependencies(True)
             # # print(f"{new_nodes_to_view=}")
             # # continue
@@ -524,7 +524,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")

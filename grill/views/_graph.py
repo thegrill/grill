@@ -342,8 +342,23 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         self.adjust()
 
+    def _deactivate_port(self, node, port):
+        if port is None: # nothing to do
+            return
+        ports_by_side = node._active_ports_by_side[port]  # {port_name: {left[int]: {}, right[int]: {}}
+
+        for side in 0, 1:
+            if self in ports_by_side[side]:
+                all_ports = ports_by_side[side]
+                all_ports.pop(self, None)
+                port_items = node._port_items[port]  # {index: (QEllipse, QEllipse)}
+                if not all_ports:
+                    port_items[side].setVisible(False)
+
     def _update_plug_position_for_port(self, node, port):
         # TODO: this is the main reason of why Node._ports has {port: index}. See if it can be removed
+        if not self.isVisible():
+            return
         is_cycle = self._is_cycle
         bounds = node.boundingRect()
         port_positions = self._port_positions
@@ -377,7 +392,8 @@ class _Edge(QtWidgets.QGraphicsItem):
             top_left, bottom_right = self._line.p1(), self._line.p2()
 
         width, arrow_size = self._width, max(self._arrow_size, 50)
-        top_shift, bottom_shift = -width - arrow_size, width + arrow_size
+        internal_shift = 50 if self._source == self._target else 0
+        top_shift, bottom_shift = -width - arrow_size - internal_shift, width + arrow_size + internal_shift
         return QtCore.QRectF(top_left, bottom_right).normalized().adjusted(top_shift, top_shift, bottom_shift, bottom_shift)
 
     @property
@@ -389,6 +405,8 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     def adjust(self):
         """Update edge position from source and target node following Node::itemChange."""
+        if not self.isVisible():
+            return
         self.prepareGeometryChange()
         source_pos = self._source.pos()
         target_pos = self._target.pos()
@@ -497,7 +515,6 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     def _paint_cyclic_arrow(self, painter: QtGui.QPainter, source_pos: QtCore.QPointF):
         center_x, center_y = source_pos.toTuple()
-
         for index, color in enumerate(self._colors):
             self._pen.setColor(color)
             painter.setPen(self._pen)
@@ -712,8 +729,13 @@ class GraphView(_GraphicsViewport):
                         (edge._source, edge._source_port),
                         (edge._target, edge._target_port),
                 ):
-                    if qnode is neighbor:
-                        edge._update_plug_position_for_port(qnode, port)
+                    if qnode is neighbor: # we're a cycle
+                        if qnode._data.lod != _NodeLOD.HIGH and edge._source == edge._target:
+                            edge.setVisible(False)
+                            edge._deactivate_port(qnode, port)
+                        else:
+                            edge.setVisible(True)
+                            edge._update_plug_position_for_port(qnode, port)
 
             for edge in qnode._edges:
                 edge.adjust()
