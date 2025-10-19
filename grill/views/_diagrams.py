@@ -522,7 +522,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:/write/code/git/easy-edgedb/chapter10/assets/dracula-3d-Model-City-rnd-main-Bistritz-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\lab_workbench01\lab_workbench01.usda")
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\stoat01.usda")
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
@@ -857,3 +857,148 @@ if __name__ == "__main__":
     #       └─ 1.250 _GraphSVGViewer._subgraph_dot_path  grill\views\_graph.py:957
     #          └─ 1.237 write_dot  networkx\drawing\nx_agraph.py:183
     #                [2 frames hidden]  networkx, pygraphviz
+
+    # ================ 2025/10/19 py-3.13 usd-25.11 ==========================
+    # pydot ------------------------------------------------------------------
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 16:08:54  Samples:  89385
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 117.213   CPU time: 98.547
+    # /   _/                      v5.0.1
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:600
+    #
+    # 117.213 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
+    # └─ 117.213 _launch_asset_structure_browser  A:\write\code\git\grill\grill\views\_diagrams.py:355
+    #    └─ 117.080 _AssetStructureBrowser.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:406
+    #       ├─ 76.003 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:748
+    #       │  └─ 75.992 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:790
+    #       │     ├─ 70.163 graphviz_layout  networkx\drawing\nx_pydot.py:241
+    #       │     │     [189 frames hidden]  networkx, pydot, pyparsing, subproces...
+    #       │     ├─ 3.455 _add_node  A:\write\code\git\grill\grill\views\_graph.py:829
+    #       │     │  └─ 3.251 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:140
+    #       │     │     └─ 1.908 _Node.setHtml  <built-in>
+    #       │     └─ 1.885 _Edge.__init__  A:\write\code\git\grill\grill\views\_graph.py:303
+    #       │        └─ 1.423 _Edge.adjust  A:\write\code\git\grill\grill\views\_graph.py:411
+    #       │           └─ 1.177 _Node._activatePort  A:\write\code\git\grill\grill\views\_graph.py:264
+    #       └─ 41.017 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #          └─ 40.062 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #             └─ 40.035 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                └─ 39.056 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                   └─ 38.995 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                      └─ 38.039 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                         └─ 37.880 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                            └─ 36.933 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                               └─ 36.818 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                  └─ 35.872 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                     └─ 35.792 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                        └─ 34.852 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                           └─ 34.773 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                              └─ 33.807 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                                 └─ 33.675 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                                    ├─ 32.452 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                                    │  └─ 32.325 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                                    │     ├─ 31.149 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                                    │     │  └─ 30.878 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                                    │     │     └─ 29.769 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                                    │     │        ├─ 26.474 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                                    │     │        │  ├─ 23.407 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                                    │     │        │  │  ├─ 14.542 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                                    │     │        │  │  │  ├─ 12.315 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                                    │     │        │  │  │  │  ├─ 6.299 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #                                                    │     │        │  │  │  │  │  ├─ 4.958 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #                                                    │     │        │  │  │  │  │  │  └─ 4.785 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #                                                    │     │        │  │  │  │  │  └─ 1.312 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #                                                    │     │        │  │  │  │  └─ 5.905 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #                                                    │     │        │  │  │  └─ 2.205 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #                                                    │     │        │  │  │     └─ 1.506 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #                                                    │     │        │  │  └─ 8.766 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #                                                    │     │        │  └─ 3.039 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #                                                    │     │        │     └─ 1.949 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #                                                    │     │        └─ 3.176 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #                                                    │     └─ 1.173 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #                                                    └─ 1.220 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+
+    # pygraphviz -------------------------------------------------------------
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 16:17:54  Samples:  27158
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 32.399    CPU time: 32.156
+    # /   _/                      v5.0.1
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:600
+    #
+    # 32.399 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
+    # └─ 32.399 _launch_asset_structure_browser  A:\write\code\git\grill\grill\views\_diagrams.py:355
+    #    └─ 32.273 _AssetStructureBrowser.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:406
+    #       ├─ 23.544 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  ├─ 22.461 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │  └─ 22.458 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     ├─ 21.375 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │  └─ 21.370 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     ├─ 20.178 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │  └─ 20.164 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     ├─ 19.109 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │  └─ 19.092 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     ├─ 18.139 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │  └─ 18.131 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     ├─ 17.177 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │  └─ 17.151 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     │     ├─ 16.194 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │     │  └─ 16.166 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     │     │     ├─ 14.917 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │     │     │  └─ 14.901 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     │     │     │     ├─ 13.680 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │     │     │     │  └─ 13.534 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     │     │     │     │     ├─ 12.406 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │     │     │     │     │  ├─ 11.869 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     │     │     │     │     │  │  ├─ 8.767 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  ├─ 7.631 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  ├─ 5.123 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  │  ├─ 4.120 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:61
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  │  │  ├─ 2.844 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:71
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  │  │  │  └─ 2.284 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  │  │  └─ 1.252 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  │  │     └─ 0.758 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  │  └─ 0.717 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │  └─ 2.472 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │     ├─ 1.688 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │     │  ├─ 0.642 str.format  <built-in>
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │     │  ├─ 0.447 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │     │  └─ 0.390 escape  html\__init__.py:12
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  │     └─ 0.353 [self]  A:\write\code\git\grill\grill\views\_diagrams.py
+    #       │  │     │     │     │     │     │     │     │     │     │  │  │  └─ 0.857 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #       │  │     │     │     │     │     │     │     │     │     │  │  └─ 3.081 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │     │     │     │     │     │  │     ├─ 2.012 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     │     │     │     │     │     │  │     │  ├─ 0.727 str.format  <built-in>
+    #       │  │     │     │     │     │     │     │     │     │     │  │     │  ├─ 0.574 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │  │     │     │     │     │     │     │     │     │     │  │     │  └─ 0.443 escape  html\__init__.py:12
+    #       │  │     │     │     │     │     │     │     │     │     │  │     └─ 0.463 [self]  A:\write\code\git\grill\grill\views\_diagrams.py
+    #       │  │     │     │     │     │     │     │     │     │     │  └─ 0.353 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:36
+    #       │  │     │     │     │     │     │     │     │     │     └─ 1.123 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │     │     │     │     │        └─ 0.756 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     │     │     │     │     └─ 1.217 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │     │     │     │        └─ 0.813 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     │     │     │     └─ 1.243 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │     │     │        └─ 0.850 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     │     │     └─ 0.951 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │     │        └─ 0.633 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     │     └─ 0.949 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │     │        └─ 0.643 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     │     └─ 0.947 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │     │        └─ 0.631 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     │     └─ 1.051 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │     │        └─ 0.687 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     │     └─ 1.185 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │     │        └─ 0.805 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  │     └─ 1.079 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │  │        └─ 0.722 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       │  └─ 1.077 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:282
+    #       │     └─ 0.732 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1098
+    #       └─ 8.664 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:748
+    #          └─ 8.649 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:790
+    #             ├─ 4.601 graphviz_layout  networkx\drawing\nx_agraph.py:226
+    #             │     [6 frames hidden]  networkx, pygraphviz, threading, <bui...
+    #             ├─ 2.361 _add_node  A:\write\code\git\grill\grill\views\_graph.py:829
+    #             │  └─ 2.263 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:140
+    #             │     └─ 1.904 _Node.setHtml  <built-in>
+    #             └─ 1.332 _Edge.__init__  A:\write\code\git\grill\grill\views\_graph.py:303
+    #                └─ 0.950 _Edge.adjust  A:\write\code\git\grill\grill\views\_graph.py:411
+    #                   └─ 0.756 _Node._activatePort  A:\write\code\git\grill\grill\views\_graph.py:264
+    #                      └─ 0.668 _add_port_item  A:\write\code\git\grill\grill\views\_graph.py:273
