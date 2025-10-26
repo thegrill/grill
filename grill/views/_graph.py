@@ -96,36 +96,34 @@ def _dot_2_svg(sourcepath):
     return error, targetpath
 
 
-class _NodeLOD(enum.Flag):
+class _LOD(enum.Flag):
     LOW = enum.auto()
     MID = enum.auto()
     HIGH = enum.auto()
 
 
-class DynamicNodeAttributes(ChainMap):
-
+class DynamicLODAttributes(ChainMap):
     def __init__(self):
         self._lods = {
             # Initializing these dictionaries empty leads to an error where HIGH and LOW end up being the same dictionary in the deqeue. Might be an issue with CPython?
             # When having the below initialized as {} will lead to later calls to setLOD to fail with:
             #   ValueError: {...} is not in deque
-            _NodeLOD.HIGH: {'label': 'high'},
-            _NodeLOD.MID: {'label': 'mid'},
-            _NodeLOD.LOW: {'label': 'low'},
+            _LOD.HIGH: {'label': 'high'},
+            _LOD.MID: {'label': 'mid'},
+            _LOD.LOW: {'label': 'low'},
         }
         maps = self._lods.values()
         super().__init__(*maps)
-        self._currentLOD = _NodeLOD.HIGH
+        self._currentLOD = _LOD.HIGH
         self._data = ChainMap({}, {})
         self.maps = deque(chain(maps, [self._data]))
-
 
     @property
     def lod(self):
         return self._currentLOD
 
     @lod.setter
-    def lod(self, value: _NodeLOD):
+    def lod(self, value: _LOD):
         map = self._lods[value]
         self._currentLOD = value
         self.maps.remove(map)
@@ -188,6 +186,124 @@ class _Node(QtWidgets.QGraphicsTextItem):
         self._port_items = {}  # {port_name: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
+        if "factory.usdazz" in label:
+            # raise ValueError
+            label = _adjust_graphviz_html_table_label(
+                """<<table BORDER="4" COLOR="#E0E0E0" bgcolor="#FAFAFA" CELLSPACING="0">
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" COLOR="#E0E0E0" COLSPAN="9" PORT="C0R17" WIDTH="50" BGCOLOR="#FAFAFA">
+        <FONT COLOR="#6C6C6C">factory.usda</FONT>
+    </TD>
+</TR>
+<TR>
+    <TD HEIGHT="10" BORDER="0" COLOR="#E0E0E0" COLSPAN="10" PORT="C0R16" WIDTH="50" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R15" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">defaultPrim</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R15" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">Factory</FONT>
+    </TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+            <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD HEIGHT="10" BORDER="0" COLOR="#E0E0E0" COLSPAN="10" PORT="C0R14" WIDTH="50" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R12" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">Factory</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R12" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">Scope</FONT>
+    </TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>		<TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R13" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">kind</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R13" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">assembly</FONT>
+    </TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD> <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R10" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">BarrelBundle</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R10" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">Scope</FONT>
+    </TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R11" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">kind</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R11" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">group</FONT>
+    </TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R6" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">Barrel_1</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R6" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF"> - </FONT><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    </TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R9" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">instanceable</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R9" WIDTH="50" BGCOLOR="#FFFFFF">
+        <FONT COLOR="#8F8F8F">True</FONT><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    </TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R1" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">prototypes</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R1" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">Scope</FONT>
+    </TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+</TR>
+<TR>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R0" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">Barrel</FONT>
+    </TD>
+    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R0" WIDTH="50" BGCOLOR="#76B900">
+        <FONT COLOR="#FFFFFF">Xform</FONT><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
+    </TD>
+</TR>
+</table>>"""
+            )
         self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
@@ -246,10 +362,8 @@ class _Node(QtWidgets.QGraphicsTextItem):
         return super().paint(painter, option, widget)
 
     def add_edge(self, edge: _Edge, port):
-        if port is not None and port not in (ports:=self._ports):
-            # TODO: add an API for this
-            if self._data.lod != _NodeLOD.HIGH and edge._source == edge._target:
-                # only in cases when we're not on HIGH lod internal connections would not be visible
+        if port is not None and port not in (ports := self._ports):
+            if self._data.lod != _LOD.HIGH and edge._source == edge._target:
                 edge.setVisible(False)
             else:
                 raise KeyError(f"{port=} does not exist on {ports=} of {self}")
@@ -257,52 +371,82 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
     def itemChange(self, change: QtWidgets.QGraphicsItem.GraphicsItemChange, value):
         if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
+            # Batch edge adjustments to reduce redraws
             for edge in self._edges:
                 edge.adjust()
         return super().itemChange(change, value)
 
     def _activatePort(self, edge, port, side, position):
+        """Optimized port activation with reduced object creation."""
         if port is None:
-            return  # we're at the center, nothing to draw nor activate
+            return
 
         try:
-            ports_by_side = self._active_ports_by_side[port]  # {port_name: {left[int]: {}, right[int]: {}}
-        except KeyError:  # first time we're activating a port, so add a visual ellipse for it
+            ports_by_side = self._active_ports_by_side[port]
+        except KeyError:
+            # First time activating this port
             radius = 4
 
-            def _add_port_item(this_side):
-                class PortPlugItem(QtWidgets.QGraphicsEllipseItem):
-                    def __repr__(this):
-                        return f"Item({self}, {port=}, {this_side})"
-                item = PortPlugItem(-radius, -radius, 2 * radius, 2 * radius)
+            # Create both port items at once to reduce scene updates
+            class PortPlugItem(QtWidgets.QGraphicsEllipseItem):
+                def __repr__(this):
+                    return f"Item({self}, {port=}, side={{side}})"
+
+            left_item = PortPlugItem(-radius, -radius, 2 * radius, 2 * radius)
+            right_item = PortPlugItem(-radius, -radius, 2 * radius, 2 * radius)
+
+            for item in (left_item, right_item):
                 item.setPen(_NO_PEN)
                 item.setZValue(self.zValue())
+                item.setVisible(False)  # Start hidden
                 self.scene().addItem(item)
-                return item
 
-            self._port_items[port] = (_add_port_item("left"), _add_port_item("right"))
+            self._port_items[port] = (left_item, right_item)
             self._active_ports_by_side[port] = ports_by_side = {0: dict(), 1: dict()}
 
         ports_by_side[side][edge] = True
-        other_side = bool(not side)
+        other_side = int(not side)
         inactive_ports = ports_by_side[other_side]
         inactive_ports.pop(edge, None)
-        port_items = self._port_items[port]  # {index: (QEllipse, QEllipse)}
+
+        port_items = self._port_items[port]
+
+        # Only update visibility if needed
         if not inactive_ports:
             port_items[other_side].setVisible(False)
+
         this_item = port_items[side]
-        this_item.setVisible(True)
+        if not this_item.isVisible():
+            this_item.setVisible(True)
+
+        # Batch updates
         this_item.setBrush(edge._brush)
-        port_items[side].setPos(position)
+        this_item.setPos(position)
 
 
 class _Edge(QtWidgets.QGraphicsItem):
     def __repr__(self):
         return f"{type(self).__name__}(source={self._source}, target={self._target}, source_port={self._source_port}, target_port={self._target_port})"
 
-    def __init__(self, source: _Node, target: _Node, *, source_port: int = None, target_port: int = None, label="", color="", is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
+    def __init__(self, source: _Node, target: _Node, *, edge_data, is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
         """Source port: index of the source node to connect to"""
         super().__init__(parent)
+        color = edge_data['color']
+        label = edge_data.get('label', '')
+        self._data = edge_data
+
+        source_port, target_port = None, None
+        if source._ports or target._ports:
+            if (headport_key := edge_data.get('headport')) is not None:
+                # TODO: this is for asset structure tables with 2 columns. Assess on how to handle this better
+                if isinstance(headport_key, str) and headport_key.startswith("C0R"):
+                    headport_key = int(headport_key.removeprefix("C0R"))
+                target_port = headport_key
+            if (tailport_key := edge_data.get('tailport')) is not None:
+                if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
+                    tailport_key = int(tailport_key.removeprefix("C1R"))
+                source_port = tailport_key
+
         self._source = source
         self._target = target
         self._source_port = source_port
@@ -350,6 +494,8 @@ class _Edge(QtWidgets.QGraphicsItem):
     def _deactivate_port(self, node, port):
         if port is None: # nothing to do
             return
+        if port not in node._active_ports_by_side:
+            return
         ports_by_side = node._active_ports_by_side[port]  # {port_name: {left[int]: {}, right[int]: {}}
 
         for side in 0, 1:
@@ -361,15 +507,18 @@ class _Edge(QtWidgets.QGraphicsItem):
                     port_items[side].setVisible(False)
 
     def _update_plug_position_for_port(self, node, port):
-        # TODO: this is the main reason of why Node._ports has {port: index}. See if it can be removed
+        """Optimized with early exit and cached calculations."""
         if not self.isVisible():
             return
+
         is_cycle = self._is_cycle
         bounds = node.boundingRect()
         port_positions = self._port_positions
+        # breakpoint()
         if port is None:
             port_positions[node, port] = {
-                None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20) if is_cycle else bounds.center()
+                None: QtCore.QPointF(bounds.right() - 5, bounds.height() / 2 - 20)
+                if is_cycle else bounds.center()
             }
             return
 
@@ -379,6 +528,7 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         port_size = (bounds.height() - outer_shift) / max_port_idx
         y_pos = (port_index * port_size) + (port_size / 2) + (outer_shift / 2)
+
         port_positions[node, port] = {
             0: QtCore.QPointF(0, y_pos),  # left
             1: QtCore.QPointF(bounds.right(), y_pos),  # right
@@ -412,30 +562,35 @@ class _Edge(QtWidgets.QGraphicsItem):
         """Update edge position from source and target node following Node::itemChange."""
         if not self.isVisible():
             return
+
         self.prepareGeometryChange()
+
         source_pos = self._source.pos()
         target_pos = self._target.pos()
         target_bounds = self._target.boundingRect()
 
-        source_on_left = self._is_cycle or (self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x())
+        source_on_left = self._is_cycle or (
+                self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x()
+        )
 
         is_source_port_used = self._is_source_port_used
         is_target_port_used = self._is_target_port_used
         source_side = source_on_left if is_source_port_used else None
+
         if self._source == self._target:
             target_side = source_side if is_target_port_used else None
         else:
             target_side = not source_side if is_target_port_used else None
+
         source_point = source_pos + self._port_positions[self._source, self._source_port][source_side]
         target_point = target_pos + self._port_positions[self._target, self._target_port][target_side]
 
         if not is_target_port_used:
             line = QtCore.QLineF(source_point, target_point)
-            if not self._spline_path and self._bidirectional_shift and source_point != target_point:
-                # offset in case of bidirectional connections when we are not using splines (as lines would overlap)
+
+            if self._bidirectional_shift and not self._spline_path and source_point != target_point:
                 line = _parallel_line(line, distance=self._bidirectional_shift, head_offset=0)
 
-            # Check if there is an intersection on the target node to know where to draw the arrow
             if _IS_QT5:
                 intersect_method = line.intersect
                 bounded_intersection = QtCore.QLineF.IntersectType.BoundedIntersection
@@ -443,13 +598,18 @@ class _Edge(QtWidgets.QGraphicsItem):
                 intersect_method = line.intersects
                 bounded_intersection = QtCore.QLineF.IntersectionType.BoundedIntersection
 
-            for each in (
-                    QtCore.QLineF((topLeft:=target_bounds.topLeft()) + target_pos, (topRight:=target_bounds.topRight()) + target_pos),  # top
-                    QtCore.QLineF(topLeft + target_pos, (bottomLeft:=target_bounds.bottomLeft()) + target_pos),  # left
-                    QtCore.QLineF(bottomLeft + target_pos, (bottomRight:=target_bounds.bottomRight()) + target_pos),  # bottom
-                    QtCore.QLineF(bottomRight + target_pos, topRight + target_pos),  # right
+            topLeft = target_bounds.topLeft() + target_pos
+            topRight = target_bounds.topRight() + target_pos
+            bottomLeft = target_bounds.bottomLeft() + target_pos
+            bottomRight = target_bounds.bottomRight() + target_pos
+
+            for edge_line in (
+                    QtCore.QLineF(topLeft, topRight),
+                    QtCore.QLineF(topLeft, bottomLeft),
+                    QtCore.QLineF(bottomLeft, bottomRight),
+                    QtCore.QLineF(bottomRight, topRight),
             ):  # TODO: how to make this more efficient?
-                intersection, intersection_point = intersect_method(each)
+                intersection, intersection_point = intersect_method(edge_line)
                 if intersection == bounded_intersection:
                     target_point = intersection_point
                     break
@@ -457,17 +617,14 @@ class _Edge(QtWidgets.QGraphicsItem):
                 target_point = line.p2()
 
         self._line = line = QtCore.QLineF(source_point, target_point)
+
         if self._spline_path:
             length = line.length()
-            # if self._source == self._target:
-            #     falloff = 2
-            # else:
-            #     falloff = (length / 100) ** 2 if length < 100 else 1
             falloff = (length / 100) ** 2 if length < 100 else 1
             control_point_shift = (1 if source_on_left else -1) * 75 * falloff
 
             control_point1 = source_point + QtCore.QPointF(control_point_shift, 0) if is_source_port_used else source_point
-            control_point2 = target_point + QtCore.QPointF((-control_point_shift if self._source != self._target else control_point_shift), 0) if is_target_port_used else target_point
+            control_point2 = target_point + QtCore.QPointF(-control_point_shift if self._source != self._target else control_point_shift, 0) if is_target_port_used else target_point
 
             self._spline_path = QtGui.QPainterPath()
             self._spline_path.moveTo(source_point)
@@ -475,6 +632,7 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         self._source._activatePort(self, self._source_port, source_side, source_point)
         self._target._activatePort(self, self._target_port, target_side, target_point)
+
         if self._label_text:
             self._label_text.setPos((source_point + target_point) / 2)
 
@@ -501,7 +659,7 @@ class _Edge(QtWidgets.QGraphicsItem):
                 painter.drawPath(self._spline_path)
                 for color, parallel_path in parallel_paths:
                     self._pen.setColor(color)
-                    painter.setPen(self._pen)  # Set the color and thickness
+                    painter.setPen(self._pen)
                     painter.drawPath(parallel_path)
             else:  # painting as a straight line
                 arrow_head_start_point = self._line.p1()
@@ -597,7 +755,6 @@ class _GraphicsViewport(QtWidgets.QGraphicsView):
         elif modifiers == QtCore.Qt.AltModifier:
             self.horizontal_pan(event)
         else:
-            # Pan vertically when no modifier key is pressed
             self.vertical_pan(event)
 
     def mousePressEvent(self, event):
@@ -698,18 +855,17 @@ class GraphView(_GraphicsViewport):
     def keyPressEvent(self, event):
         selection = set(self.scene().selectedItems())
         selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
-        print(selection)
         if (lod_value:={
-            QtCore.Qt.Key_1: _NodeLOD.LOW,
-            QtCore.Qt.Key_2: _NodeLOD.MID,
-            QtCore.Qt.Key_3: _NodeLOD.HIGH,
+            QtCore.Qt.Key_1: _LOD.LOW,
+            QtCore.Qt.Key_2: _LOD.MID,
+            QtCore.Qt.Key_3: _LOD.HIGH,
         }.get(event.key(), None)):
             self.setLOD(selection_keys, lod_value)
             event.accept()
         else:
             super().keyPressEvent(event)
 
-    def setLOD(self, node_indices, lod: _NodeLOD):
+    def setLOD(self, node_indices, lod: _LOD):
         nodes_map = self._nodes_map
         graph = self._graph
         for node_id in node_indices:
@@ -724,18 +880,20 @@ class GraphView(_GraphicsViewport):
 
             label = node_data['label']
             label = _adjust_graphviz_html_table_label(label)
+
             # large items display the old label until forcing a re-draw. Clearing the cache seems the most reliable fix
             qnode.setCacheMode(QtWidgets.QGraphicsItem.NoCache)
             qnode.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
             qnode.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
             for edge in qnode._edges:
+                # TODO: if in the future we update the source / target ports from edges when setting LOD, it should happen here
                 for neighbor, port in (
                         (edge._source, edge._source_port),
                         (edge._target, edge._target_port),
                 ):
-                    if qnode is neighbor: # we're a cycle
-                        if qnode._data.lod != _NodeLOD.HIGH and edge._source == edge._target:
+                    if qnode is neighbor:  # we're a cycle
+                        if qnode._data.lod != _LOD.HIGH and edge._source == edge._target:
                             edge.setVisible(False)
                             edge._deactivate_port(qnode, port)
                         else:
@@ -828,7 +986,7 @@ class GraphView(_GraphicsViewport):
 
         def _add_node(nx_node):
             node_data = graph.nodes[nx_node]
-            if isinstance(node_data, DynamicNodeAttributes):
+            if isinstance(node_data, DynamicLODAttributes):
                 node_data._data.maps.append(graph_node_attrs)
                 nodes_attrs = node_data
             else:
@@ -842,8 +1000,6 @@ class GraphView(_GraphicsViewport):
         for nx_node in graph:
             self._nodes_map[nx_node] = node = _add_node(nx_node)
             node.setZValue(len(self._nodes_map))
-            # print(f"{node=}")
-            # print(f"{node.zValue()=}")
             x_pos, y_pos = positions[nx_node]
             # SVG and dot have inverted coordinates, let's flip Y
             y_pos = max_y - y_pos
@@ -863,21 +1019,9 @@ class GraphView(_GraphicsViewport):
             target = self._nodes_map[target_id]
             is_bidirectional = graph.has_edge(target_id, source_id)
             edge_data = edge_data_getter(source_id, target_id, port)
-            color = edge_data.get('color', edge_color)
-            label = edge_data.get('label', '')
-            kwargs = dict()
-            if source._ports or target._ports:
-                if (headport_key:=edge_data.get('headport')) is not None:
-                    # TODO: this is for asset structure tables with 2 columns. Assess on how to handle this better
-                    if isinstance(headport_key, str) and headport_key.startswith("C0R"):
-                        headport_key = int(headport_key.removeprefix("C0R"))
-                    kwargs['target_port'] = headport_key
-                if (tailport_key := edge_data.get('tailport')) is not None:
-                    if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
-                        tailport_key = int(tailport_key.removeprefix("C1R"))
-                    kwargs['source_port'] = tailport_key
-
-            edge = _Edge(source, target, color=color, label=label, is_bidirectional=is_bidirectional, **kwargs)
+            if 'color' not in edge_data:
+                edge_data['color'] = edge_color
+            edge = _Edge(source, target, edge_data=edge_data, is_bidirectional=is_bidirectional)
             self.scene().addItem(edge)
 
 
@@ -1080,6 +1224,7 @@ _BG_SPACE_COLOR = "#FAFAFA"
 _BG_CELL_COLOR = "#FFFFFF"
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 _item_cls_kwargs = dict(frozen=True)
 if sys.version_info.minor > 9:
@@ -1088,86 +1233,143 @@ if sys.version_info.minor > 9:
 
 @dataclass(**_item_cls_kwargs)
 class _TableItem:
-    lod: _NodeLOD.HIGH
-    padding: int
+    lod: _LOD
+    depth: int
     key: str
     value: str
     display_attributes: dict
 
 
+_SPAN_ENTRY_TEMPLATE = f'<TD BORDER="0" BGCOLOR="{_BG_SPACE_COLOR}"></TD>'
+
+
+@lru_cache(maxsize=1024)
+def _cached_escape(text):
+    return html.escape(text)
+
+
+@lru_cache(maxsize=512)
+def _format_display_cell(
+    is_total_span, has_key, border, colspan, port, width, bgcolor, fontcolor, safe_entry
+):
+    # TOOD: refactor this
+    more_attrs = f' BGCOLOR="{bgcolor}"' if bgcolor else ''
+    font_entry = f'<FONT COLOR="{fontcolor}">' if fontcolor else ''
+    font_closure = '</FONT>' if fontcolor else ''
+    if colspan is 0:
+        raise ValueError(f"Got {colspan=} for {safe_entry=}, setting to 1")
+
+    if is_total_span:
+        height_attr = '' if has_key else ' HEIGHT="10"'
+        template = f'<TD{height_attr} BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{{colspan}}" PORT="{{port}}" WIDTH="{{width}}"{{more_attrs}}>{{font_entry}}{{safe_entry}}{{font_closure}}</TD>'
+    else:
+        template = f'<TD BORDER="1" COLOR="{_BORDER_COLOR}" COLSPAN="{{colspan}}" PORT="{{port}}" WIDTH="{{width}}"{{more_attrs}}>{{font_entry}}{{safe_entry}}{{font_closure}}</TD>'
+
+    return template.format(
+        colspan=colspan,
+        port=port,
+        width=width,
+        more_attrs=more_attrs,
+        font_entry=font_entry,
+        safe_entry=safe_entry,
+        font_closure=font_closure
+    )
+
+
 def _to_table(items: dict[int, _TableItem]):
-    span = max(x.padding for x in items.values()) + 2
+    if not items:
+        return
+
+    # make every path span 2 columns
+    max_colspan = (max(x.depth for x in items.values()) * 2) + 2  # one at the start and another at the end
+    print(f"{max_colspan=}")
+    # padding is len(GetPrefixes())
+    # colspan will be
+    # colspan_per_cell = max((3, int(max_colspan/3)))
+    colspan_per_cell = max(x.depth for x in items.values())
+    print(f"{colspan_per_cell=}")
+    # span = max(x.padding for x in items.values()) + 2
     width = 50
+    indentation_cache = {}
+    tail_cache = {}
+
+    _escape = _cached_escape
+    _format = _format_display_cell
+
     for port_index, item in items.items():
-        padding = item.padding
+        depth = item.depth
         key = item.key
         value = item.value
         attrs = item.display_attributes
+
         key_port = f"C0R{port_index}"
-        value_port = f"C1R{port_index}"
 
-        more_attrs = ''
-        if bgcolor:=attrs.get("bgcolor"):
-            more_attrs+= f' BGCOLOR="{bgcolor}"'
-        font_entry = ''
-        font_closure = ''
-        if fontcolor:=attrs.get("fontcolor"):
-            font_entry = f'<FONT COLOR="{fontcolor}">'
-            font_closure = '</FONT>'
-        fontstyle_entry = ''
-        fontstyle_closure = ''
-        # if attrs.get("fontstyle") == 'bold':
-        #     fontstyle_entry = '<B>'
-        #     fontstyle_closure = '</B>'
+        bgcolor = attrs.get("bgcolor", "")
+        fontcolor = attrs.get("fontcolor", "")
 
-        safe_key = html.escape(key)
-        # zero based + 2 for each side: key and value
-        span_in_row = ((span-2) * 3) if value is _TOTAL_SPAN else span
-        if value is _TOTAL_SPAN:
-            if not key:
-                display_cell_template = '<TD HEIGHT="10" BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+        is_total_span = (value is _TOTAL_SPAN)
+
+        if is_total_span:
+            safe_key = _escape(key)
+            key_entry = _format(
+                is_total_span=True,
+                has_key=bool(key),
+                border="0",
+                # colspan=span-1 if safe_key else span,  # Total span takes full width
+                colspan=max_colspan-2 if safe_key else max_colspan,  # Total span takes full width
+                port=key_port,
+                width=width,
+                bgcolor=bgcolor,
+                fontcolor=fontcolor,
+                safe_entry=safe_key,
+            )
+            if safe_key:  # title
+                yield port_index, f'<TR>{_SPAN_ENTRY_TEMPLATE}{key_entry}</TR>'
             else:
-                display_cell_template = '<TD BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
-        else:
-            display_cell_template = '<TD BORDER="1" COLOR="{_BORDER_COLOR}" COLSPAN="{span_in_row}" PORT="{port}" WIDTH="{width}" {more_attrs}>{font_entry}{fontstyle_entry}{safe_entry}{fontstyle_closure}{font_closure}</TD>'
+                yield port_index, f'<TR>{key_entry}</TR>'
+            continue
 
-        key_entry = display_cell_template.format(
-            _BORDER_COLOR=_BORDER_COLOR,
-            span_in_row=span_in_row,
+        if depth not in indentation_cache:
+            indentation_cache[depth] = _SPAN_ENTRY_TEMPLATE * depth
+        indentation_entry = indentation_cache[depth]
+
+        # tail_count = max_colspan - depth - 1  # -2 because 1 column for key, 1 for value
+        tail_count = colspan_per_cell - depth + 1  # 1 for last column
+        if tail_count not in tail_cache:
+            tail_cache[tail_count] = _SPAN_ENTRY_TEMPLATE * tail_count
+        tail_entry = tail_cache[tail_count]
+
+        safe_key = _escape(key)
+        key_entry = _format(
+            is_total_span=False,
+            has_key=True,
+            border="1",
+            # colspan=1,  # Key takes 1 column
+            colspan=colspan_per_cell,
             port=key_port,
             width=width,
-            more_attrs=more_attrs,
-            font_entry=font_entry,
-            fontstyle_entry=fontstyle_entry,
-            safe_entry=safe_key,
-            fontstyle_closure=fontstyle_closure,
-            font_closure=font_closure,
+            bgcolor=bgcolor,
+            fontcolor=fontcolor,
+            safe_entry=safe_key
         )
-        if value is _TOTAL_SPAN:
-            identation_entry = ''
-            tail_entry = ''
-            value_entry = ''
-        else:
-            span_entry = f'<TD BORDER="0" BGCOLOR="{_BG_SPACE_COLOR}"></TD>'
-            identation_entry = span_entry * padding
-            tail_entry = span_entry * (span - padding - 1)
-            safe_value = html.escape(value).replace("\n", "<br/>")
-            value_entry = display_cell_template.format(
-                _BORDER_COLOR=_BORDER_COLOR,
-                span_in_row=span_in_row,
-                port=value_port,
-                width=width,
-                more_attrs=more_attrs,
-                font_entry=font_entry,
-                fontstyle_entry=fontstyle_entry,
-                safe_entry=safe_value,
-                fontstyle_closure=fontstyle_closure,
-                font_closure=font_closure,
-            )
-        display_entry = f'{key_entry}{value_entry}'
-        row = f'<TR>{identation_entry}{display_entry}{tail_entry}</TR>'
-        yield port_index, row
-###
+
+        value_port = f"C1R{port_index}"
+        safe_value = _escape(value).replace("\n", "<br/>")
+        value_entry = _format(
+            is_total_span=False,
+            has_key=True,
+            border="1",
+            # colspan=padding,  # Value takes padding columns (the rest of the row)
+            colspan=colspan_per_cell,
+            port=value_port,
+            width=width,
+            bgcolor=bgcolor,
+            fontcolor=fontcolor,
+            safe_entry=safe_value
+        )
+
+        yield port_index, f'<TR>{indentation_entry}{key_entry}{value_entry}{tail_entry}</TR>'
+
 
 if _GRAPHV_VIEW_VIA_SVG:
     _GraphViewer = _GraphSVGViewer
