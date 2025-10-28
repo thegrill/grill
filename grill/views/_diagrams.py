@@ -517,18 +517,18 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             # # TODO: make the below a test
             # if hasattr(child, "setLOD"):
             #     child.setLOD(root_nodes, _graph._LOD.LOW)
-            nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
-            new_nodes_to_view = set(root_nodes).union(nodes_added)
+            # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
+            # new_nodes_to_view = set(root_nodes).union(nodes_added)
             # breakpoint()
-            child.view(new_nodes_to_view)
-            continue
+            # child.view(new_nodes_to_view)
+            # continue
             #
             # #### TEST recursive and lod
             nodes_added = graph._expand_dependencies(root_nodes, recursive=True)
             new_nodes_to_view = set(root_nodes).union(nodes_added)
             child.view(new_nodes_to_view)
 
-            child.setLOD(root_nodes, _graph._LOD.MID)
+            # child.setLOD(root_nodes, _graph._LOD.MID)
             continue
             # # new_nodes_to_view = child._expand_dependencies(True)
             # # print(f"{new_nodes_to_view=}")

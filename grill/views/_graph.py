@@ -1281,13 +1281,13 @@ def _to_table(items: dict[int, _TableItem]):
         return
 
     # make every path span 2 columns
-    max_colspan = (max(x.depth for x in items.values()) * 2) + 2  # one at the start and another at the end
-    print(f"{max_colspan=}")
+    max_colspan = (max(x.depth for x in items.values()) * 3) + 1  # one at the start and another at the end
+    # print(f"{max_colspan=}")
     # padding is len(GetPrefixes())
     # colspan will be
     # colspan_per_cell = max((3, int(max_colspan/3)))
     colspan_per_cell = max(x.depth for x in items.values())
-    print(f"{colspan_per_cell=}")
+    # print(f"{colspan_per_cell=}")
     # span = max(x.padding for x in items.values()) + 2
     width = 50
     indentation_cache = {}
@@ -1311,6 +1311,7 @@ def _to_table(items: dict[int, _TableItem]):
 
         if is_total_span:
             safe_key = _escape(key)
+            # breakpoint()
             key_entry = _format(
                 is_total_span=True,
                 has_key=bool(key),
@@ -1324,7 +1325,7 @@ def _to_table(items: dict[int, _TableItem]):
                 safe_entry=safe_key,
             )
             if safe_key:  # title
-                yield port_index, f'<TR>{_SPAN_ENTRY_TEMPLATE}{key_entry}</TR>'
+                yield port_index, f'<TR>{_SPAN_ENTRY_TEMPLATE}{key_entry}{_SPAN_ENTRY_TEMPLATE}</TR>'
             else:
                 yield port_index, f'<TR>{key_entry}</TR>'
             continue
