@@ -152,24 +152,18 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         internal_dependencies = dict()
         all_items = {}
 
-        # Optimization 4: Pre-calculate colors/constants outside the loop
         BG_CELL_ATTRS = {"bgcolor": _BG_CELL_COLOR, "fontcolor": "#8F8F8F"}
         FONT_COLOR_GRAY = "#8F8F8F"
         NVIDIA_GREEN = "#76B900"
         WHITE_BG = _BG_CELL_COLOR
 
-        # Optimization 5: Use a local variable for the path method to speed up access
         is_target_path = Sdf.Path.IsTargetPath
         get_object_at_path = layer.GetObjectAtPath
         list_info_keys = Sdf.Spec.ListInfoKeys
         get_info = Sdf.Spec.GetInfo
 
-        # Optimization 6: Define a single `_add_item` helper to reduce code duplication
         def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
             idx = next(item_counter)
-            # if padding is 0:
-            #     breakpoint()
-            #     raise RuntimeError
             all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
             return idx
 
@@ -186,8 +180,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
             spec = get_object_at_path(path)
 
-            # Use local/pre-calculated attributes
-            attrs = dict(BG_CELL_ATTRS)  # Shallow copy for modifications below
+            attrs = dict(BG_CELL_ATTRS)  # will be modified below
 
             prefixes = path.GetPrefixes()
             if path.IsPrimPropertyPath():
@@ -201,16 +194,13 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 port_by_spec_path[path] = this_spec_index = next(item_counter)
 
                 typeName = ' - '
-                # Optimization 7: Iterate over a constant set of keys if possible, or filter known keys
                 for info_key in list_info_keys(spec):
                     if info_key in {"comment", "documentation"}:
                         continue
 
-                    # Optimization 8: Use try/except block minimally, and use GetInfo once
                     try:
                         info_value = get_info(spec, info_key)
                     except Tf.ErrorException:
-                        # Should not happen on prim spec, but good safeguard
                         continue
 
                     if info_key == "typeName":
@@ -254,14 +244,12 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                     else:
                         _add_item(_graph._LOD.HIGH, depth, info_key, (str(info_value)), attrs)
 
-                # Re-assign the main prim item to the correct index, with its final attributes
                 prim_attrs = {'bgcolor': NVIDIA_GREEN, 'fontcolor': WHITE_BG}
                 all_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName),
                                                                prim_attrs)
 
             elif path.IsAbsoluteRootPath():
                 pseudoRoot = layer.pseudoRoot
-                # Optimization 9: Combine pseudoRoot checks
                 infoKeys = pseudoRoot.ListInfoKeys()
                 if set(infoKeys) - {"subLayerOffsets", "comment", "documentation"}:
                     _add_separator(_graph._LOD.MID)
@@ -313,8 +301,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 _add_edge(node_id, source_port, node_id, target_port, color)
 
         self.add_edges_from(edges)
-
-        # Final update of node data
         self.nodes[node_id]._data.update(
             layer=layer,
             items=dict(reversed(all_items.items())),
