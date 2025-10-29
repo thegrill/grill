@@ -453,8 +453,8 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             nodes_to_view = root_nodes
         # for cls in _graph.GraphView, _graph._GraphSVGViewer:
         # for cls in _graph.GraphView,:
-        # for cls in _AssetStructureGraphView,:
-        for cls in _graph._GraphSVGViewer,:
+        # for cls in _graph._GraphSVGViewer,:
+        for cls in _AssetStructureGraphView,:
             # for cls in _graph.GraphView,:
             print(f"initializing {cls}")
             child = cls(parent=self)
