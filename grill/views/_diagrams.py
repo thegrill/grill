@@ -454,13 +454,13 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
         # for cls in _graph.GraphView, _graph._GraphSVGViewer:
         # for cls in _graph.GraphView,:
         # for cls in _graph._GraphSVGViewer,:
-        for cls in _AssetStructureGraphView,:
+        for cls in _AssetStructureGraphView, _graph._GraphSVGViewer, _graph.GraphView,:
             # for cls in _graph.GraphView,:
             print(f"initializing {cls}")
             child = cls(parent=self)
             child._graph = graph
             self.setFocusProxy(child)
-            if cls == _graph._GraphSVGViewer:
+            if isinstance(child, (_graph._GraphSVGViewer, _graph.GraphView)):
                 widget_on_splitter = child
             else:
                 widget_on_splitter = QtWidgets.QFrame()
@@ -502,8 +502,8 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             splitter.addWidget(widget_on_splitter)
             # continue
             # # TODO: make the below a test
-            if hasattr(child, "setLOD"):
-                child.setLOD(root_nodes, _graph._LOD.LOW)
+            # if hasattr(child, "setLOD"):
+            #     child.setLOD(root_nodes, _graph._LOD.LOW)
             # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
             # new_nodes_to_view = set(root_nodes).union(nodes_added)
             # breakpoint()

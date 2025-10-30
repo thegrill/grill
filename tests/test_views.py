@@ -17,7 +17,7 @@ except ImportError as exc:
     _COOK_AVAILABLE = False
     print(f"'grill.cook' module failed to import. Unable to test: {exc.msg}")
 
-from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt
+from grill.views import description, sheets, create, _attributes, stats, _core, _graph, _qt, _diagrams
 from grill.views._qt import QtWidgets, QtCore, QtGui
 
 # 2024-02-03 - Python-3.12 & USD-23.11
@@ -93,6 +93,7 @@ class TestPrivate(unittest.TestCase):
 
 
 _test_bed = Path(__file__).parent / "mini_test_bed" / "main-world-test.1.usda"
+_diagrams_nv_scenario = Path(__file__).parent / "diagrams_test_bed" / "scenario.usda"
 
 
 class TestViews(unittest.TestCase):
@@ -651,7 +652,7 @@ class TestViews(unittest.TestCase):
                     child.filter_edges = lambda src, tgt, port: src not in graph.nodes
                     child.view(graph.nodes)
 
-    def test_asset_browser(self):
+    def test_asset_structure_browser(self):
         stage = Usd.Stage.Open(str(_test_bed))
         root_layer = stage.GetRootLayer()
         resolver_context = stage.GetPathResolverContext()
@@ -666,7 +667,7 @@ class TestViews(unittest.TestCase):
         widget._graph = graph
         widget.view(root_nodes)
 
-        widget.setLOD(root_nodes, _graph._NodeLOD.LOW)
+        widget.setLOD(root_nodes, _graph._LOD.LOW)
 
         # ensure that expanding first level of dependencies does not prevent further recursive expansion
         # from connecting edges on existing nodes
@@ -681,14 +682,161 @@ class TestViews(unittest.TestCase):
         widget._export_svg()
 
         # confirm there's no issue when swapping back and forth between high, mid and low LODs
-        widget.setLOD(new_nodes_to_view, _graph._NodeLOD.HIGH)
+        widget.setLOD(new_nodes_to_view, _graph._LOD.HIGH)
         widget._export_svg()
 
-        widget.setLOD(new_nodes_to_view, _graph._NodeLOD.LOW)
+        widget.setLOD(new_nodes_to_view, _graph._LOD.LOW)
         widget._export_svg()
 
-        widget.setLOD(new_nodes_to_view, _graph._NodeLOD.MID)
+        widget.setLOD(new_nodes_to_view, _graph._LOD.MID)
         widget._export_svg()
+
+    def test_asset_structure_conversion(self):
+        layer = Sdf.Layer.FindOrOpen(str(_diagrams_nv_scenario))
+        graph = _diagrams._AssetStructureGraph()
+        root_node = graph._add_node_from_layer(layer)
+        graph._prepare_for_display(root_node)
+        self.assertEqual(list(graph.nodes[root_node]._data['items']), [10, 8, 9, 6, 7, 4, 5, 3, 2, 1, 0])
+        from grill.views._graph import _TableItem, _LOD, _TOTAL_SPAN
+        from collections import ChainMap
+        expected_items = {
+            0: _TableItem(
+                lod=_LOD.MID,
+                depth=6,
+                key='barrel',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            1: _TableItem(
+                lod=_LOD.MID,
+                depth=5,
+                key='Geometry',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            2: _TableItem(
+                lod=_LOD.MID,
+                depth=4,
+                key='Barrel',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            3: _TableItem(
+                lod=_LOD.MID,
+                depth=3,
+                key='prototypes',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            4: _TableItem(
+                lod=_LOD.MID,
+                depth=2,
+                key='Factory_0',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            5: _TableItem(
+                lod=_LOD.MID,
+                depth=2,
+                key='references',
+                value='@...@',
+                display_attributes=ChainMap(
+                    {
+                        'color': 'crimson',
+                        'fontcolor': 'crimson'
+                    },
+                    {
+                        'bgcolor': '#FFFFFF',
+                        'fontcolor': '#8F8F8F'
+                    },
+                )),
+            6: _TableItem(
+                lod=_LOD.MID,
+                depth=2,
+                key='LoadingDock_1',
+                value='Xform',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            7: _TableItem(
+                lod=_LOD.MID,
+                depth=2,
+                key='references',
+                value='@...@',
+                display_attributes=ChainMap(
+                    {
+                        'color': 'crimson',
+                        'fontcolor': 'crimson'
+                    },
+                    {
+                        'bgcolor': '#FFFFFF',
+                        'fontcolor': '#8F8F8F'
+                    }
+                )),
+            8: _TableItem(
+                lod=_LOD.MID,
+                depth=2,
+                key='Factory_1',
+                value='Xform',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            9: _TableItem(
+                lod=_LOD.MID,
+                depth=2,
+                key='references',
+                value='@...@',
+                display_attributes=ChainMap(
+                    {
+                        'color': 'crimson',
+                        'fontcolor': 'crimson'
+                    },
+                    {
+                        'bgcolor': '#FFFFFF',
+                        'fontcolor': '#8F8F8F'
+                    }
+                )),
+            10: _TableItem(
+                lod=_LOD.LOW,
+                depth=1,
+                key='scenario.usda',
+                value=_TOTAL_SPAN,
+                display_attributes={
+                    'bgcolor': '#FAFAFA',
+                    'fontcolor': '#6C6C6C'
+                })}
+        self.assertEqual(expected_items, graph.nodes[root_node]._data['items'])
+        expected_table_rows = [
+            (10, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" COLOR="#E0E0E0" COLSPAN="17" PORT="C0R10" WIDTH="50" BGCOLOR="#FAFAFA"><FONT COLOR="#6C6C6C">scenario.usda</FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (8, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R8" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">Factory_1</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R8" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">Xform</FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (9, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R9" WIDTH="50" BGCOLOR="#FFFFFF"><FONT COLOR="crimson">references</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R9" WIDTH="50" BGCOLOR="#FFFFFF"><FONT COLOR="crimson">@...@</FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (6, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R6" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">LoadingDock_1</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R6" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">Xform</FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (7, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R7" WIDTH="50" BGCOLOR="#FFFFFF"><FONT COLOR="crimson">references</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R7" WIDTH="50" BGCOLOR="#FFFFFF"><FONT COLOR="crimson">@...@</FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (4, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R4" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">Factory_0</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R4" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF"> - </FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (5, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R5" WIDTH="50" BGCOLOR="#FFFFFF"><FONT COLOR="crimson">references</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R5" WIDTH="50" BGCOLOR="#FFFFFF"><FONT COLOR="crimson">@...@</FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (3, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R3" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">prototypes</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R3" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF"> - </FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (2, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R2" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">Barrel</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R2" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF"> - </FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (1, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R1" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">Geometry</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R1" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF"> - </FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+            (0, '<TR><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C0R0" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF">barrel</FONT></TD><TD BORDER="1" COLOR="#E0E0E0" COLSPAN="6" PORT="C1R0" WIDTH="50" BGCOLOR="#76B900"><FONT COLOR="#FFFFFF"> - </FONT></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD></TR>'),
+        ]
+        self.assertEqual(list(_graph._to_table(graph.nodes[root_node]._data['items'])), expected_table_rows)
+        nodes_added = graph._expand_dependencies({root_node}, recursive=False)
+        new_nodes_to_view = {root_node}.union(nodes_added)
+        widget = _diagrams._AssetStructureGraphView()
+        widget._graph = graph
+        widget.view(new_nodes_to_view)
 
     def test_zoom(self):
         """Zoom is triggered by ctrl + mouse wheel"""
