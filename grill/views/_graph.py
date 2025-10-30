@@ -186,124 +186,6 @@ class _Node(QtWidgets.QGraphicsTextItem):
         self._port_items = {}  # {port_name: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
         self._fillcolor = QtGui.QColor(fillcolor)
-        if "factory.usdazz" in label:
-            # raise ValueError
-            label = _adjust_graphviz_html_table_label(
-                """<<table BORDER="4" COLOR="#E0E0E0" bgcolor="#FAFAFA" CELLSPACING="0">
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" COLOR="#E0E0E0" COLSPAN="9" PORT="C0R17" WIDTH="50" BGCOLOR="#FAFAFA">
-        <FONT COLOR="#6C6C6C">factory.usda</FONT>
-    </TD>
-</TR>
-<TR>
-    <TD HEIGHT="10" BORDER="0" COLOR="#E0E0E0" COLSPAN="10" PORT="C0R16" WIDTH="50" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R15" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">defaultPrim</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R15" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">Factory</FONT>
-    </TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-            <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD HEIGHT="10" BORDER="0" COLOR="#E0E0E0" COLSPAN="10" PORT="C0R14" WIDTH="50" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R12" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">Factory</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R12" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">Scope</FONT>
-    </TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>		<TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R13" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">kind</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R13" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">assembly</FONT>
-    </TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD> <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R10" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">BarrelBundle</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R10" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">Scope</FONT>
-    </TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R11" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">kind</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R11" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">group</FONT>
-    </TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R6" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">Barrel_1</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R6" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF"> - </FONT><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    </TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R9" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">instanceable</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R9" WIDTH="50" BGCOLOR="#FFFFFF">
-        <FONT COLOR="#8F8F8F">True</FONT><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    </TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R1" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">prototypes</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R1" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">Scope</FONT>
-    </TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-</TR>
-<TR>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C0R0" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">Barrel</FONT>
-    </TD>
-    <TD BORDER="1" COLOR="#E0E0E0" COLSPAN="2" PORT="C1R0" WIDTH="50" BGCOLOR="#76B900">
-        <FONT COLOR="#FFFFFF">Xform</FONT><TD BORDER="0" BGCOLOR="#FAFAFA"></TD>
-    </TD>
-</TR>
-</table>>"""
-            )
         self.setHtml("<style>th, td {text-align: center;padding: 3px}</style>" + label)
         # Temp measure: allow PySide6 interaction, but not in PySide2 as this causes a crash on windows:
         # https://stackoverflow.com/questions/67264846/pyqt5-program-crashes-when-editable-qgraphicstextitem-is-clicked-with-right-mo
@@ -1224,7 +1106,6 @@ _BG_SPACE_COLOR = "#FAFAFA"
 _BG_CELL_COLOR = "#FFFFFF"
 
 from dataclasses import dataclass
-from functools import lru_cache
 
 _item_cls_kwargs = dict(frozen=True)
 if sys.version_info.minor > 9:
@@ -1239,137 +1120,137 @@ class _TableItem:
     value: str
     display_attributes: dict
 
+from functools import lru_cache
 
-_SPAN_ENTRY_TEMPLATE = f'<TD BORDER="0" BGCOLOR="{_BG_SPACE_COLOR}"></TD>'
-
-
-@lru_cache(maxsize=1024)
+@lru_cache(2048)
 def _cached_escape(text):
     return html.escape(text)
 
 
-@lru_cache(maxsize=512)
+@lru_cache(2048)
 def _format_display_cell(
-    is_total_span, has_key, border, colspan, port, width, bgcolor, fontcolor, safe_entry
-):
-    # TOOD: refactor this
-    more_attrs = f' BGCOLOR="{bgcolor}"' if bgcolor else ''
-    font_entry = f'<FONT COLOR="{fontcolor}">' if fontcolor else ''
-    font_closure = '</FONT>' if fontcolor else ''
-    if colspan is 0:
-        raise ValueError(f"Got {colspan=} for {safe_entry=}, setting to 1")
+        is_total_span: bool,
+        colspan: int,
+        port: str,
+        width: int,
+        bgcolor: str,
+        fontcolor: str,
+        safe_entry: str,
+) -> str:
+    """
+    Format a single table cell with proper HTML attributes.
+
+    Args:
+        is_total_span: Whether this cell spans the entire row (title/spacer)
+        colspan: Number of columns this cell should span
+        port: GraphViz port identifier for edge connections
+        width: Cell width attribute
+        bgcolor: Background color (empty string for no color)
+        fontcolor: Font color (empty string for no color)
+        safe_entry: HTML-escaped content to display
+
+    Returns:
+        HTML string for the table cell
+    """
+
+    # Build optional attributes
+    bgcolor_attr = f' BGCOLOR="{bgcolor}"' if bgcolor else ''
+    font_wrap = f'<FONT COLOR="{fontcolor}">{safe_entry}</FONT>' if fontcolor else safe_entry
 
     if is_total_span:
-        height_attr = '' if has_key else ' HEIGHT="10"'
-        template = f'<TD{height_attr} BORDER="0" COLOR="{_BORDER_COLOR}" COLSPAN="{{colspan}}" PORT="{{port}}" WIDTH="{{width}}"{{more_attrs}}>{{font_entry}}{{safe_entry}}{{font_closure}}</TD>'
+        # Total span cells: no border, may have height for spacing
+        height_attr = '' if safe_entry else ' HEIGHT="10"'
+        border_attr = '0'
     else:
-        template = f'<TD BORDER="1" COLOR="{_BORDER_COLOR}" COLSPAN="{{colspan}}" PORT="{{port}}" WIDTH="{{width}}"{{more_attrs}}>{{font_entry}}{{safe_entry}}{{font_closure}}</TD>'
+        # Regular cells: with border
+        height_attr = ''
+        border_attr = '1'
 
-    return template.format(
-        colspan=colspan,
-        port=port,
-        width=width,
-        more_attrs=more_attrs,
-        font_entry=font_entry,
-        safe_entry=safe_entry,
-        font_closure=font_closure
+    return (
+        f'<TD{height_attr} BORDER="{border_attr}" COLOR="{_BORDER_COLOR}" '
+        f'COLSPAN="{colspan}" PORT="{port}" WIDTH="{width}"{bgcolor_attr}>'
+        f'{font_wrap}</TD>'
     )
 
 
 def _to_table(items: dict[int, _TableItem]):
+    """
+    Generate HTML table rows from TableItem dictionary.
+
+    Creates a hierarchical table where items at different depths are indented
+    with spacing columns. Each row contains a key and value cell, with proper
+    colspans calculated based on the maximum depth.
+
+    Args:
+        items: Dictionary mapping port indices to _TableItem instances
+
+    Yields:
+        Tuples of (port_index, html_row_string)
+    """
     if not items:
         return
 
-    # make every path span 2 columns
-    max_colspan = (max(x.depth for x in items.values()) * 3) + 1  # one at the start and another at the end
-    # print(f"{max_colspan=}")
-    # padding is len(GetPrefixes())
-    # colspan will be
-    # colspan_per_cell = max((3, int(max_colspan/3)))
-    colspan_per_cell = max(x.depth for x in items.values())
-    # print(f"{colspan_per_cell=}")
-    # span = max(x.padding for x in items.values()) + 2
+    max_depth = max(item.depth for item in items.values())
+    max_colspan = (max_depth * 3) + 1  # spacing + key + value + tail
     width = 50
-    indentation_cache = {}
-    tail_cache = {}
 
-    _escape = _cached_escape
-    _format = _format_display_cell
+    spacing_cell = f'<TD BORDER="0" BGCOLOR="{_BG_SPACE_COLOR}"></TD>'
+    indentation_by_depth = dict()
+    tail_by_count = dict()
+
+    escape = _cached_escape
+    format_cell = _format_display_cell
 
     for port_index, item in items.items():
-        depth = item.depth
-        key = item.key
-        value = item.value
         attrs = item.display_attributes
-
-        key_port = f"C0R{port_index}"
-
         bgcolor = attrs.get("bgcolor", "")
         fontcolor = attrs.get("fontcolor", "")
 
-        is_total_span = (value is _TOTAL_SPAN)
-
-        if is_total_span:
-            safe_key = _escape(key)
-            # breakpoint()
-            key_entry = _format(
+        safe_key = escape(item.key)
+        if (item_value := item.value) is _TOTAL_SPAN:  # titles and splitters
+            entry = format_cell(
                 is_total_span=True,
-                has_key=bool(key),
-                border="0",
-                # colspan=span-1 if safe_key else span,  # Total span takes full width
-                colspan=max_colspan-2 if safe_key else max_colspan,  # Total span takes full width
-                port=key_port,
+                colspan=max_colspan,
+                port=f"C0R{port_index}",
                 width=width,
                 bgcolor=bgcolor,
                 fontcolor=fontcolor,
                 safe_entry=safe_key,
             )
-            if safe_key:  # title
-                yield port_index, f'<TR>{_SPAN_ENTRY_TEMPLATE}{key_entry}{_SPAN_ENTRY_TEMPLATE}</TR>'
-            else:
-                yield port_index, f'<TR>{key_entry}</TR>'
-            continue
+        else:  # Handle regular key-value rows
+            item_depth = item.depth
+            try:
+                indentation = indentation_by_depth[item_depth]
+            except KeyError:
+                indentation = indentation_by_depth[item_depth] = spacing_cell * item_depth
 
-        if depth not in indentation_cache:
-            indentation_cache[depth] = _SPAN_ENTRY_TEMPLATE * depth
-        indentation_entry = indentation_cache[depth]
+            tail_count = max_depth - item.depth + 1
+            try:
+                tail = tail_by_count[tail_count]
+            except KeyError:
+                tail = tail_by_count[tail_count] = spacing_cell * tail_count
 
-        # tail_count = max_colspan - depth - 1  # -2 because 1 column for key, 1 for value
-        tail_count = colspan_per_cell - depth + 1  # 1 for last column
-        if tail_count not in tail_cache:
-            tail_cache[tail_count] = _SPAN_ENTRY_TEMPLATE * tail_count
-        tail_entry = tail_cache[tail_count]
+            key_cell = format_cell(
+                is_total_span=False,
+                colspan=max_depth,
+                port=f"C0R{port_index}",
+                width=width,
+                bgcolor=bgcolor,
+                fontcolor=fontcolor,
+                safe_entry=safe_key,
+            )
+            value_cell = format_cell(
+                is_total_span=False,
+                colspan=max_depth,
+                port=f"C1R{port_index}",
+                width=width,
+                bgcolor=bgcolor,
+                fontcolor=fontcolor,
+                safe_entry=escape(item_value).replace("\n", "<br/>"),
+            )
+            entry = f'{indentation}{key_cell}{value_cell}{tail}'
 
-        safe_key = _escape(key)
-        key_entry = _format(
-            is_total_span=False,
-            has_key=True,
-            border="1",
-            # colspan=1,  # Key takes 1 column
-            colspan=colspan_per_cell,
-            port=key_port,
-            width=width,
-            bgcolor=bgcolor,
-            fontcolor=fontcolor,
-            safe_entry=safe_key
-        )
-
-        value_port = f"C1R{port_index}"
-        safe_value = _escape(value).replace("\n", "<br/>")
-        value_entry = _format(
-            is_total_span=False,
-            has_key=True,
-            border="1",
-            # colspan=padding,  # Value takes padding columns (the rest of the row)
-            colspan=colspan_per_cell,
-            port=value_port,
-            width=width,
-            bgcolor=bgcolor,
-            fontcolor=fontcolor,
-            safe_entry=safe_value
-        )
-
-        yield port_index, f'<TR>{indentation_entry}{key_entry}{value_entry}{tail_entry}</TR>'
+        yield port_index, f'<TR>{entry}</TR>'
 
 
 if _GRAPHV_VIEW_VIA_SVG:

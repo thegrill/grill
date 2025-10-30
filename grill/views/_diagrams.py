@@ -454,15 +454,14 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
         # for cls in _graph.GraphView, _graph._GraphSVGViewer:
         # for cls in _graph.GraphView,:
         # for cls in _graph._GraphSVGViewer,:
-        for cls in _AssetStructureGraphView, _graph._GraphSVGViewer, _graph.GraphView,:
+        # for cls in _AssetStructureGraphView, _graph._GraphSVGViewer, _graph.GraphView,:
+        for cls in _AssetStructureGraphView,:
             # for cls in _graph.GraphView,:
             print(f"initializing {cls}")
             child = cls(parent=self)
             child._graph = graph
             self.setFocusProxy(child)
-            if isinstance(child, (_graph._GraphSVGViewer, _graph.GraphView)):
-                widget_on_splitter = child
-            else:
+            if isinstance(child, _AssetStructureGraphView):
                 widget_on_splitter = QtWidgets.QFrame()
                 graph_controls_frame = QtWidgets.QFrame()
                 graph_controls_layout = QtWidgets.QHBoxLayout()
@@ -494,7 +493,8 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
                 widget_on_splitter_layout.addWidget(graph_controls_frame)
                 widget_on_splitter_layout.addWidget(child)
                 widget_on_splitter.setLayout(widget_on_splitter_layout)
-
+            else:
+                widget_on_splitter = child
             print(f"Viewing {len(nodes_to_view)}")
             child.view(nodes_to_view)
             print(f"finished initializing {cls}")
@@ -595,6 +595,8 @@ if __name__ == "__main__":
     profiler.print()
     import pathlib
     profiler.write_html(pathlib.Path(__file__).parent / "instrument.html")
+    print(_graph._cached_escape.cache_info())
+    print(_graph._format_display_cell.cache_info())
     app.exec_()
 
     # python=8.8 GB RAM
