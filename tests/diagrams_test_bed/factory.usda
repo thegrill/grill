@@ -1,0 +1,35 @@
+#usda 1.0
+(
+    defaultPrim = "Factory"
+)
+
+def Scope "Factory" (
+    kind = "assembly"
+) {
+    class Scope "prototypes" {
+        def Xform "Barrel" {
+            color3f[] primvars:displayColor = [(0, 1, 0)]  # Color all Barrels in Factories Green.
+        }
+    }
+
+    def Scope "BarrelBundle" (
+        kind = "group"
+    ) {
+        def "Barrel_0" (
+            instanceable = True
+            references = @./barrel.usda@
+            specializes = </Factory/prototypes/Barrel>
+        ) {
+            token[] xformOpOrder = ["xformOp:translate"]
+            double3 xformOp:translate = (100, 0, 0)
+        }
+        def "Barrel_1" (
+            instanceable = True
+            references = @./barrel.usda@
+            specializes = </Factory/prototypes/Barrel>
+        ) {
+            token[] xformOpOrder = ["xformOp:translate"]
+            double3 xformOp:translate = (110, 0, 0)
+        }
+    }
+}

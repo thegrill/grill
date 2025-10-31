@@ -1,0 +1,24 @@
+#usda 1.0
+
+def "Factory_0" (references = @./factory.usda@) {
+    over "prototypes" () {
+        over "Barrel" {
+            over "Geometry" {
+                over "barrel" {
+                    # Override the Barrel prototype in this factory to be red
+                    color3f[] primvars:displayColor = [(.6, .0, .0)]
+                }
+            }
+        }
+    }
+}
+
+def Xform "LoadingDock_1" (references = @./loading_dock.usda@) {
+    token[] xformOpOrder = ["xformOp:translate"]
+    double3 xformOp:translate = (40, 0, 0)
+}
+
+def Xform "Factory_1" (references = @./factory.usda@) {
+    token[] xformOpOrder = ["xformOp:translate"]
+    double3 xformOp:translate = (20, 0, 0)
+}

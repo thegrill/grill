@@ -691,7 +691,7 @@ class TestViews(unittest.TestCase):
         widget.setLOD(new_nodes_to_view, _graph._LOD.MID)
         widget._export_svg()
 
-    def test_asset_structure_conversion(self):
+    def test_asset_structure_nv_conversion(self):
         layer = Sdf.Layer.FindOrOpen(str(_diagrams_nv_scenario))
         graph = _diagrams._AssetStructureGraph()
         root_node = graph._add_node_from_layer(layer)
@@ -837,6 +837,79 @@ class TestViews(unittest.TestCase):
         widget = _diagrams._AssetStructureGraphView()
         widget._graph = graph
         widget.view(new_nodes_to_view)
+
+        nodes_added = graph._expand_dependencies({root_node}, recursive=True)
+        new_nodes_to_view = new_nodes_to_view.union(nodes_added)
+        widget.view(new_nodes_to_view)
+
+        def _use_test_dot(subgraph, fp):
+            source_path = _diagrams_nv_scenario.parent / "nv_scenario.dot"
+            fp.write(source_path.read_text(encoding="utf-8"))
+
+        def _use_test_svg(self, filepath):
+            return self._on_dot_result(str(_diagrams_nv_scenario.parent / "nv_scenario.svg"))
+
+        # def _test_positions(graph, prog):
+        #     return {
+        #         1: (218.75, 90.1),
+        #         2: (322.75, 90.1),
+        #         3: (76.125, 61.1),
+        #         'parent': (76.125, 190.1),
+        #         'child1': (218.75, 217.1),
+        #         'child2': (218.75, 163.1),
+        #         'ancestor': (76.125, 316.1),
+        #         'successor': (218.75, 282.1),
+        #     }
+        widget = _graph._GraphSVGViewer()
+        widget._graph = graph
+        error, fp = widget._subgraph_dot_path(tuple(new_nodes_to_view))
+        self.assertEqual(error, "")
+        actual_text = Path(fp).read_text().strip()
+        expected_text = (_diagrams_nv_scenario.parent / "nv_scenario.dot").read_text().strip()
+        self.maxDiff = None
+        self.assertEqual(actual_text, expected_text)
+        # breakpoint()
+        # with (
+        #     mock.patch(f"grill.views._graph.nx.nx_pydot.write_dot", new=_use_test_dot),
+        #     mock.patch(f"grill.views._graph.nx.nx_agraph.write_dot", new=_use_test_dot),
+        #     # mock.patch(f"grill.views._graph._DotViewer.setDotPath", new=_use_test_svg),
+        #     # mock.patch(f"grill.views._graph.drawing.nx_pydot.graphviz_layout", new=_test_positions),
+        # ):
+
+    def test_asset_structure_nas_conversion(self):
+        from grill.views._graph import _TableItem, _LOD, _TOTAL_SPAN
+        from collections import ChainMap
+        expected_items = {
+            0: _TableItem(
+                lod=_LOD.MID,
+                depth=6,
+                key='barrel',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            1: _TableItem(
+                lod=_LOD.MID,
+                depth=5,
+                key='Geometry',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+            2: _TableItem(
+                lod=_LOD.MID,
+                depth=4,
+                key='Barrel',
+                value=' - ',
+                display_attributes={
+                    'bgcolor': '#76B900',
+                    'fontcolor': '#FFFFFF'
+                }),
+        }
+
+
 
     def test_zoom(self):
         """Zoom is triggered by ctrl + mouse wheel"""

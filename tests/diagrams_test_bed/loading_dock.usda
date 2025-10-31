@@ -1,0 +1,27 @@
+#usda 1.0
+(
+    defaultPrim = "LoadingDock"
+)
+
+def Scope "LoadingDock" {
+    class Scope "prototypes" {
+        def Xform "Barrel" {} # Leave the Barrel asset unchanges
+    }
+
+    def "Barrel_0" (
+        instanceable = True
+        references = @./barrel.usda@
+        specializes = </LoadingDock/prototypes/Barrel>
+    ) {
+        token[] xformOpOrder = ["xformOp:translate"]
+        double3 xformOp:translate = (100, 0, 0)
+    }
+    def "Barrel_1" (
+        instanceable = True
+        references = @./barrel.usda@
+        specializes = </LoadingDock/prototypes/Barrel>
+    ) {
+        token[] xformOpOrder = ["xformOp:translate"]
+        double3 xformOp:translate = (110, 0, 0)
+    }
+}

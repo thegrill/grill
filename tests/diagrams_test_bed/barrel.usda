@@ -1,0 +1,12 @@
+#usda 1.0
+(
+    defaultPrim = "Barrel"
+)
+
+def Xform "Barrel" (
+        kind = "component"
+    ) {
+    def Xform "Geometry" {
+        def Cylinder "barrel" {}
+    }
+}
