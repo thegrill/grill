@@ -172,36 +172,49 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
 
     def _expand_dependencies(self, keys, *, recursive=False):
-        nodes_added = set()
-        # print(f"Expanding dependencies for {keys}")
-        # breakpoint()
+
         resolver_context = self._resolver_context
 
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
             # print(f"\n\nExpanding {dependency_info=} on {source_port_key=} from {source_node_key=} and {anchor_layer=}")
             asset_path, spec_path, edge_attrs, dependency_type = dependency_info
             if not (dependency_layer := _find_layer(asset_path, anchor_layer, resolver_context)):
-                # breakpoint()
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor_layer}")
                 return
 
             target_key = self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)
-            # print(f"{target_key=}")
+            # print(f"{type(self)} {target_key=}")
             nodes_added = set()
-            if not target_key:
+            if target_key is None:  # new node needs to be created
                 node_added = self._add_node_from_layer(dependency_layer)
                 # print(f"{node_added=}")
                 assert self.nodes[node_added].lod
                 self.nodes[node_added].lod = lod
                 nodes_added.add(node_added)
-
+            else:  # an upstream node for this dependency already exists, update it directly
+                # print(f"~~~ CALING _update_node_from_layer")
+                # _update_node_from_layer.cache_info
+                # hits = self._update_node_from_layer.cache_info()
+                current_items = self.nodes[target_key]._data['items']
+                current_items_size = len(current_items)
+                self._update_node_from_layer(target_key, dependency_layer)
+                # if self._update_node_from_layer.cache_info().hits == hits:
+                if current_items_size < len(current_items):
+                    # print(f"~~~ Adding {target_key=}")
+                    nodes_added.add(target_key)
+                else:
+                    ...
+                    # print(f"Not updated {target_key}!!!")
+                # if self._update_node_from_layer(target_key, dependency_layer):
+                #     nodes_added.add(target_key)
+                #     print(f"~~~ Adding {target_key=}")
             return nodes_added
             # if (node_added:=self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)) is None:
             #     print(f"NODE NOT ADDED {node_added=}")
 
         nodes_to_process = set(keys)
         visited_nodes = set()
-        new_nodes = set()
+        updated_nodes = set()
         while nodes_to_process:
             key = nodes_to_process.pop()
             if key in visited_nodes:
@@ -217,27 +230,78 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 port, port_dependencies = unresolved.popitem()
                 for upstream_layer, dependencies in port_dependencies.items():
                     for dependency in dependencies:
-                        new_nodes.update(_handle_upstream_dependency(upstream_layer, dependency, key, port, source_node_lod))
+                        # un =
+                        # updated_nodes.update()
+                        # print(f"{un=}")
+                        updated_nodes.update(_handle_upstream_dependency(upstream_layer, dependency, key, port, source_node_lod))
                 resolved.setdefault(port, {}).update(port_dependencies)
 
             visited_nodes.add(key)
             if recursive:
-                nodes_to_process.update(new_nodes)
-            else:
-                visited_nodes.update(new_nodes)
-
-        for node in visited_nodes:  # Prepare all nodes modified, clients must report modified nodes
+                # print(f"{nodes_to_process=}")
+                nodes_to_process.update(updated_nodes)
+                # print(f">>>>>>>>>>>>>>>>>>>>>>>>>> Updating with {updated_nodes=}")
+                # print(f"{nodes_to_process=}")
+                # breakpoint()
+            # else:
+            #     visited_nodes.update(new_nodes)
+        # print("Exit while loop")
+        # print(f"{nodes_to_process=}")
+        # print(f"{updated_nodes=}")
+        for node in updated_nodes:  # Prepare all nodes modified, clients must report modified nodes
             self._prepare_for_display(node)
-        return new_nodes
+        return updated_nodes
 
+
+    # def _update_node_from_layer(self, node_id, layer):
     def _add_node_from_layer(self, layer):
         ...
         # the provided layer will be the "root" layer of the node
         if layer in (loaded_layers := self._node_by_root_layer):
             return loaded_layers[layer]
         loaded_layers[layer] = node_id = len(loaded_layers)
+        self.add_node(node_id)
+        # dependencies = {
+        #     _DependencyStatus.RESOLVED: dict(),
+        #     _DependencyStatus.UNRESOLVED: dict(),
+        # }
+        self.nodes[node_id]._data.update(
+            # layer=layer,
+            items=dict(),
+            dependencies={
+                _DependencyStatus.RESOLVED: dict(),
+                _DependencyStatus.UNRESOLVED: dict(),
+            },
+            visited_layer_spec_path_ports=dict(),  # TODO: fix
+        )
+        self._update_node_from_layer(node_id, layer)
+        return node_id
 
-        all_items = dict()  # NodePort: TableItem
+    from functools import cache
+    @cache
+    def _update_node_from_layer(self, node_id, layer):
+        # print(f"_update_node_from_layer_update_node_from_layer_update_node_from_layer_update_node_from_layer_update_node_from_layer")
+        # print(locals())
+        # # all_items = dict()
+        all_items = self.nodes[node_id]._data['items']  # NodePort: TableItem
+        # print(f"Start {len(all_items)=}")
+        dependencies = self.nodes[node_id]._data['dependencies']
+        if 'NurbsS-lead-base-whole.1.usda' in layer.identifier:
+            # breakpoint()
+            ...
+        # if (resolved:=dependencies[_DependencyStatus.RESOLVED]) and layer in set(*[info.keys() for info in resolved.values()]):
+        # from itertools import chain
+        # if (resolved:=dependencies[_DependencyStatus.RESOLVED]):
+        #     # from pprint import pp
+        #     # pp(dependencies)
+        #     # print(f"{layer=}")
+        #     # breakpoint()
+        #     # if 'NurbsS-lead-base-whole.1.usda' in layer.identifier:
+        #     #     breakpoint()
+        #     if layer in set(chain.from_iterable(resolved.values())):
+        #         return False
+        #     # return False
+
         item_counter = count(start=max(all_items, default=-1) + 1)
         # BG_CELL_ATTRS = {"bgcolor": _BG_CELL_COLOR, "fontcolor": "#8F8F8F"}
         BG_CELL_ATTRS = {}
@@ -252,10 +316,10 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # get_object_at_path = layer.GetObjectAtPath
         # list_info_keys = Sdf.Spec.ListInfoKeys
         # get_info = Sdf.Spec.GetInfo
-        dependencies = {
-            _DependencyStatus.RESOLVED: dict(),
-            _DependencyStatus.UNRESOLVED: dict(),
-        }
+        # dependencies = {
+        #     _DependencyStatus.RESOLVED: dict(),
+        #     _DependencyStatus.UNRESOLVED: dict(),
+        # }
         internal_dependencies = dict()
 
         def _add_dependency(port_index, dependant_layer, asset_path, prim_path, color, dependency_type):
@@ -353,14 +417,14 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         # return ids_by_root_layer[root_layer], sublayers
         layer.Traverse(layer.pseudoRoot.path, _traverse)
-        self.add_node(node_id)
-        self.nodes[node_id]._data.update(
-            # layer=layer,
-            items=all_items,
-            dependencies=dependencies,
-            visited_layer_spec_path_ports=port_by_spec_path,
-        )
-        return node_id
+        # self.nodes[node_id]._data.update(
+        #     # layer=layer,
+        #     items=all_items,
+        #     dependencies=dependencies,
+        #     visited_layer_spec_path_ports=port_by_spec_path,
+        # )
+        # print(f"End {len(all_items)=}")
+        return True
 
     def _add_node_from_layer_old(self, layer):
         """Add a node with LOD capabilities to the current graph from a given USD layer, then return the node ID.
@@ -579,7 +643,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             #             display_attributes={},
             #         )
             #     }
-            # )
+            # ),
         )
         # mid_lod_label = f"{node_id} {_graph._LOD.MID} "
 
@@ -765,6 +829,18 @@ class _AssetStructureGraphNAS(_AssetStructureGraph):
         self._resolver_context = resolver_context
         self._node_by_layer_mapping = {}  # SdfLayer: node_index
 
+    def _find_nodeid_for_dependency(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
+        # print(f"Checking ----------------------------------- {locals()}")
+        asset_path, spec_path, edge_attrs, dependency_type = dependency_info
+        if dependency_type == "subLayers":
+            # print(f"SUCCESSS !!!!!!!!!!!!!!!!!!!!!!!! ")
+            return source_node_key
+        if "fragment" in anchor_layer.identifier and "entity" not in asset_path:
+            return source_node_key
+        try:
+            return self._node_by_root_layer[layer]
+        except KeyError:
+            return None
     def _find_nodeid_for_dependencz(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
         print(f"Checking {locals()}")
         asset_path, spec_path, edge_attrs, dependency_type = dependency_info
@@ -1169,17 +1245,20 @@ class _AssetStructureGraphView(_graph.GraphView):
 
     def _expand_dependencies(self, recursive):
         with _core.wait():
+            # if recursive:
+            #     breakpoint()
             selection = set(self.scene().selectedItems())
             selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
             if selection_keys:
                 viewing = set(self._viewing)
-                nodes_added = self._graph._expand_dependencies(selection_keys, recursive=recursive)
+                updated_nodes = self._graph._expand_dependencies(selection_keys, recursive=recursive)
                 if recursive:
-                    selection_keys.update(nodes_added)
-                if not nodes_added or nodes_added.issubset(viewing):
+                    selection_keys.update(updated_nodes)
+                # if not updated_nodes or updated_nodes.issubset(viewing):
+                if not updated_nodes:
                     print("Nothing new to view")
                     return
-                next_to_view = set(self._viewing) | selection_keys | nodes_added
+                next_to_view = set(self._viewing) | selection_keys | updated_nodes
                 self.view(next_to_view)
 
     def _set_lod(self, lod):
@@ -1210,7 +1289,7 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
         root_node = graph._add_node_from_layer(root_layer)
         graph._prepare_for_display(root_node)
         root_nodes = [root_node]
-        self.setWindowTitle("Asset Structure Diagram")
+        self.setWindowTitle(f"Asset Structure Diagram {type(self)}")
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
         if recursive:
@@ -1267,7 +1346,7 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             print(f"finished initializing {cls}")
             child.setMinimumWidth(150)
             splitter.addWidget(widget_on_splitter)
-            # continue
+            continue
             # # TODO: make the below a test
             if hasattr(child, "setLOD"):
                 child.setLOD(root_nodes, _graph._LOD.LOW)
@@ -1338,7 +1417,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
-        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
 
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     app = QtWidgets.QApplication([])
@@ -1360,7 +1439,7 @@ if __name__ == "__main__":
     # 4. All nodes / edges need to be computed for SVG
     # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
-    # widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
+    widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
     widget = _launch_asset_structure_browser_nas(layer, None, None, recursive=False)
     # widget.
     profiler.stop()
