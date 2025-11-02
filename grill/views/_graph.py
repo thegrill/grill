@@ -1122,12 +1122,15 @@ class _TableItem:
 
 from functools import lru_cache
 
-@lru_cache(2048)
+
+# @lru_cache(2048)
+@cache
 def _cached_escape(text):
     return html.escape(text)
 
 
-@lru_cache(2048)
+# @lru_cache(2048)
+@cache
 def _format_display_cell(
         is_total_span: bool,
         colspan: int,
@@ -1152,17 +1155,16 @@ def _format_display_cell(
     Returns:
         HTML string for the table cell
     """
-
-    # Build optional attributes
+    if colspan == 0:
+        # TODO: this shouldnot happen, check and fix
+        colspan = 1
     bgcolor_attr = f' BGCOLOR="{bgcolor}"' if bgcolor else ''
     font_wrap = f'<FONT COLOR="{fontcolor}">{safe_entry}</FONT>' if fontcolor else safe_entry
 
-    if is_total_span:
-        # Total span cells: no border, may have height for spacing
+    if is_total_span:  # No border, may have height for spacing
         height_attr = '' if safe_entry else ' HEIGHT="10"'
         border_attr = '0'
-    else:
-        # Regular cells: with border
+    else:  # Regular cells with border
         height_attr = ''
         border_attr = '1'
 
@@ -1174,19 +1176,6 @@ def _format_display_cell(
 
 
 def _to_table(items: dict[int, _TableItem]):
-    """
-    Generate HTML table rows from TableItem dictionary.
-
-    Creates a hierarchical table where items at different depths are indented
-    with spacing columns. Each row contains a key and value cell, with proper
-    colspans calculated based on the maximum depth.
-
-    Args:
-        items: Dictionary mapping port indices to _TableItem instances
-
-    Yields:
-        Tuples of (port_index, html_row_string)
-    """
     if not items:
         return
 

@@ -45,6 +45,11 @@ def _find_layer(path, anchor, resolver_context):
             return layer
 
 
+import enum
+class _DependencyStatus(enum.Flag):
+    RESOLVED = enum.auto()
+    UNRESOLVED = enum.auto()
+
 class _AssetStructureGraph(nx.MultiDiGraph):
     node_attr_dict_factory = lambda self: _graph.DynamicLODAttributes()
 
@@ -55,9 +60,24 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             'shape': 'none',
         }
         self._resolver_context = resolver_context
-        self._node_by_layer_mapping = {}  # SdfLayer: node_index
+        self._node_by_root_layer = {}  # SdfLayer: node_index
 
-    def _expand_dependencies(self, keys, *, recursive=False):
+    def _find_nodeid_for_dependency(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
+        # print(f"Checking ----------------------------------- {locals()}")
+        try:
+            return self._node_by_root_layer[layer]
+        except KeyError:
+            return None
+
+    def _update_node_with_layer_old(self, node_id, source_port_key, layer, dependency_info):
+        print("Eciting!!! ----------- ")
+        print(locals())
+
+    def _expand_dependencies_old(self, keys, *, recursive=False):
+        print(f"**********************************"*5)
+        print(locals())
+        print(f"**********************************"*5)
+        # breakpoint()
         resolver_context = self._resolver_context
         nodes_added = set()
 
@@ -69,13 +89,26 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
 
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
-            asset_path, spec_path, edge_attrs = dependency_info
-
+            asset_path, spec_path, edge_attrs, dependency_type = dependency_info
+            print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
+            # print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
+            # print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
+            # print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
             if not (dependency_layer := _find_layer(asset_path, anchor_layer, resolver_context)):
+                # breakpoint()
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor_layer}")
                 return
 
-            node_added = self._add_node_from_layer(dependency_layer)
+            if (node_added:=self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)) is None:
+                print(f"NODE NOT ADDED {node_added=}")
+                node_added = self._add_node_from_layer(dependency_layer)
+            else:
+                print(f"NODE WAS ADDED BEFORE {node_added}")
+                from itertools import chain
+                if any(l == dependency_layer for l, dinfo in chain.from_iterable(self.nodes[node_added]._data['dependencies'].values())):
+                    return node_added
+                else:
+                    self._update_node_with_layer(node_added, source_port_key, dependency_layer, dependency_info)
 
             # Update LOD, now that we have the node_added index
             assert self.nodes[node_added].lod
@@ -105,16 +138,18 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             key = nodes_to_process.pop(0)
 
             source_node = self.nodes[key]
-            anchor_layer = source_node._data['layer']
+            # anchor_layer = source_node._data['layer']
             dependencies = source_node._data['dependencies']
             source_node_lod = source_node.lod
             new_nodes_from_deps = set()
-
-            for port_with_dependency, port_dependencies in dependencies.items():
-                for dependency_info in port_dependencies:
+            dependency_items = dict(dependencies)
+            # breakpoint()
+            for port_with_dependency, port_dependencies in dependency_items.items():
+                for anchor_layer, dependency_info in port_dependencies:
                     target_node_id = _handle_upstream_dependency(
                         anchor_layer, dependency_info, key, port_with_dependency, source_node_lod
                     )
+                    print(f"\n>>>>>>>>>>>>>>>>>>>>>>>>>>>{target_node_id=}")
                     if target_node_id is not None:
                         new_nodes_from_deps.add(target_node_id)
                         nodes_added.add(target_node_id)
@@ -135,11 +170,204 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         return nodes_added
 
+
+    def _expand_dependencies(self, keys, *, recursive=False):
+        nodes_added = set()
+        # print(f"Expanding dependencies for {keys}")
+        # breakpoint()
+        resolver_context = self._resolver_context
+
+        def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
+            # print(f"\n\nExpanding {dependency_info=} on {source_port_key=} from {source_node_key=} and {anchor_layer=}")
+            asset_path, spec_path, edge_attrs, dependency_type = dependency_info
+            if not (dependency_layer := _find_layer(asset_path, anchor_layer, resolver_context)):
+                # breakpoint()
+                print(f"-------> Could not find dependency {asset_path} to traverse from {anchor_layer}")
+                return
+
+            target_key = self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)
+            # print(f"{target_key=}")
+            nodes_added = set()
+            if not target_key:
+                node_added = self._add_node_from_layer(dependency_layer)
+                # print(f"{node_added=}")
+                assert self.nodes[node_added].lod
+                self.nodes[node_added].lod = lod
+                nodes_added.add(node_added)
+
+            return nodes_added
+            # if (node_added:=self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)) is None:
+            #     print(f"NODE NOT ADDED {node_added=}")
+
+        nodes_to_process = set(keys)
+        visited_nodes = set()
+        new_nodes = set()
+        while nodes_to_process:
+            key = nodes_to_process.pop()
+            if key in visited_nodes:
+                continue
+            # for key in keys:
+            dependencies = self.nodes[key]._data['dependencies']
+            source_node_lod = self.nodes[key].lod
+            # from pprint import pp
+            # pp(dependencies)
+            unresolved = dependencies[_DependencyStatus.UNRESOLVED]
+            resolved = dependencies[_DependencyStatus.RESOLVED]
+            while unresolved:
+                port, port_dependencies = unresolved.popitem()
+                for upstream_layer, dependencies in port_dependencies.items():
+                    for dependency in dependencies:
+                        new_nodes.update(_handle_upstream_dependency(upstream_layer, dependency, key, port, source_node_lod))
+                resolved.setdefault(port, {}).update(port_dependencies)
+
+            visited_nodes.add(key)
+            if recursive:
+                nodes_to_process.update(new_nodes)
+            else:
+                visited_nodes.update(new_nodes)
+
+        for node in visited_nodes:  # Prepare all nodes modified, clients must report modified nodes
+            self._prepare_for_display(node)
+        return new_nodes
+
     def _add_node_from_layer(self, layer):
+        ...
+        # the provided layer will be the "root" layer of the node
+        if layer in (loaded_layers := self._node_by_root_layer):
+            return loaded_layers[layer]
+        loaded_layers[layer] = node_id = len(loaded_layers)
+
+        all_items = dict()  # NodePort: TableItem
+        item_counter = count(start=max(all_items, default=-1) + 1)
+        # BG_CELL_ATTRS = {"bgcolor": _BG_CELL_COLOR, "fontcolor": "#8F8F8F"}
+        BG_CELL_ATTRS = {}
+
+        port_by_spec_path = dict()  # {(layer, path) = spec_index}
+        def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
+            idx = next(item_counter)
+            all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
+            return idx
+
+        # is_target_path = Sdf.Path.IsTargetPath
+        # get_object_at_path = layer.GetObjectAtPath
+        # list_info_keys = Sdf.Spec.ListInfoKeys
+        # get_info = Sdf.Spec.GetInfo
+        dependencies = {
+            _DependencyStatus.RESOLVED: dict(),
+            _DependencyStatus.UNRESOLVED: dict(),
+        }
+        internal_dependencies = dict()
+
+        def _add_dependency(port_index, dependant_layer, asset_path, prim_path, color, dependency_type):
+            dependencies[_DependencyStatus.UNRESOLVED].setdefault(port_index, {}).setdefault(dependant_layer, []).append(
+                (asset_path, prim_path, color, dependency_type)
+            )
+
+        def _traverse(path):
+            if path.IsTargetPath():
+                return
+
+            spec = layer.GetObjectAtPath(path)
+            depth = len(path.GetPrefixes())
+            if path.IsPrimPath():
+                # Store the spec index first
+                # port_by_spec_path[path] = this_spec_index = next(item_counter)
+
+                # typeName = ' - '
+                # for info_key in list_info_keys(spec):
+                #     if info_key in {"comment", "documentation"}:
+                #         continue
+                # for info_key in spec.ListInfoKeys():
+                attrs = {}
+                info_keys = spec.ListInfoKeys()
+                # for info_key in set(info_keys).intersection({"references", "payload"}):
+                for info_key in info_keys:
+                    info = spec.GetInfo(info_key)
+                    if info_key in {"references", "payload"}:
+                        # port_index = _add_item(_graph._LOD.MID, depth, f"{path} {info_key}", "@...@", collections.ChainMap(_EDGE_COLORS[type(info)], attrs))
+                        port_index = _add_item(_graph._LOD.MID, depth, info_key, "@...@", collections.ChainMap(_EDGE_COLORS[type(info)], attrs))
+                        for dependency_arc in info.GetAddedOrExplicitItems():
+                            dependency_path = dependency_arc.assetPath
+                            color = _EDGE_COLORS[type(info)]
+                            if not dependency_path:
+                                # # TODO: handle internal dependency
+                                # continue
+                                internal_dependencies.setdefault(port_index, []).append((dependency_arc.primPath, color))
+                            else:
+                                _add_dependency(port_index, layer, dependency_path, dependency_arc.primPath, color, type(info))
+                                # dependencies.setdefault(port_index, {}).setdefault(layer, []).append(
+                                #     (dependency_path, dependency_arc.primPath, color, type(info))
+                                # )
+                    elif isinstance(info, Sdf.PathListOp):
+                        if items := info.GetAddedOrExplicitItems():
+                            color = _EDGE_COLORS.get(info_key, {"fontcolor": "gray"})
+                            port_index = _add_item(_graph._LOD.HIGH, depth, info_key, "\n".join(map(str, items)),
+                                                   collections.ChainMap(color, attrs))
+                            for each_item in items:
+                                # TODO: see if this can be the same dictionary
+                                internal_dependencies.setdefault(port_index, []).append((each_item, color))
+            elif path.IsAbsoluteRootPath():
+                spec = layer.pseudoRoot
+                # infoKeys = pseudoRoot.ListInfoKeys()
+                # infoKeys = {"subLayers"}
+                # if set(infoKeys) - {"subLayerOffsets", "comment", "documentation"}:
+                #     _add_separator(_graph._LOD.MID)
+                info_keys = spec.ListInfoKeys()
+                for info_key in info_keys:
+                    if info_key not in {"subLayers"}:
+                        continue
+                    info = spec.GetInfo(info_key)
+                    # info_value = pseudoRoot.GetInfo(info_key)
+                    # if info_key in {"subLayerOffsets", "comment", "documentation"}:
+                    #     continue
+                    # try:
+                    #     info_value = pseudoRoot.GetInfo(info_key)
+                    # except TypeError as exc:
+                    #     print(f"Could not retrieve {info_key} from pseudoRoot: {exc}")
+                    #     continue
+
+                    # if info_key == "subLayers":
+                    edge_color = _EDGE_COLORS[info_key]
+                    # this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
+                    this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
+                                           collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
+                    for dependency_path in info:
+                        # dependencies.setdefault(this_index, []).append(
+                        #     (layer, (sublayer, path, edge_color, info_key))
+                        # )
+                        _add_dependency(this_index, layer, dependency_path, path, _EDGE_COLORS[info_key], info_key)
+                        # dependencies.setdefault(this_index, {}).setdefault(layer, []).append(
+                        #     (dependency_path, path, _EDGE_COLORS[info_key], info_key)
+                        # )
+            # if info_key == "subLayers":
+            #     edge_color = _EDGE_COLORS[info_key]
+            #     this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
+            #                            collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
+            #     for sublayer in info_value:
+            #         upstream_dependencies.setdefault(this_index, []).append(
+            #             (layer, (sublayer, path, edge_color, info_key))
+            #         )
+        this_spec_index = _add_item(_graph._LOD.LOW, 0, layer.GetDisplayName(), _TOTAL_SPAN,
+                                    {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': "#6C6C6C"})
+        port_by_spec_path[layer, layer.pseudoRoot.path] = this_spec_index
+
+        # return ids_by_root_layer[root_layer], sublayers
+        layer.Traverse(layer.pseudoRoot.path, _traverse)
+        self.add_node(node_id)
+        self.nodes[node_id]._data.update(
+            # layer=layer,
+            items=all_items,
+            dependencies=dependencies,
+            visited_layer_spec_path_ports=port_by_spec_path,
+        )
+        return node_id
+
+    def _add_node_from_layer_old(self, layer):
         """Add a node with LOD capabilities to the current graph from a given USD layer, then return the node ID.
 
         If layer has been added, do nothing else other than returning the node ID.
         """
+        # TODO: add layer, dependencies tuple
         if layer in (loaded_layers := self._node_by_layer_mapping):
             return loaded_layers[layer]
 
@@ -218,7 +446,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                                 # TODO: handle internal dependency
                                 continue
                             upstream_dependencies.setdefault(port_index, []).append(
-                                (dependency_path, dependency_arc.primPath, _EDGE_COLORS[type(info_value)]))
+                                (layer, (dependency_path, dependency_arc.primPath, _EDGE_COLORS[type(info_value)], type(info_value)))
+                            )
                     elif isinstance(info_value, (Sdf.TokenListOp, Sdf.StringListOp)):
                         if items := info_value.GetAddedOrExplicitItems():
                             info_attrs = collections.ChainMap(
@@ -269,7 +498,9 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                             this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
                                                    collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
                             for sublayer in info_value:
-                                upstream_dependencies.setdefault(this_index, []).append((sublayer, path, edge_color))
+                                upstream_dependencies.setdefault(this_index, []).append(
+                                    (layer, (sublayer, path, edge_color, info_key))
+                                )
                         elif isinstance(info_value, list):
                             _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]",
                                       BG_CELL_ATTRS)
@@ -301,15 +532,157 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 _add_edge(node_id, source_port, node_id, target_port, color)
 
         self.add_edges_from(edges)
-        self.nodes[node_id]._data.update(
-            layer=layer,
-            items=dict(reversed(all_items.items())),
-            dependencies=upstream_dependencies,
-            visited_layer_spec_path_ports=port_by_spec_path,
-        )
+        # self.nodes[node_id]._data.update(
+        #     # layer=layer,
+        #     items=dict(reversed(all_items.items())),
+        #     dependencies=upstream_dependencies,
+        #     visited_layer_spec_path_ports=port_by_spec_path,
+        # )
         return node_id
 
     def _prepare_for_display(self, node_id):
+        if node_id not in self.nodes:
+            raise RuntimeError(locals())
+
+        all_items = self.nodes[node_id]._data['items']  # dict[NodePort, Item]
+
+        def _to_table(items, filter_fun=None):
+            # print(locals())
+            label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
+            if filter_fun:
+                items = {k: v for k, v in items.items() if filter_fun((k, v))}
+            for row_index, (port_id, row) in enumerate(_graph._to_table(items)):
+                # high_ports[port_id] = row_index
+                label += row
+            label += '</table>>'
+            return label
+
+        # high_lod_label = f"{node_id} {_graph._LOD.HIGH} "
+        # collections.ChainMap(all_items, {max(all_items) + 1: _graph._TableItem(
+        #     lod=_graph._LOD.HIGH,
+        #     depth=0,
+        #     key=f"{node_id} {_graph._LOD.HIGH} ",
+        #     value=_graph._TOTAL_SPAN,
+        #     display_attributes={},
+        # )})
+        # high_lod_label = _to_table(all_items)
+        high_lod_label =  _to_table(
+            all_items,
+            # collections.ChainMap(
+            #     all_items,
+            #     {
+            #         max(all_items, default=0) + 1: _graph._TableItem(
+            #             lod=_graph._LOD.HIGH,
+            #             depth=0,
+            #             key=f"{node_id} {_graph._LOD.HIGH} ",
+            #             value=_graph._TOTAL_SPAN,
+            #             display_attributes={},
+            #         )
+            #     }
+            # )
+        )
+        # mid_lod_label = f"{node_id} {_graph._LOD.MID} "
+
+        # mid_items = {index: item for index, item in all_items.items() if
+        #              ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (index in upstream_dependencies)) or (
+        #                          item.value == _TOTAL_SPAN) or index in ports_of_interest}
+        upstream_dependencies = dict()
+        ports_of_interest = set()
+        def mid_filter(item_entry):
+            port_id, item = item_entry
+            return (
+                ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (port_id in upstream_dependencies))
+                or (item.value == _TOTAL_SPAN)
+                or port_id in ports_of_interest
+            )
+
+        # mid_lod_label = _to_table(all_items, mid_filter)
+        mid_lod_label = _to_table(
+            all_items,
+            # collections.ChainMap(
+            #     all_items,
+            #     {
+            #         max(all_items, default=0)  + 1: _graph._TableItem(
+            #             lod=_graph._LOD.MID,
+            #             depth=0,
+            #             key=f"{node_id} {_graph._LOD.MID} ",
+            #             value=_graph._TOTAL_SPAN,
+            #             display_attributes={},
+            #         )
+            #     }
+            # ),
+            mid_filter,
+        )
+        # low_lod_label = f"{node_id} {_graph._LOD.LOW} "
+        # low_lod_label = _to_table(all_items)
+        # low_ports = dict.fromkeys(mid_ports, 0)  # mid ports has all external connectsion, low collapses all of them
+        low_items = {index: item for index, item in all_items.items() if item.lod == _graph._LOD.LOW}
+        def low_filter(item_entry):
+            port_id, item = item_entry
+            return item.lod == _graph._LOD.LOW
+
+            # return (
+            #         ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (port_id in upstream_dependencies))
+            #         or (item.value == _TOTAL_SPAN)
+            #         or port_id in ports_of_interest
+            # )
+        low_lod_label = _to_table(
+            all_items,
+            # collections.ChainMap(
+            #     all_items,
+            #     {
+            #         max(all_items, default=0)  + 1: _graph._TableItem(
+            #             lod=_graph._LOD.LOW,
+            #             depth=0,
+            #             key=f"{node_id} {_graph._LOD.LOW} ",
+            #             value=_graph._TOTAL_SPAN,
+            #             display_attributes={},
+            #         )
+            #     }
+            # ),
+            low_filter,
+        )
+
+        high_ports = []
+        mid_ports = []
+        low_ports = []
+
+        self.nodes[node_id]._data.update(
+            ports={
+                _graph._LOD.HIGH: high_ports,
+                _graph._LOD.MID: mid_ports,
+                _graph._LOD.LOW: low_ports,
+            }
+        )
+        # high: full asset structure
+        self.nodes[node_id]._lods[_graph._LOD.HIGH].update(
+            label=high_lod_label,
+            ports='',
+            # # layer='',
+            items='',
+            dependencies='',
+            visited_layer_spec_path_ports='',
+        )
+        # mid: only items with plugs
+        self.nodes[node_id]._lods[_graph._LOD.MID].update(
+            label=mid_lod_label,
+            ports='',
+            # # layer='',
+            items='',
+            dependencies='',
+            visited_layer_spec_path_ports='',
+        )
+        # low: only layer label
+        self.nodes[node_id]._lods[_graph._LOD.LOW].update(
+            label=low_lod_label,
+            ports='',
+            # # layer='',
+            items='',
+            dependencies='',
+            visited_layer_spec_path_ports='',
+        )
+
+    def _prepare_for_display_old(self, node_id):
         if node_id not in self.nodes:
             raise RuntimeError(locals())
         all_items = self.nodes[node_id]._data['items']
@@ -357,7 +730,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         self.nodes[node_id]._lods[_graph._LOD.HIGH].update(
             label=high_lod_label,
             ports='',
-            layer='',
+            # layer='',
             items='',
             dependencies='',
             visited_layer_spec_path_ports='',
@@ -366,7 +739,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         self.nodes[node_id]._lods[_graph._LOD.MID].update(
             label=mid_lod_label,
             ports='',
-            layer='',
+            # layer='',
             items='',
             dependencies='',
             visited_layer_spec_path_ports='',
@@ -375,15 +748,410 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         self.nodes[node_id]._lods[_graph._LOD.LOW].update(
             label=low_lod_label,
             ports='',
-            layer='',
+            # layer='',
             items='',
             dependencies='',
             visited_layer_spec_path_ports='',
         )
 
 
+class _AssetStructureGraphNAS(_AssetStructureGraph):
+    def __init__(self, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.graph['graph'] = {'rankdir': 'RL'}
+        self.graph['node'] = {
+            'shape': 'none',
+        }
+        self._resolver_context = resolver_context
+        self._node_by_layer_mapping = {}  # SdfLayer: node_index
+
+    def _find_nodeid_for_dependencz(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
+        print(f"Checking {locals()}")
+        asset_path, spec_path, edge_attrs, dependency_type = dependency_info
+        if dependency_type == "subLayers":
+            print(f"SUCCESSS !!!!!!!!!!!!!!!!!!!!!!!! ")
+            if layer not in self._node_by_layer_mapping:
+                self._node_by_layer_mapping[layer] = source_node_key
+            return source_node_key
+        try:
+            return self._node_by_layer_mapping[layer]
+        except KeyError:
+            return None
+
+    def _update_node_with_layerz(self, node_id, source_port_key, layer, dependency_info):
+        print("Exciting!!! ----------- ")
+        print(locals())
+        # breakpoint()
+        # all_items = self.nodes[node_id]._data['items']
+        all_items = dict()
+        BG_CELL_ATTRS = {"bgcolor": _BG_CELL_COLOR, "fontcolor": "#8F8F8F"}
+        item_counter = count(start=max(self.nodes[node_id]._data['items'])+1)
+        def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
+            idx = next(item_counter)
+            all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
+            return idx
+
+        is_target_path = Sdf.Path.IsTargetPath
+        get_object_at_path = layer.GetObjectAtPath
+        list_info_keys = Sdf.Spec.ListInfoKeys
+        get_info = Sdf.Spec.GetInfo
+
+        def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
+            idx = next(item_counter)
+            all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
+            return idx
+
+        def _add_separator(LOD):
+            _add_item(LOD, 0, "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR})
+
+        def item_collector(path):
+            """Increase counter and add collected path to port_by_spec_path when:
+            1. Handling prims
+            2. Handling pseudoRoot
+            """
+            if is_target_path(path):
+                return
+            _BG_SPACE_COLOR = "#DC143C"
+            _FONT_COLOR = "#F0FFFF"
+            # if path.IsAbsoluteRootPath():
+            #     depth = len(path.GetPrefixes())
+            #     this_spec_index = _add_item(_graph._LOD.LOW, depth, layer.GetDisplayName(), _TOTAL_SPAN,
+            #                                 {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': _FONT_COLOR})
+            #     port_by_spec_path[path] = this_spec_index
+            spec = get_object_at_path(path)
+
+            attrs = dict(BG_CELL_ATTRS)  # will be modified below
+
+            prefixes = path.GetPrefixes()
+            if path.IsPrimPropertyPath():
+                depth = len(prefixes) + 1 - 1  # nvidia places properties under the prim's depth
+                attrs['bgcolor'] = "#FAFDF3"  # nvidia's almost white
+            else:
+                depth = len(prefixes) + 1
+
+            if path.IsPrimPath():
+                # Store the spec index first
+                port_by_spec_path[path] = this_spec_index = next(item_counter)
+
+                typeName = ' - '
+                for info_key in list_info_keys(spec):
+                    if info_key in {"comment", "documentation"}:
+                        continue
+
+                    try:
+                        info_value = get_info(spec, info_key)
+                    except Tf.ErrorException:
+                        continue
+
+                    if info_key == "typeName":
+                        typeName = info_value
+                    # elif info_key == "specifier":
+                    #     pass
+                    # elif isinstance(info_value, str):
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, info_value, attrs)
+                    elif isinstance(info_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
+                        port_index = _add_item(_graph._LOD.MID, depth, info_key, "@...@",
+                                               collections.ChainMap(_EDGE_COLORS[type(info_value)], attrs))
+                        for dependency_arc in info_value.GetAddedOrExplicitItems():
+                            dependency_path = dependency_arc.assetPath
+                            if not dependency_path:
+                                # TODO: handle internal dependency
+                                continue
+                            upstream_dependencies.setdefault(port_index, []).append(
+                                (layer, (dependency_path, dependency_arc.primPath, _EDGE_COLORS[type(info_value)], type(info_value)))
+                            )
+                    # elif isinstance(info_value, (Sdf.TokenListOp, Sdf.StringListOp)):
+                    #     if items := info_value.GetAddedOrExplicitItems():
+                    #         info_attrs = collections.ChainMap(
+                    #             dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+                    #         _add_item(_graph._LOD.HIGH, depth, info_key, ", ".join(items), info_attrs)
+                    # elif isinstance(info_value, Sdf.PathListOp):
+                    #     if items := info_value.GetAddedOrExplicitItems():
+                    #         color = _EDGE_COLORS.get(info_key, {"fontcolor": FONT_COLOR_GRAY})
+                    #         port_index = _add_item(_graph._LOD.HIGH, depth, info_key, "\n".join(map(str, items)),
+                    #                                collections.ChainMap(color, attrs))
+                    #         for each_item in items:
+                    #             internal_dependencies.setdefault(port_index, []).append((each_item, color))
+                    # elif isinstance(info_value, dict):
+                    #     info_attrs = collections.ChainMap(
+                    #         dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+                    #     display_overrides = {}
+                    #     display_dict = collections.ChainMap(display_overrides, info_value)
+                    #     if "identifier" in info_value:
+                    #         display_overrides['identifier'] = "..."
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, pformat(dict(display_dict)), info_attrs)
+                    # elif isinstance(info_value, list):
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]", attrs)
+                    # else:
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, (str(info_value)), attrs)
+
+                # prim_attrs = {'bgcolor': NVIDIA_GREEN, 'fontcolor': WHITE_BG}
+                # all_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName),
+                #                                                prim_attrs)
+
+            elif path.IsAbsoluteRootPath():
+                pseudoRoot = layer.pseudoRoot
+                infoKeys = pseudoRoot.ListInfoKeys()
+                # if set(infoKeys) - {"subLayerOffsets", "comment", "documentation"}:
+                if set(infoKeys) - {"subLayerOffsets", }:
+                    # _add_separator(_graph._LOD.MID)
+
+                    for info_key in infoKeys:
+                        # if info_key in {"subLayerOffsets", "comment", "documentation"}:
+                        #     continue
+
+                        try:
+                            info_value = pseudoRoot.GetInfo(info_key)
+                        except TypeError as exc:
+                            print(f"Could not retrieve {info_key} from pseudoRoot: {exc}")
+                            continue
+
+                        if info_key == "subLayers":
+                            edge_color = _EDGE_COLORS[info_key]
+                            this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
+                                                   collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
+                            for sublayer in info_value:
+                                upstream_dependencies.setdefault(this_index, []).append(
+                                    (layer, (sublayer, path, edge_color, info_key))
+                                )
+                        # elif isinstance(info_value, list):
+                        #     _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]",
+                        #               BG_CELL_ATTRS)
+                        # else:
+                        #     this_index = _add_item(_graph._LOD.HIGH, depth, info_key, str(info_value), BG_CELL_ATTRS)
+                        #     if info_key == "defaultPrim":
+                        #         port_by_spec_path[layer.defaultPrim] = this_index
+
+                    # _add_separator(_graph._LOD.MID)
+
+                # Add the main Layer label (LOW LOD)
+                this_spec_index = _add_item(_graph._LOD.LOW, depth, layer.GetDisplayName(), _TOTAL_SPAN,
+                                            {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': "#F0FFFF"})
+                port_by_spec_path[path] = this_spec_index
+
+        edges = list()
+        port_by_spec_path = {}
+        upstream_dependencies = dict()
+        internal_dependencies = dict()
+        layer.Traverse(layer.pseudoRoot.path, item_collector)
+        def _add_edge(src_node, src_port, tgt_node, tgt_port, attrs):
+            tailport = f"C1R{src_port}"
+            headport = f"C0R{tgt_port}" if tgt_port is not None else None
+            self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
+
+        for source_port, dependencies in internal_dependencies.items():
+            for spec_path, color in dependencies:
+                if spec_path not in port_by_spec_path:
+                    continue
+                target_port = port_by_spec_path[spec_path]
+                _add_edge(node_id, source_port, node_id, target_port, color)
+
+        self.add_edges_from(edges)
+        # self.nodes[node_id]._data.update(
+        #     # layer=layer,
+        #     # items=dict(reversed(all_items.items())),
+        #     dependencies=upstream_dependencies,
+        #     visited_layer_spec_path_ports=port_by_spec_path,
+        # )
+        self.nodes[node_id]._data['items'].update(dict(reversed(all_items.items())))
+        self.nodes[node_id]._data['dependencies'].update(upstream_dependencies)
+        self.nodes[node_id]._data['visited_layer_spec_path_ports'].update(port_by_spec_path)
+        return node_id
+
+    def _add_node_from_layerz(self, layer):
+        """Add a node with LOD capabilities to the current graph from a given USD layer, then return the node ID.
+
+        If layer has been added, do nothing else other than returning the node ID.
+        """
+        if layer in (loaded_layers := self._node_by_layer_mapping):
+            return loaded_layers[layer]
+        # breakpoint()
+        loaded_layers[layer] = node_id = len(loaded_layers)
+
+        item_counter = count()
+        edges = list()
+        port_by_spec_path = {}
+        upstream_dependencies = dict()
+        internal_dependencies = dict()
+        all_items = {}
+
+        BG_CELL_ATTRS = {"bgcolor": _BG_CELL_COLOR, "fontcolor": "#8F8F8F"}
+        FONT_COLOR_GRAY = "#8F8F8F"
+        NVIDIA_GREEN = "#76B900"
+        WHITE_BG = _BG_CELL_COLOR
+
+        is_target_path = Sdf.Path.IsTargetPath
+        get_object_at_path = layer.GetObjectAtPath
+        list_info_keys = Sdf.Spec.ListInfoKeys
+        get_info = Sdf.Spec.GetInfo
+
+        def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
+            idx = next(item_counter)
+            all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
+            return idx
+
+        def _add_separator(LOD):
+            _add_item(LOD, 0, "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR})
+
+        def item_collector(path):
+            """Increase counter and add collected path to port_by_spec_path when:
+            1. Handling prims
+            2. Handling pseudoRoot
+            """
+            if is_target_path(path):
+                return
+            _BG_SPACE_COLOR = "#DC143C"
+            _FONT_COLOR = "#F0FFFF"
+            # if path.IsAbsoluteRootPath():
+            #     depth = len(path.GetPrefixes())
+            #     this_spec_index = _add_item(_graph._LOD.LOW, depth, layer.GetDisplayName(), _TOTAL_SPAN,
+            #                                 {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': _FONT_COLOR})
+            #     port_by_spec_path[path] = this_spec_index
+            spec = get_object_at_path(path)
+
+            attrs = dict(BG_CELL_ATTRS)  # will be modified below
+
+            prefixes = path.GetPrefixes()
+            if path.IsPrimPropertyPath():
+                depth = len(prefixes) +1 - 1  # nvidia places properties under the prim's depth
+                attrs['bgcolor'] = "#FAFDF3"  # nvidia's almost white
+            else:
+                depth = len(prefixes) +1
+
+            if path.IsPrimPath():
+                # Store the spec index first
+                port_by_spec_path[path] = this_spec_index = next(item_counter)
+
+                typeName = ' - '
+                for info_key in list_info_keys(spec):
+                    if info_key in {"comment", "documentation"}:
+                        continue
+
+                    try:
+                        info_value = get_info(spec, info_key)
+                    except Tf.ErrorException:
+                        continue
+
+                    if info_key == "typeName":
+                        typeName = info_value
+                    # elif info_key == "specifier":
+                    #     pass
+                    # elif isinstance(info_value, str):
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, info_value, attrs)
+                    elif isinstance(info_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
+                        port_index = _add_item(_graph._LOD.MID, depth, info_key, "@...@",
+                                               collections.ChainMap(_EDGE_COLORS[type(info_value)], attrs))
+                        for dependency_arc in info_value.GetAddedOrExplicitItems():
+                            dependency_path = dependency_arc.assetPath
+                            if not dependency_path:
+                                # TODO: handle internal dependency
+                                continue
+                            upstream_dependencies.setdefault(port_index, []).append(
+                                (layer, (dependency_path, dependency_arc.primPath, _EDGE_COLORS[type(info_value)], type(info_value)))
+                            )
+                    # elif isinstance(info_value, (Sdf.TokenListOp, Sdf.StringListOp)):
+                    #     if items := info_value.GetAddedOrExplicitItems():
+                    #         info_attrs = collections.ChainMap(
+                    #             dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+                    #         _add_item(_graph._LOD.HIGH, depth, info_key, ", ".join(items), info_attrs)
+                    # elif isinstance(info_value, Sdf.PathListOp):
+                    #     if items := info_value.GetAddedOrExplicitItems():
+                    #         color = _EDGE_COLORS.get(info_key, {"fontcolor": FONT_COLOR_GRAY})
+                    #         port_index = _add_item(_graph._LOD.HIGH, depth, info_key, "\n".join(map(str, items)),
+                    #                                collections.ChainMap(color, attrs))
+                    #         for each_item in items:
+                    #             internal_dependencies.setdefault(port_index, []).append((each_item, color))
+                    # elif isinstance(info_value, dict):
+                    #     info_attrs = collections.ChainMap(
+                    #         dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+                    #     display_overrides = {}
+                    #     display_dict = collections.ChainMap(display_overrides, info_value)
+                    #     if "identifier" in info_value:
+                    #         display_overrides['identifier'] = "..."
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, pformat(dict(display_dict)), info_attrs)
+                    # elif isinstance(info_value, list):
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]", attrs)
+                    # else:
+                    #     _add_item(_graph._LOD.HIGH, depth, info_key, (str(info_value)), attrs)
+
+                # prim_attrs = {'bgcolor': NVIDIA_GREEN, 'fontcolor': WHITE_BG}
+                # all_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName),
+                #                                                prim_attrs)
+
+            elif path.IsAbsoluteRootPath():
+                pseudoRoot = layer.pseudoRoot
+                infoKeys = pseudoRoot.ListInfoKeys()
+                # if set(infoKeys) - {"subLayerOffsets", "comment", "documentation"}:
+                if set(infoKeys) - {"subLayerOffsets",}:
+                    # _add_separator(_graph._LOD.MID)
+
+                    for info_key in infoKeys:
+                        # if info_key in {"subLayerOffsets", "comment", "documentation"}:
+                        #     continue
+
+                        try:
+                            info_value = pseudoRoot.GetInfo(info_key)
+                        except TypeError as exc:
+                            print(f"Could not retrieve {info_key} from pseudoRoot: {exc}")
+                            continue
+
+                        if info_key == "subLayers":
+                            edge_color = _EDGE_COLORS[info_key]
+                            this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
+                                                   collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
+                            for sublayer in info_value:
+                                # upstream_dependencies.setdefault(port_index, []).append(
+                                #                                 (layer, (dependency_path, dependency_arc.primPath, _EDGE_COLORS[type(info_value)], type(info_value)))
+                                #                             )
+                                upstream_dependencies.setdefault(this_index, []).append(
+                                    (layer, (sublayer, path, edge_color, info_key))
+                                )
+                        # elif isinstance(info_value, list):
+                        #     _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]",
+                        #               BG_CELL_ATTRS)
+                        # else:
+                        #     this_index = _add_item(_graph._LOD.HIGH, depth, info_key, str(info_value), BG_CELL_ATTRS)
+                        #     if info_key == "defaultPrim":
+                        #         port_by_spec_path[layer.defaultPrim] = this_index
+
+                    # _add_separator(_graph._LOD.MID)
+
+                # Add the main Layer label (LOW LOD)
+                this_spec_index = _add_item(_graph._LOD.LOW, depth, layer.GetDisplayName(), _TOTAL_SPAN,
+                                            {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': "#F0FFFF"})
+                port_by_spec_path[path] = this_spec_index
+
+        layer.Traverse(layer.pseudoRoot.path, item_collector)
+        self.add_node(node_id)
+
+        def _add_edge(src_node, src_port, tgt_node, tgt_port, attrs):
+            tailport = f"C1R{src_port}"
+            headport = f"C0R{tgt_port}" if tgt_port is not None else None
+            self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
+
+        for source_port, dependencies in internal_dependencies.items():
+            for spec_path, color in dependencies:
+                if spec_path not in port_by_spec_path:
+                    continue
+                target_port = port_by_spec_path[spec_path]
+                _add_edge(node_id, source_port, node_id, target_port, color)
+
+        self.add_edges_from(edges)
+        self.nodes[node_id]._data.update(
+            # layer=layer,
+            items=dict(reversed(all_items.items())),
+            dependencies=upstream_dependencies,
+            visited_layer_spec_path_ports=port_by_spec_path,
+        )
+        return node_id
+
 def _launch_asset_structure_browser(root_layer, parent, resolver_context, recursive=False):
     widget = _AssetStructureBrowser(root_layer, resolver_context, recursive=recursive, parent=parent)
+    widget.show()
+    return widget
+
+def _launch_asset_structure_browser_nas(root_layer, parent, resolver_context, recursive=False):
+    widget = _AssetStructureBrowserNAS(root_layer, resolver_context, recursive=recursive, parent=parent)
     widget.show()
     return widget
 
@@ -434,12 +1202,11 @@ class _AssetStructureGraphView(_graph.GraphView):
 
 
 class _AssetStructureBrowser(QtWidgets.QDialog):
+    _graph_cls = _AssetStructureGraph
     def __init__(self, root_layer, resolver_context, recursive=False, parent=None):
         super().__init__(parent)
-
-
         print(f"Loading asset structure, {locals()}")
-        self._graph = graph = _AssetStructureGraph(resolver_context=resolver_context)
+        self._graph = graph = type(self)._graph_cls(resolver_context=resolver_context)
         root_node = graph._add_node_from_layer(root_layer)
         graph._prepare_for_display(root_node)
         root_nodes = [root_node]
@@ -502,11 +1269,11 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             splitter.addWidget(widget_on_splitter)
             # continue
             # # TODO: make the below a test
-            # if hasattr(child, "setLOD"):
-            #     child.setLOD(root_nodes, _graph._LOD.LOW)
+            if hasattr(child, "setLOD"):
+                child.setLOD(root_nodes, _graph._LOD.LOW)
             # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
             # new_nodes_to_view = set(root_nodes).union(nodes_added)
-            # breakpoint()
+            # # breakpoint()
             # child.view(new_nodes_to_view)
             # continue
             #
@@ -540,6 +1307,10 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
         layout = QtWidgets.QHBoxLayout()
         layout.addWidget(splitter)
         self.setLayout(layout)
+
+
+class _AssetStructureBrowserNAS(_AssetStructureBrowser):
+    _graph_cls = _AssetStructureGraphNAS
 
 
 if __name__ == "__main__":
@@ -589,7 +1360,8 @@ if __name__ == "__main__":
     # 4. All nodes / edges need to be computed for SVG
     # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
-    widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
+    # widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
+    widget = _launch_asset_structure_browser_nas(layer, None, None, recursive=False)
     # widget.
     profiler.stop()
     profiler.print()
@@ -831,3 +1603,34 @@ if __name__ == "__main__":
     #    │        └─ 1.065 write_dot  networkx\drawing\nx_agraph.py:183
     #    │              [22 frames hidden]  networkx, pygraphviz, <frozen _collec...
     #    └─ 0.184 _AssetStructureBrowser.show  <built-in>
+
+    # 2025/11/02
+    #
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 11:47:03  Samples:  4969
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 6.948     CPU time: 7.922
+    # /   _/                      v5.0.1
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:1351
+    #
+    # 6.948 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
+    # └─ 6.948 _launch_asset_structure_browser_nas  A:\write\code\git\grill\grill\views\_diagrams.py:1153
+    #    └─ 6.911 _AssetStructureBrowserNAS.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:1206
+    #       ├─ 3.730 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:788
+    #       │  └─ 3.723 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:830
+    #       │     ├─ 2.256 _add_node  A:\write\code\git\grill\grill\views\_graph.py:869
+    #       │     │  └─ 2.219 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:138
+    #       │     │     ├─ 2.027 _Node.setHtml  <built-in>
+    #       │     │     └─ 0.116 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │     └─ 1.398 graphviz_layout  networkx\drawing\nx_agraph.py:226
+    #       │           [6 frames hidden]  networkx, pygraphviz, threading, <bui...
+    #       └─ 3.127 _AssetStructureGraphNAS._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:174
+    #          ├─ 2.730 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:180
+    #          │  ├─ 1.964 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:37
+    #          │  └─ 0.716 _AssetStructureGraphNAS._add_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:233
+    #          │     ├─ 0.342 _traverse  A:\write\code\git\grill\grill\views\_diagrams.py:266
+    #          │     ├─ 0.208 [self]  A:\write\code\git\grill\grill\views\_diagrams.py
+    #          │     └─ 0.121 _AssetStructureGraphNAS.add_node  networkx\classes\digraph.py:439
+    #          ├─ 0.297 _AssetStructureGraphNAS._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:543
+    #          │  └─ 0.243 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:549
+    #          │     └─ 0.174 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1178
+    #          └─ 0.074 set.update  <built-in>
