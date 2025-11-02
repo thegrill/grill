@@ -7,8 +7,8 @@ TODO:
 """
 import collections
 from pprint import pformat
-from itertools import count
-from functools import partial
+from itertools import count, chain
+from functools import partial, cache
 
 import networkx as nx
 
@@ -104,7 +104,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 node_added = self._add_node_from_layer(dependency_layer)
             else:
                 print(f"NODE WAS ADDED BEFORE {node_added}")
-                from itertools import chain
                 if any(l == dependency_layer for l, dinfo in chain.from_iterable(self.nodes[node_added]._data['dependencies'].values())):
                     return node_added
                 else:
@@ -175,6 +174,13 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         resolver_context = self._resolver_context
 
+        # edges = list()
+        # def _add_edge(src_node, src_port, tgt_node, tgt_port, attrs):
+        #     tailport = f"C1R{src_port}"
+        #     headport = f"C0R{tgt_port}" if tgt_port is not None else None
+        #     # edges.appen()
+        #     self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
+
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
             # print(f"\n\nExpanding {dependency_info=} on {source_port_key=} from {source_node_key=} and {anchor_layer=}")
             asset_path, spec_path, edge_attrs, dependency_type = dependency_info
@@ -202,12 +208,22 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 if current_items_size < len(current_items):
                     # print(f"~~~ Adding {target_key=}")
                     nodes_added.add(target_key)
-                else:
-                    ...
+                # else:
+                #     ...
                     # print(f"Not updated {target_key}!!!")
                 # if self._update_node_from_layer(target_key, dependency_layer):
                 #     nodes_added.add(target_key)
                 #     print(f"~~~ Adding {target_key=}")
+            if nodes_added:
+                target_key = next(iter(nodes_added))
+                print(f"{target_key=}")
+                # breakpoint()
+                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(
+                    spec_path or dependency_layer.defaultPrim)
+                print(f"{target_port=}")
+                if target_port is not None:
+                    self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
+
             return nodes_added
             # if (node_added:=self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)) is None:
             #     print(f"NODE NOT ADDED {node_added=}")
@@ -277,18 +293,22 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         self._update_node_from_layer(node_id, layer)
         return node_id
 
-    from functools import cache
     @cache
     def _update_node_from_layer(self, node_id, layer):
         # print(f"_update_node_from_layer_update_node_from_layer_update_node_from_layer_update_node_from_layer_update_node_from_layer")
         # print(locals())
         # # all_items = dict()
-        all_items = self.nodes[node_id]._data['items']  # NodePort: TableItem
-        # print(f"Start {len(all_items)=}")
+        port_by_spec_path = self.nodes[node_id]._data['visited_layer_spec_path_ports'].setdefault(layer, {})
+        current_items = self.nodes[node_id]._data['items']  # NodePort: TableItem
+        # all_items = self.nodes[node_id]._data['items']  # NodePort: TableItem
+        print(node_id, layer)
+        # breakpoint()
+        new_items = dict()
+        # print(f"Start {len(current_items)=}")
         dependencies = self.nodes[node_id]._data['dependencies']
-        if 'NurbsS-lead-base-whole.1.usda' in layer.identifier:
-            # breakpoint()
-            ...
+        # if 'NurbsS-lead-base-whole.1.usda' in layer.identifier:
+        #     # breakpoint()
+        #     ...
         # if (resolved:=dependencies[_DependencyStatus.RESOLVED]) and layer in set(*[info.keys() for info in resolved.values()]):
         # from itertools import chain
         # if (resolved:=dependencies[_DependencyStatus.RESOLVED]):
@@ -302,14 +322,14 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         #         return False
         #     # return False
 
-        item_counter = count(start=max(all_items, default=-1) + 1)
+        item_counter = count(start=max(current_items, default=-1) + 1)
         # BG_CELL_ATTRS = {"bgcolor": _BG_CELL_COLOR, "fontcolor": "#8F8F8F"}
         BG_CELL_ATTRS = {}
 
-        port_by_spec_path = dict()  # {(layer, path) = spec_index}
+        # port_by_spec_path = dict()  # {(layer, path) = spec_index}
         def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
             idx = next(item_counter)
-            all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
+            new_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
             return idx
 
         # is_target_path = Sdf.Path.IsTargetPath
@@ -335,7 +355,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             depth = len(path.GetPrefixes())
             if path.IsPrimPath():
                 # Store the spec index first
-                # port_by_spec_path[path] = this_spec_index = next(item_counter)
+                port_by_spec_path[path] = this_spec_index = next(item_counter)
 
                 # typeName = ' - '
                 # for info_key in list_info_keys(spec):
@@ -370,6 +390,11 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                             for each_item in items:
                                 # TODO: see if this can be the same dictionary
                                 internal_dependencies.setdefault(port_index, []).append((each_item, color))
+                # all_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName),
+                typeName = ':)'
+                prim_attrs = {}
+                new_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName),
+                                                               prim_attrs)
             elif path.IsAbsoluteRootPath():
                 spec = layer.pseudoRoot
                 # infoKeys = pseudoRoot.ListInfoKeys()
@@ -378,7 +403,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 #     _add_separator(_graph._LOD.MID)
                 info_keys = spec.ListInfoKeys()
                 for info_key in info_keys:
-                    if info_key not in {"subLayers"}:
+                    if info_key not in {"subLayers", "defaultPrim"}:
                         continue
                     info = spec.GetInfo(info_key)
                     # info_value = pseudoRoot.GetInfo(info_key)
@@ -390,19 +415,22 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                     #     print(f"Could not retrieve {info_key} from pseudoRoot: {exc}")
                     #     continue
 
-                    # if info_key == "subLayers":
-                    edge_color = _EDGE_COLORS[info_key]
-                    # this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
-                    this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
-                                           collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
-                    for dependency_path in info:
-                        # dependencies.setdefault(this_index, []).append(
-                        #     (layer, (sublayer, path, edge_color, info_key))
-                        # )
-                        _add_dependency(this_index, layer, dependency_path, path, _EDGE_COLORS[info_key], info_key)
-                        # dependencies.setdefault(this_index, {}).setdefault(layer, []).append(
-                        #     (dependency_path, path, _EDGE_COLORS[info_key], info_key)
-                        # )
+                    if info_key == "subLayers":
+                        edge_color = _EDGE_COLORS[info_key]
+                        # this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
+                        this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
+                                               collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
+                        for dependency_path in info:
+                            # dependencies.setdefault(this_index, []).append(
+                            #     (layer, (sublayer, path, edge_color, info_key))
+                            # )
+                            _add_dependency(this_index, layer, dependency_path, path, _EDGE_COLORS[info_key], info_key)
+                            # dependencies.setdefault(this_index, {}).setdefault(layer, []).append(
+                            #     (dependency_path, path, _EDGE_COLORS[info_key], info_key)
+                            # )
+                    if info_key == "defaultPrim":
+                        this_index = _add_item(_graph._LOD.HIGH, depth, info_key, info, BG_CELL_ATTRS)
+                        port_by_spec_path[layer.defaultPrim] = this_index
             # if info_key == "subLayers":
             #     edge_color = _EDGE_COLORS[info_key]
             #     this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
@@ -411,12 +439,20 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             #         upstream_dependencies.setdefault(this_index, []).append(
             #             (layer, (sublayer, path, edge_color, info_key))
             #         )
-        this_spec_index = _add_item(_graph._LOD.LOW, 0, layer.GetDisplayName(), _TOTAL_SPAN,
-                                    {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': "#6C6C6C"})
-        port_by_spec_path[layer, layer.pseudoRoot.path] = this_spec_index
-
         # return ids_by_root_layer[root_layer], sublayers
         layer.Traverse(layer.pseudoRoot.path, _traverse)
+        this_spec_index = _add_item(_graph._LOD.LOW, 0, layer.GetDisplayName(), _TOTAL_SPAN,
+                                    {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': "#6C6C6C"})
+        port_by_spec_path[layer.pseudoRoot.path] = this_spec_index
+
+        for source_port, dependencies in internal_dependencies.items():
+            for spec_path, color in dependencies:
+                if spec_path not in port_by_spec_path:
+                    continue
+                target_port = port_by_spec_path[spec_path]
+                self._add_edge(node_id, source_port, node_id, target_port, color)
+
+        current_items.update(reversed(new_items.items()))
         # self.nodes[node_id]._data.update(
         #     # layer=layer,
         #     items=all_items,
@@ -425,6 +461,33 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # )
         # print(f"End {len(all_items)=}")
         return True
+
+    def _add_edge(self, src_node, src_port, tgt_node, tgt_port, attrs):
+        if self.graph['graph']['rankdir'] == 'RL':
+            headport_col_index = '1'
+            tailport_col_index = '0'
+        else:
+            headport_col_index = '0'
+            tailport_col_index = '1'
+        if src_node == tgt_node:
+            if self.graph['graph']['rankdir'] == 'RL':
+                headport_col_index = '1'
+                tailport_col_index = '0'
+            else:
+                headport_col_index = '0'
+                tailport_col_index = '0'
+
+        if src_node == tgt_node:
+            if self.graph['graph']['rankdir'] == 'RL':
+                headport_col_index = '1'
+                tailport_col_index = '0'
+            else:
+                headport_col_index = '1'
+                tailport_col_index = '0'
+
+        tailport = f"C{tailport_col_index}R{src_port}"
+        headport = f"C{headport_col_index}R{tgt_port}" if tgt_port is not None else None
+        self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
 
     def _add_node_from_layer_old(self, layer):
         """Add a node with LOD capabilities to the current graph from a given USD layer, then return the node ID.
@@ -608,18 +671,20 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         if node_id not in self.nodes:
             raise RuntimeError(locals())
 
-        all_items = self.nodes[node_id]._data['items']  # dict[NodePort, Item]
+        node_data = self.nodes[node_id]._data
+        all_items = node_data['items']  # dict[NodePort, Item]
 
         def _to_table(items, filter_fun=None):
             # print(locals())
+            ports = dict()
             label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
             if filter_fun:
                 items = {k: v for k, v in items.items() if filter_fun((k, v))}
             for row_index, (port_id, row) in enumerate(_graph._to_table(items)):
-                # high_ports[port_id] = row_index
+                ports[port_id] = row_index
                 label += row
             label += '</table>>'
-            return label
+            return label, ports
 
         # high_lod_label = f"{node_id} {_graph._LOD.HIGH} "
         # collections.ChainMap(all_items, {max(all_items) + 1: _graph._TableItem(
@@ -630,7 +695,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         #     display_attributes={},
         # )})
         # high_lod_label = _to_table(all_items)
-        high_lod_label =  _to_table(
+        high_lod_label, high_ports = _to_table(
             all_items,
             # collections.ChainMap(
             #     all_items,
@@ -650,18 +715,19 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         # mid_items = {index: item for index, item in all_items.items() if
         #              ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (index in upstream_dependencies)) or (
         #                          item.value == _TOTAL_SPAN) or index in ports_of_interest}
-        upstream_dependencies = dict()
+        ports_with_dependencies = set(chain.from_iterable(node_data['dependencies'].values()))
         ports_of_interest = set()
         def mid_filter(item_entry):
             port_id, item = item_entry
             return (
-                ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (port_id in upstream_dependencies))
+                ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (port_id in ports_with_dependencies))
+                # ((item.lod in _graph._LOD.LOW | _graph._LOD.MID))
                 or (item.value == _TOTAL_SPAN)
                 or port_id in ports_of_interest
             )
 
         # mid_lod_label = _to_table(all_items, mid_filter)
-        mid_lod_label = _to_table(
+        mid_lod_label, mid_ports = _to_table(
             all_items,
             # collections.ChainMap(
             #     all_items,
@@ -679,7 +745,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         )
         # low_lod_label = f"{node_id} {_graph._LOD.LOW} "
         # low_lod_label = _to_table(all_items)
-        # low_ports = dict.fromkeys(mid_ports, 0)  # mid ports has all external connectsion, low collapses all of them
+        low_ports = dict.fromkeys(mid_ports, 0)  # mid ports has all external connectsion, low collapses all of them
         low_items = {index: item for index, item in all_items.items() if item.lod == _graph._LOD.LOW}
         def low_filter(item_entry):
             port_id, item = item_entry
@@ -690,7 +756,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             #         or (item.value == _TOTAL_SPAN)
             #         or port_id in ports_of_interest
             # )
-        low_lod_label = _to_table(
+        low_lod_label, __ = _to_table(
             all_items,
             # collections.ChainMap(
             #     all_items,
@@ -707,9 +773,9 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             low_filter,
         )
 
-        high_ports = []
-        mid_ports = []
-        low_ports = []
+        # high_ports = []
+        # mid_ports = []
+        # low_ports = []
 
         self.nodes[node_id]._data.update(
             ports={
@@ -1265,6 +1331,7 @@ class _AssetStructureGraphView(_graph.GraphView):
         selection = set(self.scene().selectedItems())
         selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
         if selection_keys:
+            # breakpoint()
             self.setLOD(selection_keys, lod)
             for node_id in selection_keys:
                 self._nodes_map[node_id].setSelected(True)

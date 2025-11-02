@@ -306,11 +306,14 @@ class _Node(QtWidgets.QGraphicsTextItem):
         this_item.setPos(position)
 
 
+_EDGE_COL_CYCLE_RL = '0', '0'
+_EDGE_COL_CYCLE = '0', '0'
+
 class _Edge(QtWidgets.QGraphicsItem):
     def __repr__(self):
         return f"{type(self).__name__}(source={self._source}, target={self._target}, source_port={self._source_port}, target_port={self._target_port})"
 
-    def __init__(self, source: _Node, target: _Node, *, edge_data, is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
+    def __init__(self, source: _Node, target: _Node, *, edge_data, is_bidirectional=False, graph_rankdir='LR', parent: QtWidgets.QGraphicsItem = None):
         """Source port: index of the source node to connect to"""
         super().__init__(parent)
         color = edge_data['color']
@@ -318,15 +321,32 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._data = edge_data
 
         source_port, target_port = None, None
+        print(f"{type(self)} {graph_rankdir=}")
+        if graph_rankdir == 'RL':
+            headport_col_index = '1'
+            tailport_col_index = '0'
+        else:
+            headport_col_index = '0'
+            tailport_col_index = '1'
+        if source == target:
+            if graph_rankdir == 'RL':
+                headport_col_index = '1'
+                tailport_col_index = '0'
+            else:
+                headport_col_index = '0'
+                tailport_col_index = '0'
+
         if source._ports or target._ports:
             if (headport_key := edge_data.get('headport')) is not None:
+                print(f"{headport_key=}, searching for C{headport_col_index}R, {source=}, {target=}, {source==target=}")
                 # TODO: this is for asset structure tables with 2 columns. Assess on how to handle this better
-                if isinstance(headport_key, str) and headport_key.startswith("C0R"):
-                    headport_key = int(headport_key.removeprefix("C0R"))
+                if isinstance(headport_key, str) and headport_key.startswith(f"C{headport_col_index}R"):
+                    headport_key = int(headport_key.removeprefix(f"C{headport_col_index}R"))
                 target_port = headport_key
             if (tailport_key := edge_data.get('tailport')) is not None:
-                if isinstance(tailport_key, str) and tailport_key.startswith("C1R"):
-                    tailport_key = int(tailport_key.removeprefix("C1R"))
+                print(f"{tailport_key=}, searching for C{tailport_col_index}R, {source=}, {target=}, {source==target=}")
+                if isinstance(tailport_key, str) and tailport_key.startswith(f"C{tailport_col_index}R"):
+                    tailport_key = int(tailport_key.removeprefix(f"C{tailport_col_index}R"))
                 source_port = tailport_key
 
         self._source = source
@@ -863,6 +883,7 @@ class GraphView(_GraphicsViewport):
 
         _logger.debug("LOADING GRAPH")
         self._nodes_map.clear()
+        graph_rankdir = graph.graph.get('graph', {}).get('rankdir', '')
         edge_color = graph.graph.get('edge', {}).get("color", "")
         graph_node_attrs = graph.graph.get('node', {})
 
@@ -903,7 +924,7 @@ class GraphView(_GraphicsViewport):
             edge_data = edge_data_getter(source_id, target_id, port)
             if 'color' not in edge_data:
                 edge_data['color'] = edge_color
-            edge = _Edge(source, target, edge_data=edge_data, is_bidirectional=is_bidirectional)
+            edge = _Edge(source, target, edge_data=edge_data, is_bidirectional=is_bidirectional, graph_rankdir=graph_rankdir)
             self.scene().addItem(edge)
 
 
@@ -1175,6 +1196,7 @@ def _format_display_cell(
     )
 
 
+# def _to_table(items: dict[int, _TableItem], direction='LR'):
 def _to_table(items: dict[int, _TableItem]):
     if not items:
         return
@@ -1189,6 +1211,11 @@ def _to_table(items: dict[int, _TableItem]):
 
     escape = _cached_escape
     format_cell = _format_display_cell
+
+    # if direction == 'RL':
+    #     col_index = '1'
+    # else:
+    #     col_index = '0'
 
     for port_index, item in items.items():
         attrs = item.display_attributes
