@@ -7,6 +7,17 @@ def Xform "Barrel" (
         kind = "component"
     ) {
     def Xform "Geometry" {
-        def Cylinder "barrel" {}
+        def Cylinder "barrel" (
+            references = [
+                @A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Geom-Shape-rnd-main-NurbsS-lead-base-whole.1.usda@,
+                @A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Geom-Shape-rnd-main-BasisS-lead-base-whole.1.usda@
+            ]
+            payload = [
+                @A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Geom-Shape-rnd-main-BasisLineup-lead-base-whole.1.usda@,
+                @A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Geom-Shape-rnd-main-GroundPlane-lead-base-whole.1.usda@,
+                @A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda@
+            ]
+        )
+        {}
     }
 }

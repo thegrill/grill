@@ -306,8 +306,19 @@ class _Node(QtWidgets.QGraphicsTextItem):
         this_item.setPos(position)
 
 
-_EDGE_COL_CYCLE_RL = '0', '0'
-_EDGE_COL_CYCLE = '0', '0'
+@cache
+def _columns_for_edge(rankdir, src_node, tgt_node):
+    if src_node == tgt_node:
+        headport_col_index = '0'
+        tailport_col_index = '1'
+    elif rankdir == 'RL':
+        headport_col_index = '1'
+        tailport_col_index = '0'
+    else:
+        headport_col_index = '0'
+        tailport_col_index = '1'
+
+    return headport_col_index, tailport_col_index
 
 class _Edge(QtWidgets.QGraphicsItem):
     def __repr__(self):
@@ -321,20 +332,7 @@ class _Edge(QtWidgets.QGraphicsItem):
         self._data = edge_data
 
         source_port, target_port = None, None
-        print(f"{type(self)} {graph_rankdir=}")
-        if graph_rankdir == 'RL':
-            headport_col_index = '1'
-            tailport_col_index = '0'
-        else:
-            headport_col_index = '0'
-            tailport_col_index = '1'
-        if source == target:
-            if graph_rankdir == 'RL':
-                headport_col_index = '1'
-                tailport_col_index = '0'
-            else:
-                headport_col_index = '0'
-                tailport_col_index = '0'
+        headport_col_index, tailport_col_index = _columns_for_edge(graph_rankdir, source, target)
 
         if source._ports or target._ports:
             if (headport_key := edge_data.get('headport')) is not None:

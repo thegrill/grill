@@ -8,6 +8,9 @@ def "Factory_0" (references = @./factory.usda@) {
                     # Override the Barrel prototype in this factory to be red
                     color3f[] primvars:displayColor = [(.6, .0, .0)]
                 }
+                over "barrel2" (
+                    references=@A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-Geom-Shape-rnd-main-BasisS-lead-base-whole.1.usda@
+                ) {}
             }
         }
     }

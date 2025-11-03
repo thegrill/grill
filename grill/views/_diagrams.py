@@ -463,28 +463,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         return True
 
     def _add_edge(self, src_node, src_port, tgt_node, tgt_port, attrs):
-        if self.graph['graph']['rankdir'] == 'RL':
-            headport_col_index = '1'
-            tailport_col_index = '0'
-        else:
-            headport_col_index = '0'
-            tailport_col_index = '1'
-        if src_node == tgt_node:
-            if self.graph['graph']['rankdir'] == 'RL':
-                headport_col_index = '1'
-                tailport_col_index = '0'
-            else:
-                headport_col_index = '0'
-                tailport_col_index = '0'
-
-        if src_node == tgt_node:
-            if self.graph['graph']['rankdir'] == 'RL':
-                headport_col_index = '1'
-                tailport_col_index = '0'
-            else:
-                headport_col_index = '1'
-                tailport_col_index = '0'
-
+        rankdir = self.graph['graph']['rankdir']
+        headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, src_node, tgt_node)
         tailport = f"C{tailport_col_index}R{src_port}"
         headport = f"C{headport_col_index}R{tgt_port}" if tgt_port is not None else None
         self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
