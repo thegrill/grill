@@ -336,13 +336,13 @@ class _Edge(QtWidgets.QGraphicsItem):
 
         if source._ports or target._ports:
             if (headport_key := edge_data.get('headport')) is not None:
-                print(f"{headport_key=}, searching for C{headport_col_index}R, {source=}, {target=}, {source==target=}")
+                # print(f"{headport_key=}, searching for C{headport_col_index}R, {source=}, {target=}, {source==target=}")
                 # TODO: this is for asset structure tables with 2 columns. Assess on how to handle this better
                 if isinstance(headport_key, str) and headport_key.startswith(f"C{headport_col_index}R"):
                     headport_key = int(headport_key.removeprefix(f"C{headport_col_index}R"))
                 target_port = headport_key
             if (tailport_key := edge_data.get('tailport')) is not None:
-                print(f"{tailport_key=}, searching for C{tailport_col_index}R, {source=}, {target=}, {source==target=}")
+                # print(f"{tailport_key=}, searching for C{tailport_col_index}R, {source=}, {target=}, {source==target=}")
                 if isinstance(tailport_key, str) and tailport_key.startswith(f"C{tailport_col_index}R"):
                     tailport_key = int(tailport_key.removeprefix(f"C{tailport_col_index}R"))
                 source_port = tailport_key

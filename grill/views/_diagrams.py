@@ -90,7 +90,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
             asset_path, spec_path, edge_attrs, dependency_type = dependency_info
-            print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
+            # print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
             # print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
             # print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
             # print(f"------------------- {anchor_layer=}, {asset_path=} ---------------------------")
@@ -216,11 +216,11 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 #     print(f"~~~ Adding {target_key=}")
             if nodes_added:
                 target_key = next(iter(nodes_added))
-                print(f"{target_key=}")
+                # print(f"{target_key=}")
                 # breakpoint()
                 target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(
                     spec_path or dependency_layer.defaultPrim)
-                print(f"{target_port=}")
+                # print(f"{target_port=}")
                 if target_port is not None:
                     self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
 
@@ -301,7 +301,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         port_by_spec_path = self.nodes[node_id]._data['visited_layer_spec_path_ports'].setdefault(layer, {})
         current_items = self.nodes[node_id]._data['items']  # NodePort: TableItem
         # all_items = self.nodes[node_id]._data['items']  # NodePort: TableItem
-        print(node_id, layer)
+        # print(node_id, layer)
         # breakpoint()
         new_items = dict()
         # print(f"Start {len(current_items)=}")
@@ -696,7 +696,18 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         #              ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (index in upstream_dependencies)) or (
         #                          item.value == _TOTAL_SPAN) or index in ports_of_interest}
         ports_with_dependencies = set(chain.from_iterable(node_data['dependencies'].values()))
+        # ports_of_interest = set()
         ports_of_interest = set()
+        rankdir = self.graph['graph']['rankdir']
+        for predecessor in self.predecessors(node_id):
+            # headport is what we need to keep (as it belongs to this node)
+            headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, predecessor, node_id)
+            for port_idx, data in self.adj[predecessor][node_id].items():
+                headport_key = data['headport']
+                if isinstance(headport_key, str) and headport_key.startswith(f"C{headport_col_index}R"):
+                    headport_key = int(headport_key.removeprefix(f"C{headport_col_index}R"))
+                ports_of_interest.add(headport_key)
+
         def mid_filter(item_entry):
             port_id, item = item_entry
             return (
@@ -876,6 +887,9 @@ class _AssetStructureGraphNAS(_AssetStructureGraph):
         self._node_by_layer_mapping = {}  # SdfLayer: node_index
 
     def _find_nodeid_for_dependency(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
+        # TODO: make LOD 1 be root layer only, LOD2 layerstack only, LOD3 layerstack + scene description
+        # TODO: upon recursive init, cycle edges are drawn like a triangle, should be hidden (gets fixed after swapping lod back and forth)
+        # TODO: sublayers should be added last to their parent, instead of at the end of the node
         # print(f"Checking ----------------------------------- {locals()}")
         asset_path, spec_path, edge_attrs, dependency_type = dependency_info
         if dependency_type == "subLayers":
@@ -885,18 +899,6 @@ class _AssetStructureGraphNAS(_AssetStructureGraph):
             return source_node_key
         try:
             return self._node_by_root_layer[layer]
-        except KeyError:
-            return None
-    def _find_nodeid_for_dependencz(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
-        print(f"Checking {locals()}")
-        asset_path, spec_path, edge_attrs, dependency_type = dependency_info
-        if dependency_type == "subLayers":
-            print(f"SUCCESSS !!!!!!!!!!!!!!!!!!!!!!!! ")
-            if layer not in self._node_by_layer_mapping:
-                self._node_by_layer_mapping[layer] = source_node_key
-            return source_node_key
-        try:
-            return self._node_by_layer_mapping[layer]
         except KeyError:
             return None
 
@@ -1399,6 +1401,10 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
                 child.setLOD(root_nodes, _graph._LOD.LOW)
             # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
             # new_nodes_to_view = set(root_nodes).union(nodes_added)
+            # child.view(new_nodes_to_view)
+            # child.setLOD(new_nodes_to_view, _graph._LOD.LOW)
+            #
+            # continue
             # # breakpoint()
             # child.view(new_nodes_to_view)
             # continue
@@ -1464,7 +1470,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
 
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     app = QtWidgets.QApplication([])
