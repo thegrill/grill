@@ -6,6 +6,7 @@ TODO:
 
 """
 import enum
+import pathlib
 import collections
 from pprint import pformat
 from itertools import count, chain
@@ -75,6 +76,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
             asset_path, spec_path, edge_attrs, dependency_type = dependency_info
+            # if "main-Romania-lead" in anchor_layer.identifier:
+            #     breakpoint()
             if not (dependency_layer := _find_layer(asset_path, anchor_layer, resolver_context)):
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor_layer}")
                 return
@@ -98,6 +101,11 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(
                     spec_path or dependency_layer.defaultPrim)
                 if target_port is not None:
+                    self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
+            elif target_key:
+                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(
+                    spec_path or dependency_layer.defaultPrim)
+                if not self.has_edge(source_node_key, target_key, key=(source_port_key, target_port)):
                     self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
 
             return nodes_added
@@ -163,7 +171,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         item_counter = count(start=max(current_items, default=-1) + 1)
         BG_CELL_ATTRS = self.BG_CELL_ATTRS
         # BG_CELL_ATTRS = {}
-
+        FONT_COLOR_GRAY = "#8F8F8F"
         def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
             idx = next(item_counter)
             new_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
@@ -181,17 +189,22 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 return
 
             spec = layer.GetObjectAtPath(path)
+            spec_attrs = self._attributes(spec)
             depth = len(path.GetPrefixes())
+            typeName = ''
             if path.IsPrimPath():
+                property_depth = depth+1
                 # Store the spec index first
                 port_by_spec_path[path] = this_spec_index = next(item_counter)
                 attrs = {}
                 # attrs = self._attributes(spec)
                 info_keys = spec.ListInfoKeys()
                 for info_key in info_keys:
+                    if info_key in {"documentation"}:
+                        continue
                     info = spec.GetInfo(info_key)
                     if info_key in {"references", "payload"}:
-                        port_index = _add_item(_graph._LOD.MID, depth, info_key, "@...@", collections.ChainMap(_EDGE_COLORS[type(info)], attrs))
+                        port_index = _add_item(_graph._LOD.MID, property_depth, info_key, "@...@", collections.ChainMap(_EDGE_COLORS[type(info)], attrs))
                         for dependency_arc in info.GetAddedOrExplicitItems():
                             dependency_path = dependency_arc.assetPath
                             color = _EDGE_COLORS[type(info)]
@@ -203,14 +216,37 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                     elif isinstance(info, Sdf.PathListOp):
                         if items := info.GetAddedOrExplicitItems():
                             color = _EDGE_COLORS.get(info_key, {"fontcolor": "gray"})
-                            port_index = _add_item(_graph._LOD.HIGH, depth, info_key, "\n".join(map(str, items)), collections.ChainMap(color, attrs))
+                            # port_index = _add_item(_graph._LOD.HIGH, property_depth, f":-- {info_key}", "\n".join(map(str, items)), collections.ChainMap(color, attrs))
+                            port_index = _add_item(_graph._LOD.HIGH, property_depth, info_key, "\n".join(map(str, items)), collections.ChainMap(color, attrs))
                             for each_item in items:
                                 internal_dependencies.setdefault(port_index, []).append((each_item, color))
+                    elif isinstance(info, (Sdf.TokenListOp, Sdf.StringListOp)):
+                        if items := info.GetAddedOrExplicitItems():
+                            info_attrs = collections.ChainMap(
+                                dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+                            _add_item(_graph._LOD.HIGH, property_depth, info_key, ", ".join(items), info_attrs)
+                    elif isinstance(info, dict):
+                        info_attrs = collections.ChainMap(
+                            dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+                        display_overrides = {}
+                        display_dict = collections.ChainMap(display_overrides, info)
+                        if "identifier" in info:
+                            display_overrides['identifier'] = "..."
+                        _add_item(_graph._LOD.HIGH, property_depth, info_key, pformat(dict(display_dict)), info_attrs)
+                    elif info_key == "typeName":
+                        typeName = info
+                    elif info_key == "specifier":
+                        if info == Sdf.SpecifierOver:
+                            spec_attrs.setdefault('__text_handlers__', []).append(lambda text: f"<i>{text}</i>")
+                        elif info == Sdf.SpecifierClass:
+                            spec_attrs.setdefault('__text_handlers__', []).append(lambda text: f"<b>{text}</b>")
+                            # spec_attrs['__text_handlers__'] =
+                    else:
+                        _add_item(_graph._LOD.HIGH, property_depth, info_key, (str(info)), attrs)
 
-                typeName = ':)'
-                prim_attrs = self._attributes(spec)
-                new_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName),
-                                                               prim_attrs)
+
+                new_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName), spec_attrs)
+
             elif path.IsAbsoluteRootPath():
                 spec = layer.pseudoRoot
                 info_keys = spec.ListInfoKeys()
@@ -271,11 +307,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         NVIDIA_GREEN = "#76B900"
         WHITE_BG = _BG_CELL_COLOR
 
-        is_target_path = Sdf.Path.IsTargetPath
-        get_object_at_path = layer.GetObjectAtPath
-        list_info_keys = Sdf.Spec.ListInfoKeys
-        get_info = Sdf.Spec.GetInfo
-
         def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
             idx = next(item_counter)
             all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
@@ -289,13 +320,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             1. Handling prims
             2. Handling pseudoRoot
             """
-            if is_target_path(path):
-                return
-
-            spec = get_object_at_path(path)
-
-            attrs = dict(BG_CELL_ATTRS)  # will be modified below
-
             prefixes = path.GetPrefixes()
             if path.IsPrimPropertyPath():
                 depth = len(prefixes) +1 - 1  # nvidia places properties under the prim's depth
@@ -444,21 +468,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             label += '</table>>'
             return label, ports
 
-        high_lod_label, high_ports = _to_table(
-            all_items,
-            # collections.ChainMap(
-            #     all_items,
-            #     {
-            #         max(all_items, default=0) + 1: _graph._TableItem(
-            #             lod=_graph._LOD.HIGH,
-            #             depth=0,
-            #             key=f"{node_id} {_graph._LOD.HIGH} ",
-            #             value=_graph._TOTAL_SPAN,
-            #             display_attributes={},
-            #         )
-            #     }
-            # ),
-        )
+        high_lod_label, high_ports = _to_table(all_items)
 
         ports_with_dependencies = set(chain.from_iterable(node_data['dependencies'].values()))
         ports_of_interest = set()
@@ -480,44 +490,15 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 or port_id in ports_of_interest
             )
 
-        mid_lod_label, mid_ports = _to_table(
-            all_items,
-            # collections.ChainMap(
-            #     all_items,
-            #     {
-            #         max(all_items, default=0)  + 1: _graph._TableItem(
-            #             lod=_graph._LOD.MID,
-            #             depth=0,
-            #             key=f"{node_id} {_graph._LOD.MID} ",
-            #             value=_graph._TOTAL_SPAN,
-            #             display_attributes={},
-            #         )
-            #     }
-            # ),
-            mid_filter,
-        )
+        mid_lod_label, mid_ports = _to_table(all_items, mid_filter)
+
         low_ports = dict.fromkeys(mid_ports, 0)  # mid ports has all external connectsion, low collapses all of them
         low_items = {index: item for index, item in all_items.items() if item.lod == _graph._LOD.LOW}
         def low_filter(item_entry):
             port_id, item = item_entry
             return item.lod == _graph._LOD.LOW
 
-        low_lod_label, __ = _to_table(
-            all_items,
-            # collections.ChainMap(
-            #     all_items,
-            #     {
-            #         max(all_items, default=0)  + 1: _graph._TableItem(
-            #             lod=_graph._LOD.LOW,
-            #             depth=0,
-            #             key=f"{node_id} {_graph._LOD.LOW} ",
-            #             value=_graph._TOTAL_SPAN,
-            #             display_attributes={},
-            #         )
-            #     }
-            # ),
-            low_filter,
-        )
+        low_lod_label, __ = _to_table(all_items, low_filter)
 
         self.nodes[node_id]._data.update(
             ports={
@@ -730,9 +711,9 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             child.setMinimumWidth(150)
             splitter.addWidget(widget_on_splitter)
             continue
-            # # TODO: make the below a test
-            if hasattr(child, "setLOD"):
-                child.setLOD(root_nodes, _graph._LOD.LOW)
+            # # # TODO: make the below a test
+            # if hasattr(child, "setLOD"):
+            #     child.setLOD(root_nodes, _graph._LOD.LOW)
             # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
             # new_nodes_to_view = set(root_nodes).union(nodes_added)
             # child.view(new_nodes_to_view)
@@ -805,10 +786,10 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
-        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
 
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     app = QtWidgets.QApplication([])
@@ -836,7 +817,7 @@ if __name__ == "__main__":
     # widget.
     profiler.stop()
     profiler.print()
-    import pathlib
+
     profiler.write_html(pathlib.Path(__file__).parent / "instrument.html")
     print(_graph._cached_escape.cache_info())
     print(_graph._format_display_cell.cache_info())

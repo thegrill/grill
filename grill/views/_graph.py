@@ -272,11 +272,11 @@ class _Node(QtWidgets.QGraphicsTextItem):
             # Create both port items at once to reduce scene updates
             class PortPlugItem(QtWidgets.QGraphicsEllipseItem):
                 def __repr__(this):
-                    return f"Item({self}, {port=}, side={{side}})"
+                    return f"{type(this).__name__}({port=})"
 
             left_item = PortPlugItem(-radius, -radius, 2 * radius, 2 * radius)
             right_item = PortPlugItem(-radius, -radius, 2 * radius, 2 * radius)
-
+            # breakpoint()
             for item in (left_item, right_item):
                 item.setPen(_NO_PEN)
                 item.setZValue(self.zValue())
@@ -1178,6 +1178,12 @@ def _format_display_cell(
         # TODO: this shouldnot happen, check and fix
         colspan = 1
     bgcolor_attr = f' BGCOLOR="{bgcolor}"' if bgcolor else ''
+    # if not safe_entry:
+    #     safe_entry = " "
+    # if safe_entry:
+    #     safe_entry = f"<b><i>{safe_entry}</i></b>"
+    # else:
+    #     safe_entry = " "
     font_wrap = f'<FONT COLOR="{fontcolor}">{safe_entry}</FONT>' if fontcolor else safe_entry
 
     if is_total_span:  # No border, may have height for spacing
@@ -1221,6 +1227,11 @@ def _to_table(items: dict[int, _TableItem]):
         fontcolor = attrs.get("fontcolor", "")
 
         safe_key = escape(item.key)
+        if not safe_key:
+            safe_key = " "
+        for text_handler in attrs.get("__text_handlers__", ()):
+            safe_key = text_handler(safe_key)
+
         if (item_value := item.value) is _TOTAL_SPAN:  # titles and splitters
             entry = format_cell(
                 is_total_span=True,
@@ -1253,6 +1264,11 @@ def _to_table(items: dict[int, _TableItem]):
                 fontcolor=fontcolor,
                 safe_entry=safe_key,
             )
+            safe_value = escape(item_value).replace("\n", "<br/>")
+            if not safe_value:
+                safe_value = " "
+            for text_handler in attrs.get("__text_handlers__", ()):
+                safe_value = text_handler(safe_value)
             value_cell = format_cell(
                 is_total_span=False,
                 colspan=max_depth,
@@ -1260,7 +1276,7 @@ def _to_table(items: dict[int, _TableItem]):
                 width=width,
                 bgcolor=bgcolor,
                 fontcolor=fontcolor,
-                safe_entry=escape(item_value).replace("\n", "<br/>"),
+                safe_entry=safe_value,
             )
             entry = f'{indentation}{key_cell}{value_cell}{tail}'
 
