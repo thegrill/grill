@@ -142,20 +142,22 @@ class _Node(QtWidgets.QGraphicsTextItem):
         """
         super().__init__(parent)
         self._name = node_name
-        if hasattr(node_data, "_lods"):
-            # these are all the possible ports, while _ports may have only
-            ports = node_data._data['ports'][node_data.lod]
-        else:
-            ports = node_data.get('ports', ())
-            ports = dict(zip(ports, range(len(ports))))
-
+        # if hasattr(node_data, "_lods"):
+        #     # these are all the possible ports, while _ports may have only
+        #     ports = node_data._data['ports'][node_data.lod]
+        # else:
+        #     ports = node_data.get('ports', ())
+        #     ports = dict(zip(ports, range(len(ports))))
+        self._data = node_data
+        ports = self._ports_from_data
+        self._ports_from_label = None
         if (shape := node_data.get('shape')) == 'record':
             try:
                 label = node_data['label']
             except KeyError:
                 raise ValueError(
                     f"'label' must be supplied when 'record' shape is set for node: '{node_name}' with data: {node_data}")
-            if ports:
+            if ports is not None:
                 raise ValueError(
                     f"record 'shape' and 'ports' are mutually exclusive, pick one for node: '{node_name}' with data: {node_data}")
             try:
@@ -164,7 +166,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
                 raise ValueError(
                     f"In order to use the 'record' shape, a record 'label' in the form of: '{{<port1>text1|<port2>text2}}' must be used") from exc
             label = _get_html_table_from_ports(**port_items)
-            ports = dict(zip(ports, range(len(ports))))
+            self._ports_from_label = dict(zip(port_items, range(len(port_items))))
         else:
             label = node_data.get('label')
             if shape in {'none', 'plaintext'}:
@@ -181,7 +183,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
         self._data = node_data
         self._edges = {}  # {Edge: port_identifier}
-        self._ports = ports  # {port_graphviz_identifier: index_for_edge_connectivity}
+        # self._ports = ports  # {port_graphviz_identifier: index_for_edge_connectivity}
         self._active_ports_by_side = dict()  # {port_name: {left[int]: {}, right[int]: {}}
         self._port_items = {}  # {port_name: (QEllipse, QEllipse)}
         self._pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap, QtCore.Qt.RoundJoin)
@@ -200,6 +202,29 @@ class _Node(QtWidgets.QGraphicsTextItem):
             self.setVisible(False)
         self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
         self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
+
+    @property
+    def _ports(self):
+        from_data = self._ports_from_data
+        if from_data is None:
+            return self._ports_from_label
+        return from_data
+
+    @property
+    def _ports_from_data(self):
+        node_data = self._data
+        if hasattr(node_data, "_lods"):
+            # these are all the possible ports, while _ports may have only
+            return node_data._data['ports'][node_data.lod]
+        elif 'ports' in node_data:
+            ports = node_data.get('ports', ())
+            return dict(zip(ports, range(len(ports))))
+        #     ports = node_data.get('ports', ())
+        #     ports = dict(zip(ports, range(len(ports))))
+        # return ports
+        # node_data = self._data
+        # if hasattr(node_data, "_lods"):
+        # return self._data._data['ports'][self._data.lod]
 
     def _overrideCursor(self, event):
         if event.modifiers() == QtCore.Qt.ControlModifier:
@@ -775,8 +800,9 @@ class GraphView(_GraphicsViewport):
                 continue
             qnode = nodes_map[node_id]
             node_data.lod = lod  # switches attributes below
-
-            qnode._ports = node_data._data['ports'][lod]
+            # print(f"{node_id=} {node_data.lod=}")
+            # print(f"{qnode=} {qnode._ports=}")
+            # qnode._ports = node_data._data['ports'][lod]
 
             label = node_data['label']
             label = _adjust_graphviz_html_table_label(label)
@@ -1184,6 +1210,12 @@ def _format_display_cell(
     #     safe_entry = f"<b><i>{safe_entry}</i></b>"
     # else:
     #     safe_entry = " "
+    # font_wrap = f'<FONT COLOR="{fontcolor}" FACE="Impact">{safe_entry}</FONT>' if fontcolor else safe_entry
+    # import random
+    # font_face = random.choice(["Times-Roman", "Impact", "Helvetica"])
+    # font_face = random.choice(["Times-Roman", "Helvetica"])
+    # font_face = "Helvetica"
+    # font_wrap = f'<FONT COLOR="{fontcolor}" FACE="{font_face}">{safe_entry}</FONT>' if fontcolor else safe_entry
     font_wrap = f'<FONT COLOR="{fontcolor}">{safe_entry}</FONT>' if fontcolor else safe_entry
 
     if is_total_span:  # No border, may have height for spacing

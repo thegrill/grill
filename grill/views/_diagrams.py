@@ -52,6 +52,8 @@ class _DependencyStatus(enum.Flag):
     UNRESOLVED = enum.auto()
 
 
+_REPORTED_INFO_KEYS = set()
+
 class _AssetStructureGraph(nx.MultiDiGraph):
     BG_CELL_ATTRS = {}
     node_attr_dict_factory = lambda self: _graph.DynamicLODAttributes()
@@ -73,42 +75,41 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
     def _expand_dependencies(self, keys, *, recursive=False):
         resolver_context = self._resolver_context
-
+        # print(f">>>>>>>>>>> EXPAND STARTING {keys=}")
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
             asset_path, spec_path, edge_attrs, dependency_type = dependency_info
-            # if "main-Romania-lead" in anchor_layer.identifier:
-            #     breakpoint()
             if not (dependency_layer := _find_layer(asset_path, anchor_layer, resolver_context)):
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor_layer}")
                 return
 
             target_key = self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)
-            nodes_added = set()
+            updated_nodes = set()
             if target_key is None:  # new node needs to be created
-                node_added = self._add_node_from_layer(dependency_layer)
-                assert self.nodes[node_added].lod
-                self.nodes[node_added].lod = lod
-                nodes_added.add(node_added)
+                target_key = self._add_node_from_layer(dependency_layer)
+                assert self.nodes[target_key].lod
+                self.nodes[target_key].lod = lod
+                updated_nodes.add(target_key)
+                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(spec_path or dependency_layer.defaultPrim)
+                if target_port is not None:
+                    # TODO: confirm we are never not None? it'd be a composition error but probably we don't want to fail and add an edge regardless
+                    self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
+                    updated_nodes.add(source_node_key)
+                else:
+                    raise RuntimeError(locals())
             else:  # an upstream node for this dependency already exists, update it directly
                 current_items = self.nodes[target_key]._data['items']
                 current_items_size = len(current_items)
                 self._update_node_from_layer(target_key, dependency_layer)
                 if current_items_size < len(current_items):
-                    nodes_added.add(target_key)
-
-            if nodes_added:
-                target_key = next(iter(nodes_added))
-                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(
-                    spec_path or dependency_layer.defaultPrim)
-                if target_port is not None:
-                    self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
-            elif target_key:
-                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(
-                    spec_path or dependency_layer.defaultPrim)
+                    updated_nodes.add(target_key)
+                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(spec_path or dependency_layer.defaultPrim)
                 if not self.has_edge(source_node_key, target_key, key=(source_port_key, target_port)):
                     self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
+                    updated_nodes.update((source_node_key, target_key))
+                if target_port is None:
+                    raise RuntimeError(locals())
 
-            return nodes_added
+            return updated_nodes
 
         nodes_to_process = set(keys)
         visited_nodes = set()
@@ -135,7 +136,11 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 nodes_to_process.update(updated_nodes)
 
         for node in updated_nodes:  # Prepare all nodes modified, clients must report modified nodes
+            # print(f"~~~~~~~~~~~~~~~~~~UPDATING {node}")
             self._prepare_for_display(node)
+            # print(f"~!!!!!! {self.nodes[node].lod=}")
+            # print(f"{self.nodes[node]._data['ports'][self.nodes[node].lod]=}")
+        # print(f">>>>>>>>>>> UPDATING DONE FOR {updated_nodes=}")
         return updated_nodes
 
     def _add_node_from_layer(self, layer):
@@ -251,9 +256,16 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 spec = layer.pseudoRoot
                 info_keys = spec.ListInfoKeys()
                 for info_key in info_keys:
-                    if info_key not in {"subLayers", "defaultPrim"}:
+                    # print(f"{info_key=}")
+                    # if info_key not in {"subLayers", "defaultPrim"}:
+                    #     continue
+                    try:
+                        info = spec.GetInfo(info_key)
+                    except TypeError as exc:
+                        if info_key not in _REPORTED_INFO_KEYS:
+                            print(f'Could not get info "{info_key}" from {path}: {exc}')
+                            _REPORTED_INFO_KEYS.add(info_key)
                         continue
-                    info = spec.GetInfo(info_key)
                     if info_key == "subLayers":
                         edge_color = _EDGE_COLORS[info_key]
                         this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@", collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
@@ -481,14 +493,16 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 if isinstance(headport_key, str) and headport_key.startswith(f"C{headport_col_index}R"):
                     headport_key = int(headport_key.removeprefix(f"C{headport_col_index}R"))
                 ports_of_interest.add(headport_key)
-
+        # print(f"{ports_of_interest=}")
         def mid_filter(item_entry):
             port_id, item = item_entry
-            return (
+            result = (
                 ((item.lod in _graph._LOD.LOW | _graph._LOD.MID) and (port_id in ports_with_dependencies))
                 or (item.value == _TOTAL_SPAN)
                 or port_id in ports_of_interest
             )
+            # print(f"{result=} for {item_entry=}")
+            return result
 
         mid_lod_label, mid_ports = _to_table(all_items, mid_filter)
 
@@ -710,14 +724,14 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             print(f"finished initializing {cls}")
             child.setMinimumWidth(150)
             splitter.addWidget(widget_on_splitter)
-            continue
+            # continue
             # # # TODO: make the below a test
-            # if hasattr(child, "setLOD"):
-            #     child.setLOD(root_nodes, _graph._LOD.LOW)
+            if hasattr(child, "setLOD"):
+                child.setLOD(root_nodes, _graph._LOD.LOW)
             # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
             # new_nodes_to_view = set(root_nodes).union(nodes_added)
             # child.view(new_nodes_to_view)
-            # child.setLOD(new_nodes_to_view, _graph._LOD.LOW)
+            # child.setLOD(new_nodes_to_view, _graph._LOD.MID)
             #
             # continue
             # # breakpoint()
@@ -725,6 +739,7 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             # continue
             #
             # #### TEST recursive and lod
+            # nodes_added = graph._expand_dependencies(new_nodes_to_view, recursive=True)
             nodes_added = graph._expand_dependencies(root_nodes, recursive=True)
             new_nodes_to_view = set(root_nodes).union(nodes_added)
             child.view(new_nodes_to_view)
@@ -789,7 +804,7 @@ if __name__ == "__main__":
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
-        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
+        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
 
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     app = QtWidgets.QApplication([])
@@ -811,9 +826,9 @@ if __name__ == "__main__":
     # 4. All nodes / edges need to be computed for SVG
     # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
-    widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
+    # widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
     widget = _launch_asset_structure_browser_nas(layer, None, None, recursive=False)
-    widget = _launch_asset_structure_browser_nvidia(layer, None, None, recursive=False)
+    # widget = _launch_asset_structure_browser_nvidia(layer, None, None, recursive=False)
     # widget.
     profiler.stop()
     profiler.print()
@@ -1086,3 +1101,40 @@ if __name__ == "__main__":
     #          │  └─ 0.243 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:549
     #          │     └─ 0.174 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1178
     #          └─ 0.074 set.update  <built-in>
+
+    # 2025/11/09
+    # parsing more of layers
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 14:48:32  Samples:  7583
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 11.463    CPU time: 11.203
+    # /   _/                      v5.0.1
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:815
+    #
+    # 11.463 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
+    # └─ 11.463 _launch_asset_structure_browser  A:\write\code\git\grill\grill\views\_diagrams.py:603
+    #    └─ 11.342 _AssetStructureBrowser.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:663
+    #       ├─ 7.359 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:832
+    #       │  └─ 7.349 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:874
+    #       │     ├─ 3.613 graphviz_layout  networkx\drawing\nx_agraph.py:226
+    #       │     │     [6 frames hidden]  networkx, pygraphviz, threading
+    #       │     │        2.676 _ThreadHandle.join  <built-in>
+    #       │     ├─ 2.249 _add_node  A:\write\code\git\grill\grill\views\_graph.py:914
+    #       │     │  └─ 2.205 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:138
+    #       │     │     └─ 2.017 _Node.setHtml  <built-in>
+    #       │     └─ 1.263 _Edge.__init__  A:\write\code\git\grill\grill\views\_graph.py:352
+    #       │        ├─ 0.758 _Edge.adjust  A:\write\code\git\grill\grill\views\_graph.py:486
+    #       │        │  └─ 0.575 _Node._activatePort  A:\write\code\git\grill\grill\views\_graph.py:286
+    #       │        │     ├─ 0.302 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │        │     └─ 0.141 __build_class__  <built-in>
+    #       │        ├─ 0.232 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │        └─ 0.167 _Edge._update_plug_position_for_port  A:\write\code\git\grill\grill\views\_graph.py:434
+    #       └─ 3.927 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:76
+    #          ├─ 3.195 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:79
+    #          │  ├─ 2.203 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:39
+    #          │  └─ 0.910 _AssetStructureGraph._add_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:146
+    #          │     └─ 0.825 _AssetStructureGraph._update_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:169
+    #          │        ├─ 0.631 _traverse  A:\write\code\git\grill\grill\views\_diagrams.py:192
+    #          │        └─ 0.150 [self]  A:\write\code\git\grill\grill\views\_diagrams.py
+    #          └─ 0.622 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:465
+    #             └─ 0.503 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:472
+    #                └─ 0.358 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1236
