@@ -56,7 +56,19 @@ _REPORTED_INFO_KEYS = set()
 
 class _AssetStructureGraph(nx.MultiDiGraph):
     BG_CELL_ATTRS = {}
-    node_attr_dict_factory = lambda self: _graph.DynamicLODAttributes()
+
+    def node_attr_dict_factory(self):
+        return _graph.DynamicLODAttributes()
+
+    def edge_attr_dict_factory(self):
+        source_plug = _graph.DynamicLODAttributes()
+        target_plug = _graph.DynamicLODAttributes()
+        raw_data = dict()
+        data = collections.ChainMap(source_plug, target_plug, raw_data)
+        data._source_plug_attrs = source_plug
+        data._target_plug_attrs = target_plug
+        data._data = raw_data
+        return data
 
     def __init__(self, *args, resolver_context=Ar.GetResolver().CreateDefaultContext(), **kwargs):
         super().__init__(*args, **kwargs)
@@ -75,40 +87,94 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
     def _expand_dependencies(self, keys, *, recursive=False):
         resolver_context = self._resolver_context
-        # print(f">>>>>>>>>>> EXPAND STARTING {keys=}")
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
-            asset_path, spec_path, edge_attrs, dependency_type = dependency_info
+            asset_path, spec_path, edge_attrs, dependency_type, dependency_lod = dependency_info
             if not (dependency_layer := _find_layer(asset_path, anchor_layer, resolver_context)):
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor_layer}")
                 return
 
-            target_key = self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)
+            target_node_key = self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)
             updated_nodes = set()
-            if target_key is None:  # new node needs to be created
-                target_key = self._add_node_from_layer(dependency_layer)
-                assert self.nodes[target_key].lod
-                self.nodes[target_key].lod = lod
-                updated_nodes.add(target_key)
-                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(spec_path or dependency_layer.defaultPrim)
-                if target_port is not None:
+
+            def prepare_edge():
+                edge_key = (source_port_key, target_port_key)
+                edge_data = self.edges[source_node_key, target_node_key, edge_key]
+                rankdir = self.graph['graph']['rankdir']
+                headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, source_node_key, target_node_key)
+                edge_data._source_plug_attrs._lods[_graph._LOD.HIGH].update(
+                    source_port_key=source_port_key,
+                    tailport=f"C{tailport_col_index}R{source_port_key}",
+                    label='',
+                    style='',
+                )
+                source_anchor_port = self.nodes[source_node_key]._data['visited_layer_spec_path_ports'][anchor_layer][anchor_layer.pseudoRoot.path]
+                edge_data._source_plug_attrs._lods[_graph._LOD.MID].update(
+                    source_port_key=source_anchor_port,
+                    tailport=f"C{tailport_col_index}R{source_anchor_port}",
+                    label='',
+                    style='' if source_node_key != target_node_key else 'invis',
+                )
+                source_anchor_port = 0
+                edge_data._source_plug_attrs._lods[_graph._LOD.LOW].update(
+                    source_port_key=source_anchor_port,
+                    tailport=f"C{tailport_col_index}R{source_anchor_port}",
+                    label='',
+                    style='' if source_node_key != target_node_key else 'invis',
+                )
+                assert edge_data._source_plug_attrs.lod
+                edge_data._source_plug_attrs.lod = self.nodes[source_node_key].lod
+
+                edge_data._target_plug_attrs._lods[_graph._LOD.HIGH].update(
+                    target_port_key=target_port_key,
+                    headport=f"C{headport_col_index}R{target_port_key}",
+                    label='',
+                    style='',
+                )
+                target_anchor_port = self.nodes[target_node_key]._data['visited_layer_spec_path_ports'][dependency_layer][dependency_layer.pseudoRoot.path]
+                target_data = self.nodes[target_node_key]._data
+
+                edge_data._target_plug_attrs._lods[_graph._LOD.MID].update(
+                    target_port_key=target_anchor_port,
+                    headport=lambda: "center" if len(target_data['ports'][_graph._LOD.MID]) < 2 else f"C{headport_col_index}R{target_anchor_port}",
+                    label='',
+                    style='' if source_node_key != target_node_key else 'invis',
+                )
+                edge_data._target_plug_attrs._lods[_graph._LOD.LOW].update(
+                    target_port_key=target_anchor_port,
+                    headport="center",  # TODO: should this happen also on other LODs depending on size of target?
+                    label='',
+                    style='' if source_node_key != target_node_key else 'invis',
+                )
+                assert edge_data._target_plug_attrs.lod
+                edge_data._target_plug_attrs.lod = self.nodes[target_node_key].lod
+
+            if target_node_key is None:  # new node needs to be created
+                target_node_key = self._add_node_from_layer(dependency_layer)
+                assert self.nodes[target_node_key].lod
+                self.nodes[target_node_key].lod = lod
+                updated_nodes.add(target_node_key)
+                target_port_key = self.nodes[target_node_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(spec_path or dependency_layer.defaultPrim)
+                if target_port_key is not None:
                     # TODO: confirm we are never not None? it'd be a composition error but probably we don't want to fail and add an edge regardless
-                    self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
+                    self._add_edge(source_node_key, source_port_key, target_node_key, target_port_key, edge_attrs)
                     updated_nodes.add(source_node_key)
+                    prepare_edge()
                 else:
                     raise RuntimeError(locals())
+
             else:  # an upstream node for this dependency already exists, update it directly
-                current_items = self.nodes[target_key]._data['items']
+                current_items = self.nodes[target_node_key]._data['items']
                 current_items_size = len(current_items)
-                # if "mk020_0281_fx" in dependency_layer.identifier:
-                #     breakpoint()
-                self._update_node_from_layer(target_key, dependency_layer, anchor=anchor_layer)
+                self._update_node_from_layer(target_node_key, dependency_layer, anchor=anchor_layer)
                 if current_items_size < len(current_items):
-                    updated_nodes.add(target_key)
-                target_port = self.nodes[target_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(spec_path or dependency_layer.defaultPrim)
-                if not self.has_edge(source_node_key, target_key, key=(source_port_key, target_port)):
-                    self._add_edge(source_node_key, source_port_key, target_key, target_port, edge_attrs)
-                    updated_nodes.update((source_node_key, target_key))
-                if target_port is None:
+                    updated_nodes.add(target_node_key)
+                target_port_key = self.nodes[target_node_key]._data['visited_layer_spec_path_ports'][dependency_layer].get(spec_path or dependency_layer.defaultPrim)
+                if not self.has_edge(source_node_key, target_node_key, key=(source_port_key, target_port_key)):
+                    self._add_edge(source_node_key, source_port_key, target_node_key, target_port_key, edge_attrs)
+                    updated_nodes.update((source_node_key, target_node_key))
+                    prepare_edge()
+
+                if target_port_key is None:
                     raise RuntimeError(locals())
 
             return updated_nodes
@@ -138,11 +204,8 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 nodes_to_process.update(updated_nodes)
 
         for node in updated_nodes:  # Prepare all nodes modified, clients must report modified nodes
-            # print(f"~~~~~~~~~~~~~~~~~~UPDATING {node}")
             self._prepare_for_display(node)
-            # print(f"~!!!!!! {self.nodes[node].lod=}")
-            # print(f"{self.nodes[node]._data['ports'][self.nodes[node].lod]=}")
-        # print(f">>>>>>>>>>> UPDATING DONE FOR {updated_nodes=}")
+
         return updated_nodes
 
     def _add_node_from_layer(self, layer):
@@ -185,6 +248,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         dependencies = self.nodes[node_id]._data['dependencies']
 
         item_counter = count(start=max(current_items, default=-1) + 1)
+        layer_spec_index = next(item_counter)
         BG_CELL_ATTRS = self.BG_CELL_ATTRS
         # BG_CELL_ATTRS = {}
         FONT_COLOR_GRAY = "#8F8F8F"
@@ -195,9 +259,9 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
         internal_dependencies = dict()
 
-        def _add_dependency(port_index, dependant_layer, asset_path, prim_path, color, dependency_type):
-            dependencies[_DependencyStatus.UNRESOLVED].setdefault(port_index, {}).setdefault(dependant_layer, []).append(
-                (asset_path, prim_path, color, dependency_type)
+        def _add_dependency(source_port_index, source_dependant_layer, target_asset_path, target_prim_path, color, dependency_type, dependency_lod):
+            dependencies[_DependencyStatus.UNRESOLVED].setdefault(source_port_index, {}).setdefault(source_dependant_layer, []).append(
+                (target_asset_path, target_prim_path, color, dependency_type, dependency_lod)
             )
 
         def _traverse(path):
@@ -226,7 +290,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                             dependency_path = dependency_arc.assetPath
                             color = _EDGE_COLORS[type(info)]
                             if dependency_path:
-                                _add_dependency(port_index, layer, dependency_path, dependency_arc.primPath, color, type(info))
+                                _add_dependency(port_index, layer, dependency_path, dependency_arc.primPath, color, type(info), port_item_lod)
                             else:
                                 internal_dependencies.setdefault(port_index, []).append((dependency_arc.primPath, color))
 
@@ -283,7 +347,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                         sublayers_item_lod = self._lod_for_item(spec, info_key, anchor)
                         this_index = _add_item(sublayers_item_lod, depth, info_key, f"@...@", collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
                         for dependency_path in info:
-                            _add_dependency(this_index, layer, dependency_path, path, _EDGE_COLORS[info_key], info_key)
+                            _add_dependency(this_index, layer, dependency_path, path, _EDGE_COLORS[info_key], info_key, sublayers_item_lod)
                     if info_key == "defaultPrim":
                         this_index = _add_item(_graph._LOD.HIGH, depth, info_key, info, BG_CELL_ATTRS)
                         port_by_spec_path[layer.defaultPrim] = this_index
@@ -291,15 +355,16 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         layer.Traverse(layer.pseudoRoot.path, _traverse)
         layer_attrs = self._attributes(layer)
         layer_item_lod = self._lod_for_item(layer, "", anchor)
-        this_spec_index = _add_item(layer_item_lod, 0, layer.GetDisplayName(), _TOTAL_SPAN, layer_attrs)
-        port_by_spec_path[layer.pseudoRoot.path] = this_spec_index
+        # this_spec_index = _add_item(layer_item_lod, 0, layer.GetDisplayName(), _TOTAL_SPAN, layer_attrs)
+        new_items[layer_spec_index] = _graph._TableItem(layer_item_lod, 0, layer.GetDisplayName(), _TOTAL_SPAN, layer_attrs)
+        port_by_spec_path[layer.pseudoRoot.path] = layer_spec_index
 
-        for source_port, dependencies in internal_dependencies.items():
-            for spec_path, color in dependencies:
-                if spec_path not in port_by_spec_path:
-                    continue
-                target_port = port_by_spec_path[spec_path]
-                self._add_edge(node_id, source_port, node_id, target_port, color)
+        # for source_port, dependencies in internal_dependencies.items():
+        #     for spec_path, color in dependencies:
+        #         if spec_path not in port_by_spec_path:
+        #             continue
+        #         target_port = port_by_spec_path[spec_path]
+        #         self._add_edge(node_id, source_port, node_id, target_port, color)
 
         layer_items = dict(reversed(new_items.items()))
         current_items._maps_by_layer[layer] = layer_items
@@ -308,16 +373,24 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         else:  # insert layer_items underneath corresponding anchor items
             anchor_items = current_items._maps_by_layer[anchor]
             anchor_items_index = current_items.maps.index(anchor_items)
-            # breakpoint()
             current_items.maps.insert(anchor_items_index, layer_items)
-        # current_items.update(reversed(new_items.items()))
 
-    def _add_edge(self, src_node, src_port, tgt_node, tgt_port, attrs):
-        rankdir = self.graph['graph']['rankdir']
-        headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, src_node, tgt_node)
-        tailport = f"C{tailport_col_index}R{src_port}"
-        headport = f"C{headport_col_index}R{tgt_port}" if tgt_port is not None else None
-        self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
+    def _add_edge(self, source_node_key, source_port_key, target_node_key, target_port_key, attrs):
+        # rankdir = self.graph['graph']['rankdir']
+        # headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, source_node_key, target_node_key)
+        # tailport = f"C{tailport_col_index}R{source_port_key}"
+        # headport = f"C{headport_col_index}R{target_port_key}" if target_port_key is not None else None
+        # self.add_edge(source_node_key, target_node_key, key=(source_port_key, target_port_key), tailport=tailport, headport=headport, **attrs)
+        edge_key = (source_port_key, target_port_key)
+        self.add_edge(source_node_key, target_node_key, key=edge_key)
+        edge_data = self.edges[source_node_key, target_node_key, edge_key]
+        edge_data._data.update(
+            attrs,
+            source_node_key=source_node_key,
+            source_port_key=source_port_key,
+            target_node_key=target_node_key,
+            target_port_key=target_port_key,
+        )
 
     def _add_node_from_layer_old(self, layer):
         """Add a node with LOD capabilities to the current graph from a given USD layer, then return the node ID.
@@ -464,58 +537,41 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         layer.Traverse(layer.pseudoRoot.path, item_collector)
         self.add_node(node_id)
 
-        def _add_edge(src_node, src_port, tgt_node, tgt_port, attrs):
-            tailport = f"C1R{src_port}"
-            headport = f"C0R{tgt_port}" if tgt_port is not None else None
-            self.add_edge(src_node, tgt_node, key=(src_port, tgt_port), tailport=tailport, headport=headport, **attrs)
-
-        for source_port, dependencies in internal_dependencies.items():
-            for spec_path, color in dependencies:
-                if spec_path not in port_by_spec_path:
-                    continue
-                target_port = port_by_spec_path[spec_path]
-                _add_edge(node_id, source_port, node_id, target_port, color)
-
         self.add_edges_from(edges)
-        # self.nodes[node_id]._data.update(
-        #     # layer=layer,
-        #     items=dict(reversed(all_items.items())),
-        #     dependencies=upstream_dependencies,
-        #     visited_layer_spec_path_ports=port_by_spec_path,
-        # )
         return node_id
 
     def _prepare_for_display(self, node_id):
         if node_id not in self.nodes:
             raise RuntimeError(locals())
 
+        # all dependencies are visible
         node_data = self.nodes[node_id]._data
         all_items = node_data['items']  # dict[NodePort, Item]
 
         def _to_table(items, filter_fun=None):
-            ports = dict()
+            ports = dict()  # {port_key: row_index}
             label = f'<<table BORDER="4" COLOR="{_BORDER_COLOR}" bgcolor="{_BG_SPACE_COLOR}" CELLSPACING="0">'
             if filter_fun:
-                items = {k: v for k, v in items.items() if filter_fun((k, v))}
-            for row_index, (port_id, row) in enumerate(_graph._to_table(items)):
-                ports[port_id] = row_index
+                items = {item_key: item_value for item_key, item_value in items.items() if filter_fun((item_key, item_value))}
+            for row_index, (port_key, row) in enumerate(_graph._to_table(items)):
+                ports[port_key] = row_index
                 label += row
             label += '</table>>'
             return label, ports
 
         high_lod_label, high_ports = _to_table(all_items)
 
-        ports_with_dependencies = set(chain.from_iterable(node_data['dependencies'].values()))
-        ports_of_interest = set()
-        rankdir = self.graph['graph']['rankdir']
-        for predecessor in self.predecessors(node_id):
-            # headport is what we need to keep (as it belongs to this node)
-            headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, predecessor, node_id)
-            for port_idx, data in self.adj[predecessor][node_id].items():
-                headport_key = data['headport']
-                if isinstance(headport_key, str) and headport_key.startswith(f"C{headport_col_index}R"):
-                    headport_key = int(headport_key.removeprefix(f"C{headport_col_index}R"))
-                ports_of_interest.add(headport_key)
+        # ports_with_dependencies = set(chain.from_iterable(node_data['dependencies'].values()))
+        # ports_of_interest = set()
+        # rankdir = self.graph['graph']['rankdir']
+        # for predecessor in self.predecessors(node_id):
+        #     # headport is what we need to keep (as it belongs to this node)
+        #     headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, predecessor, node_id)
+        #     for port_idx, data in self.adj[predecessor][node_id].items():
+        #         headport_key = data['headport']
+        #         if isinstance(headport_key, str) and headport_key.startswith(f"C{headport_col_index}R"):
+        #             headport_key = int(headport_key.removeprefix(f"C{headport_col_index}R"))
+        #         ports_of_interest.add(headport_key)
         # print(f"{ports_of_interest=}")
         def mid_filter(item_entry):
             port_id, item = item_entry
@@ -529,14 +585,15 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             return result
 
         mid_lod_label, mid_ports = _to_table(all_items, mid_filter)
-        print(f"{mid_ports=}")
-        low_ports = dict.fromkeys(mid_ports, 0)  # mid ports has all external connections, low collapses all of them
+        # print(f"{mid_ports=}")
+        # low_ports = dict.fromkeys(mid_ports, 0)  # mid ports has all external connections, low collapses all of them
         low_items = {index: item for index, item in all_items.items() if item.lod == _graph._LOD.LOW}
         def low_filter(item_entry):
             port_id, item = item_entry
             return item.lod == _graph._LOD.LOW
 
-        low_lod_label, __ = _to_table(all_items, low_filter)
+        # low_lod_label, __ = _to_table(all_items, low_filter)
+        low_lod_label, low_ports = _to_table(all_items, low_filter)
 
         self.nodes[node_id]._data.update(
             ports={
@@ -587,14 +644,13 @@ class _AssetStructureGraphNAS(_AssetStructureGraph):
         super().__init__(*args, **kwargs)
         self.graph['graph'] = {'rankdir': 'RL'}
 
-
     def _find_nodeid_for_dependency(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
         # TODO: make LOD 1 be root layer only, LOD2 layerstack only, LOD3 layerstack + scene description
         # TODO: upon recursive init, cycle edges are drawn like a triangle, should be hidden (gets fixed after swapping lod back and forth)
         # TODO: sublayers should be added last to their parent, instead of at the end of the node
         # TODO: fragments with only default prims miss last cell of blue background
         # print(f"Checking ----------------------------------- {locals()}")
-        asset_path, spec_path, edge_attrs, dependency_type = dependency_info
+        asset_path, spec_path, edge_attrs, dependency_type, dependency_lod = dependency_info
         if dependency_type == "subLayers":
             return source_node_key
         if "fragment" in anchor_layer.identifier and "entity" not in asset_path:
@@ -757,7 +813,11 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             # # # TODO: make the below a test
             if hasattr(child, "setLOD"):
                 child.setLOD(root_nodes, _graph._LOD.LOW)
-            # nodes_added = graph._expand_dependencies(root_nodes, recursive=False)
+            continue
+            nodes_added = graph._expand_dependencies(root_nodes, recursive=True)
+            new_nodes_to_view = set(root_nodes).union(nodes_added)
+            child.view(new_nodes_to_view)
+            # child.setLOD(new_nodes_to_view, _graph._LOD.MID)
             # new_nodes_to_view = set(root_nodes).union(nodes_added)
             # child.view(new_nodes_to_view)
             # child.setLOD(new_nodes_to_view, _graph._LOD.MID)
