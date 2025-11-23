@@ -242,8 +242,11 @@ class _AssetStructureGraph(nx.MultiDiGraph):
 
     @cache
     def _update_node_from_layer(self, node_id, layer, anchor):
-        port_by_spec_path = self.nodes[node_id]._data['visited_layer_spec_path_ports'].setdefault(layer, {})
         current_items = self.nodes[node_id]._data['items']  # NodePort: TableItem
+        if layer in current_items._maps_by_layer:
+            # print(f"Already collected items from {layer=}. Skipping.")
+            return
+        port_by_spec_path = self.nodes[node_id]._data['visited_layer_spec_path_ports'].setdefault(layer, {})
         new_items = dict()
         dependencies = self.nodes[node_id]._data['dependencies']
 
@@ -728,6 +731,7 @@ class _AssetStructureGraphView(_graph.GraphView):
         selection = set(self.scene().selectedItems())
         selection_keys = set(k for k, v in self._nodes_map.items() if v in selection)
         if selection_keys:
+            breakpoint()
             self.setLOD(selection_keys, lod)
             for node_id in selection_keys:
                 self._nodes_map[node_id].setSelected(True)
@@ -813,10 +817,12 @@ class _AssetStructureBrowser(QtWidgets.QDialog):
             # # # TODO: make the below a test
             if hasattr(child, "setLOD"):
                 child.setLOD(root_nodes, _graph._LOD.LOW)
-            continue
+            # continue
             nodes_added = graph._expand_dependencies(root_nodes, recursive=True)
             new_nodes_to_view = set(root_nodes).union(nodes_added)
             child.view(new_nodes_to_view)
+            continue
+            child.setLOD(new_nodes_to_view, _graph._LOD.LOW)
             # child.setLOD(new_nodes_to_view, _graph._LOD.MID)
             # new_nodes_to_view = set(root_nodes).union(nodes_added)
             # child.view(new_nodes_to_view)
@@ -890,7 +896,7 @@ if __name__ == "__main__":
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\easy-edgedb\chapter10\assets\dracula-3d-abc-entity-rnd-main-atom-lead-base-whole.1.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat01\rigging\stoat01_rigging.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\modelling\stoat_outfit01_modelling.usda")
-        layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
+        # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entity\stoat_outfit01\stoat_outfit01.usda")
         # layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\ALab\ALab\fragment\geo\modelling\stoat_outfit01\geo_modelling_stoat_outfit01.usda")
 
         layer = Sdf.Layer.FindOrOpen(r"A:\write\code\git\USDALab\ALab\entry.usda")
@@ -905,19 +911,10 @@ if __name__ == "__main__":
     # graph, root_nodes = _asset_structure_graph(layer)
 
     # Good opportunity to:
-    # 1. Enable "lazy" navigation of the interactive graph, where we start from visible layers that have been selected
-    # 2. Add a "collapsed", "expanded" view of the nodes
-    # 3. Visible nodes as a starting point:
-    #       1. Root layers (in expanded mode)
-    #           Expand all plugs into original positions
-    #       2. Neighbors (as collapsed)
-    #           Collapse all plugs into the first one
-    # 4. All nodes / edges need to be computed for SVG
-    # 5. Only on demand nodes / edges to be computed for interactive graph  # next milestone?
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
     widget = _launch_asset_structure_browser_nas(layer, None, None, recursive=False)
-    # widget = _launch_asset_structure_browser_nvidia(layer, None, None, recursive=False)
+    widget2 = _launch_asset_structure_browser_nvidia(layer, None, None, recursive=False)
     # widget.
     profiler.stop()
     profiler.print()
@@ -1227,3 +1224,98 @@ if __name__ == "__main__":
     #          └─ 0.622 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:465
     #             └─ 0.503 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:472
     #                └─ 0.358 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1236
+
+    # 2025/11/23
+    # NAS diagrams
+    #
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 14:49:30  Samples:  5812
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 7.404     CPU time: 9.812
+    # /   _/                      v5.1.1
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:910
+    #
+    # 7.404 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
+    # └─ 7.404 _launch_asset_structure_browser_nas  A:\write\code\git\grill\grill\views\_diagrams.py:696
+    #    └─ 7.358 _AssetStructureBrowserNAS.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:752
+    #       ├─ 4.265 _AssetStructureGraphNAS._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:88
+    #       │  ├─ 3.665 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:90
+    #       │  │  ├─ 2.412 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:39
+    #       │  │  ├─ 0.422 _AssetStructureGraphNAS._add_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:211
+    #       │  │  │  └─ 0.380 _AssetStructureGraphNAS._update_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:243
+    #       │  │  │     └─ 0.311 _traverse  A:\write\code\git\grill\grill\views\_diagrams.py:270
+    #       │  │  ├─ 0.330 _AssetStructureGraphNAS._add_edge  A:\write\code\git\grill\grill\views\_diagrams.py:381
+    #       │  │  │  └─ 0.310 _AssetStructureGraphNAS.add_edge  networkx\classes\multidigraph.py:417
+    #       │  │  │     └─ 0.265 _AssetStructureGraphNAS.edge_attr_dict_factory  A:\write\code\git\grill\grill\views\_diagrams.py:63
+    #       │  │  │        └─ 0.240 DynamicLODAttributes.__init__  A:\write\code\git\grill\grill\views\_graph.py:107
+    #       │  │  │           ├─ 0.143 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │  │  │           └─ 0.076 _LOD.__hash__  enum.py:1298
+    #       │  │  ├─ 0.249 _AssetStructureGraphNAS._update_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:243
+    #       │  │  └─ 0.146 prepare_edge  A:\write\code\git\grill\grill\views\_diagrams.py:99
+    #       │  └─ 0.567 _AssetStructureGraphNAS._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:546
+    #       │     └─ 0.515 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:554
+    #       │        ├─ 0.304 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1286
+    #       │        └─ 0.095 mid_filter  A:\write\code\git\grill\grill\views\_diagrams.py:579
+    #       └─ 3.039 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:871
+    #          └─ 3.036 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:914
+    #             ├─ 1.819 graphviz_layout  networkx\drawing\nx_agraph.py:225
+    #             │     [13 frames hidden]  networkx, <frozen _collections_abc>, ...
+    #             │        0.241 ChainMap.__getitem__  collections\__init__.py:1019
+    #             │        └─ 0.201 DynamicLODAttributes.__getitem__  A:\write\code\git\grill\grill\views\_graph.py:128
+    #             │           └─ 0.146 DynamicLODAttributes.__getitem__  collections\__init__.py:1019
+    #             ├─ 0.587 _add_node  A:\write\code\git\grill\grill\views\_graph.py:954
+    #             │  └─ 0.580 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:140
+    #             │     └─ 0.553 _Node.setHtml  <built-in>
+    #             └─ 0.382 _Edge.__init__  A:\write\code\git\grill\grill\views\_graph.py:354
+    #                ├─ 0.179 _Edge.adjust  A:\write\code\git\grill\grill\views\_graph.py:505
+    #                └─ 0.087 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #
+    #
+    # CacheInfo(hits=44211, misses=5567, maxsize=None, currsize=5567)
+    # CacheInfo(hits=33230, misses=16548, maxsize=None, currsize=16548)
+
+    # 2025/11/23
+    # NVidia
+    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 14:53:51  Samples:  8711
+    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 11.329    CPU time: 12.688
+    # /   _/                      v5.1.1
+    #
+    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:910
+    #
+    # 11.329 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
+    # └─ 11.329 _launch_asset_structure_browser_nvidia  A:\write\code\git\grill\grill\views\_diagrams.py:701
+    #    └─ 11.236 _AssetStructureBrowserNVidia.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:752
+    #       ├─ 6.607 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:871
+    #       │  └─ 6.595 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:914
+    #       │     ├─ 2.859 graphviz_layout  networkx\drawing\nx_agraph.py:225
+    #       │     │     [9 frames hidden]  networkx, pygraphviz, threading, <bui...
+    #       │     │        0.261 ChainMap.__getitem__  collections\__init__.py:1019
+    #       │     │        └─ 0.219 DynamicLODAttributes.__getitem__  A:\write\code\git\grill\grill\views\_graph.py:128
+    #       │     │           └─ 0.169 DynamicLODAttributes.__getitem__  collections\__init__.py:1019
+    #       │     ├─ 2.295 _add_node  A:\write\code\git\grill\grill\views\_graph.py:954
+    #       │     │  └─ 2.285 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:140
+    #       │     │     └─ 2.141 _Node.setHtml  <built-in>
+    #       │     └─ 1.079 _Edge.__init__  A:\write\code\git\grill\grill\views\_graph.py:354
+    #       │        ├─ 0.546 _Edge.adjust  A:\write\code\git\grill\grill\views\_graph.py:505
+    #       │        │  ├─ 0.251 _Node._activatePort  A:\write\code\git\grill\grill\views\_graph.py:287
+    #       │        │  └─ 0.125 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │        ├─ 0.224 [self]  A:\write\code\git\grill\grill\views\_graph.py
+    #       │        └─ 0.155 _Edge._update_plug_position_for_port  A:\write\code\git\grill\grill\views\_graph.py:449
+    #       └─ 4.573 _AssetStructureGraphNVidia._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:88
+    #          ├─ 3.680 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:90
+    #          │  ├─ 2.188 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:39
+    #          │  ├─ 0.902 _AssetStructureGraphNVidia._add_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:211
+    #          │  │  └─ 0.761 _AssetStructureGraphNVidia._update_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:243
+    #          │  │     ├─ 0.580 _traverse  A:\write\code\git\grill\grill\views\_diagrams.py:270
+    #          │  │     └─ 0.145 [self]  A:\write\code\git\grill\grill\views\_diagrams.py
+    #          │  ├─ 0.270 _AssetStructureGraphNVidia._add_edge  A:\write\code\git\grill\grill\views\_diagrams.py:381
+    #          │  │  └─ 0.259 _AssetStructureGraphNVidia.add_edge  networkx\classes\multidigraph.py:417
+    #          │  │     └─ 0.229 _AssetStructureGraphNVidia.edge_attr_dict_factory  A:\write\code\git\grill\grill\views\_diagrams.py:63
+    #          │  │        └─ 0.209 DynamicLODAttributes.__init__  A:\write\code\git\grill\grill\views\_graph.py:107
+    #          │  └─ 0.158 prepare_edge  A:\write\code\git\grill\grill\views\_diagrams.py:99
+    #          └─ 0.739 _AssetStructureGraphNVidia._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:546
+    #             └─ 0.638 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:554
+    #                └─ 0.411 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1286
+    #
+    #
+    # CacheInfo(hits=72626, misses=5567, maxsize=None, currsize=5567)
+    # CacheInfo(hits=61369, misses=16824, maxsize=None, currsize=16824)

@@ -7,6 +7,7 @@ import enum
 import sys
 import typing
 import logging
+import operator
 import tempfile
 import configparser
 import networkx as nx
@@ -443,14 +444,13 @@ class _Edge(QtWidgets.QGraphicsItem):
                 all_ports.pop(self, None)
                 port_items = node._port_items[port]  # {index: (QEllipse, QEllipse)}
                 if not all_ports:
-                    ...
-                    # port_items[side].setVisible(False)
+                    port_items[side].setVisible(False)
 
     def _update_plug_position_for_port(self, node, port):
         """Optimized with early exit and cached calculations."""
         if port not in node._ports:
             # self.setVisible(False)
-            print(f"Port {port} from edge {self} not visibile on {node}. Deactivating")
+            # print(f"Port {port} from edge {self} not visibile on {node}. Skipping")
             return
         # self.setVisible(True)
         # if not self.isVisible():
@@ -504,9 +504,22 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     def adjust(self):
         """Update edge position from source and target node following Node::itemChange."""
-        if not self.isVisible():
+        _source_port = self._source_port
+        _target_port = self._target_port
+        is_source_port_used = _source_port is not None
+        is_target_port_used = _target_port is not None
+        if self._data.get('style', "") == "invis":
+            self.setVisible(False)
             return
-
+        elif is_source_port_used and _source_port not in self._source._ports:
+            self.setVisible(False)
+            print(f"Port {_source_port} from edge {self} not visibile on {self._source}. Deactivating")
+            return
+        elif is_target_port_used and _target_port not in self._target._ports:
+            self.setVisible(False)
+            print(f"Port {_target_port} from edge {self} not visibile on {self._target}. Deactivating")
+            return
+        self.setVisible(True)
         self.prepareGeometryChange()
 
         source_pos = self._source.pos()
@@ -517,8 +530,8 @@ class _Edge(QtWidgets.QGraphicsItem):
                 self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x()
         )
 
-        is_source_port_used = self._is_source_port_used
-        is_target_port_used = self._is_target_port_used
+        # is_source_port_used = self._is_source_port_used
+        # is_target_port_used = self._is_target_port_used
         source_side = source_on_left if is_source_port_used else None
 
         if self._source == self._target:
@@ -526,8 +539,8 @@ class _Edge(QtWidgets.QGraphicsItem):
         else:
             target_side = not source_side if is_target_port_used else None
 
-        source_point = source_pos + self._port_positions[self._source, self._source_port][source_side]
-        target_point = target_pos + self._port_positions[self._target, self._target_port][target_side]
+        source_point = source_pos + self._port_positions[self._source, _source_port][source_side]
+        target_point = target_pos + self._port_positions[self._target, _target_port][target_side]
 
         if not is_target_port_used:
             line = QtCore.QLineF(source_point, target_point)
@@ -831,11 +844,19 @@ class GraphView(_GraphicsViewport):
 
             for edge in qnode._edges:
                 # TODO: if in the future we update the source / target ports from edges when setting LOD, it should happen here
-                for neighbor, port in (
-                        (edge._source, edge._source_port),
-                        (edge._target, edge._target_port),
+                for neighbor, port_getter, plug_attributes in (
+                        (edge._source, lambda: edge._source_port, edge._data._source_plug_attrs),
+                        (edge._target, lambda: edge._target_port, edge._data._target_plug_attrs),
                 ):
-                    edge._update_plug_position_for_port(qnode, port)
+                    current_port = port_getter()
+                    # if plug_attributes.lod == neighbor._data.lod:
+                    #     continue
+                    plug_attributes.lod = neighbor._data.lod
+                    new_port = port_getter()
+                    edge._update_plug_position_for_port(qnode, new_port)
+                    edge._deactivate_port(neighbor, current_port)
+                    # if new_port not in neighbor._ports:
+
                     # if qnode is neighbor:  # we're a cycle
                     #     if qnode._data.lod != _LOD.HIGH and edge._source == edge._target:
                     #         edge.setVisible(False)
@@ -968,12 +989,12 @@ class GraphView(_GraphicsViewport):
             if 'color' not in edge_data:
                 edge_data['color'] = edge_color
 
-            if edge_data['source_port_key'] not in source._ports:
-                print(f"Skipping edge for {source_id=}, {target_id=}, {port=} because {edge_data['source_port_key']} not in {source._ports}")
-                continue
-            if edge_data['target_port_key'] not in target._ports:
-                print(f"Skipping edge for {target_id=}, {target_id=}, {port=} because {edge_data['target_port_key']} not in {target._ports}")
-                continue
+            # if edge_data['source_port_key'] not in source._ports:
+            #     # print(f"Skipping edge for {source_id=}, {target_id=}, {port=} because {edge_data['source_port_key']} not in {source._ports}")
+            #     continue
+            # if edge_data['target_port_key'] not in target._ports:
+            #     # print(f"Skipping edge for {target_id=}, {target_id=}, {port=} because {edge_data['target_port_key']} not in {target._ports}")
+            #     continue
             edge = _Edge(source, target, edge_data=edge_data, is_bidirectional=is_bidirectional, graph_rankdir=graph_rankdir)
             self.scene().addItem(edge)
 
@@ -1305,7 +1326,7 @@ def _to_table(items: dict[int, _TableItem]):
                 safe_entry=safe_key,
             )
             port = f"C1R{port_row_key}"
-            value_cell = f'<td BORDER="0" BGCOLOR="{bgcolor}" PORT="{port}"></td>'
+            value_cell = f'<td BORDER="0" BGCOLOR="{bgcolor or _BG_SPACE_COLOR}" PORT="{port}"></td>'
             tail = ""
         else:  # Handle regular key-value rows
             item_depth = item.depth
