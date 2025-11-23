@@ -425,11 +425,11 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     @property
     def _source_port(self):
-        return self._data.get('source_port_key') or self._data.get('tailport')
+        return key if (key:=self._data.get('source_port_key')) is not None else self._data.get('tailport')
 
     @property
     def _target_port(self):
-        return self._data.get('target_port_key') or self._data.get('headport')
+        return key if (key:=self._data.get('target_port_key')) is not None else self._data.get('headport')
 
     def _deactivate_port(self, node, port):
         if port is None: # nothing to do
