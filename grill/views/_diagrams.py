@@ -2,14 +2,12 @@
 TODO:
  - Internal edges
  - Button for autolayout
- - Tricky due to edge keys in networkx: Avoid graphviz warnings when nodes are collapsed about unrecognized ports
-
 """
 import enum
 import pathlib
 import collections
 from pprint import pformat
-from itertools import count, chain
+from itertools import count
 from functools import partial, cache
 
 import networkx as nx
@@ -53,6 +51,22 @@ class _DependencyStatus(enum.Flag):
 
 
 _REPORTED_INFO_KEYS = set()
+
+
+@cache
+def _columns_for_edge(rankdir, src_node, tgt_node):
+    if src_node == tgt_node:
+        headport_col_index = '0'
+        tailport_col_index = '1'
+    elif rankdir == 'RL':
+        headport_col_index = '1'
+        tailport_col_index = '0'
+    else:
+        headport_col_index = '0'
+        tailport_col_index = '1'
+
+    return headport_col_index, tailport_col_index
+
 
 class _AssetStructureGraph(nx.MultiDiGraph):
     BG_CELL_ATTRS = {}
@@ -100,7 +114,7 @@ class _AssetStructureGraph(nx.MultiDiGraph):
                 edge_key = (source_port_key, target_port_key)
                 edge_data = self.edges[source_node_key, target_node_key, edge_key]
                 rankdir = self.graph['graph']['rankdir']
-                headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, source_node_key, target_node_key)
+                headport_col_index, tailport_col_index = _columns_for_edge(rankdir, source_node_key, target_node_key)
                 edge_data._source_plug_attrs._lods[_graph._LOD.HIGH].update(
                     source_port_key=source_port_key,
                     tailport=f"C{tailport_col_index}R{source_port_key}",
@@ -379,11 +393,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             current_items.maps.insert(anchor_items_index, layer_items)
 
     def _add_edge(self, source_node_key, source_port_key, target_node_key, target_port_key, attrs):
-        # rankdir = self.graph['graph']['rankdir']
-        # headport_col_index, tailport_col_index = _graph._columns_for_edge(rankdir, source_node_key, target_node_key)
-        # tailport = f"C{tailport_col_index}R{source_port_key}"
-        # headport = f"C{headport_col_index}R{target_port_key}" if target_port_key is not None else None
-        # self.add_edge(source_node_key, target_node_key, key=(source_port_key, target_port_key), tailport=tailport, headport=headport, **attrs)
         edge_key = (source_port_key, target_port_key)
         self.add_edge(source_node_key, target_node_key, key=edge_key)
         edge_data = self.edges[source_node_key, target_node_key, edge_key]
@@ -396,152 +405,31 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         )
 
     def _add_node_from_layer_old(self, layer):
-        """Add a node with LOD capabilities to the current graph from a given USD layer, then return the node ID.
-
-        If layer has been added, do nothing else other than returning the node ID.
-        """
-        # TODO: add layer, dependencies tuple
-        if layer in (loaded_layers := self._node_by_layer_mapping):
-            return loaded_layers[layer]
-
-        loaded_layers[layer] = node_id = len(loaded_layers)
-
-        item_counter = count()
-        edges = list()
-        port_by_spec_path = {}
-        upstream_dependencies = dict()
-        internal_dependencies = dict()
-        all_items = {}
-
         BG_CELL_ATTRS = {"bgcolor": _BG_CELL_COLOR, "fontcolor": "#8F8F8F"}
         FONT_COLOR_GRAY = "#8F8F8F"
         NVIDIA_GREEN = "#76B900"
         WHITE_BG = _BG_CELL_COLOR
 
-        def _add_item(lod, prefix, key, value, attrs=BG_CELL_ATTRS):
-            idx = next(item_counter)
-            all_items[idx] = _graph._TableItem(lod, prefix, key, value, attrs)
-            return idx
-
-        def _add_separator(LOD):
-            _add_item(LOD, 0, "", _TOTAL_SPAN, {'bgcolor': _BG_SPACE_COLOR})
-
         def item_collector(path):
-            """Increase counter and add collected path to port_by_spec_path when:
-            1. Handling prims
-            2. Handling pseudoRoot
-            """
-            prefixes = path.GetPrefixes()
-            if path.IsPrimPropertyPath():
-                depth = len(prefixes) +1 - 1  # nvidia places properties under the prim's depth
-                attrs['bgcolor'] = "#FAFDF3"  # nvidia's almost white
-            else:
-                depth = len(prefixes) +1
-
-            if path.IsPrimPath():
-                # Store the spec index first
-                port_by_spec_path[path] = this_spec_index = next(item_counter)
-
-                typeName = ' - '
-                for info_key in list_info_keys(spec):
-                    if info_key in {"comment", "documentation"}:
-                        continue
-
-                    try:
-                        info_value = get_info(spec, info_key)
-                    except Tf.ErrorException:
-                        continue
-
-                    if info_key == "typeName":
-                        typeName = info_value
-                    elif info_key == "specifier":
-                        pass
-                    elif isinstance(info_value, str):
-                        _add_item(_graph._LOD.HIGH, depth, info_key, info_value, attrs)
-                    elif isinstance(info_value, (Sdf.ReferenceListOp, Sdf.PayloadListOp)):
-                        port_index = _add_item(_graph._LOD.MID, depth, info_key, "@...@",
-                                               collections.ChainMap(_EDGE_COLORS[type(info_value)], attrs))
-                        for dependency_arc in info_value.GetAddedOrExplicitItems():
-                            dependency_path = dependency_arc.assetPath
-                            if not dependency_path:
-                                # TODO: handle internal dependency
-                                continue
-                            upstream_dependencies.setdefault(port_index, []).append(
-                                (layer, (dependency_path, dependency_arc.primPath, _EDGE_COLORS[type(info_value)], type(info_value)))
-                            )
-                    elif isinstance(info_value, (Sdf.TokenListOp, Sdf.StringListOp)):
-                        if items := info_value.GetAddedOrExplicitItems():
-                            info_attrs = collections.ChainMap(
-                                dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
-                            _add_item(_graph._LOD.HIGH, depth, info_key, ", ".join(items), info_attrs)
-                    elif isinstance(info_value, Sdf.PathListOp):
-                        if items := info_value.GetAddedOrExplicitItems():
-                            color = _EDGE_COLORS.get(info_key, {"fontcolor": FONT_COLOR_GRAY})
-                            port_index = _add_item(_graph._LOD.HIGH, depth, info_key, "\n".join(map(str, items)),
-                                                   collections.ChainMap(color, attrs))
-                            for each_item in items:
-                                internal_dependencies.setdefault(port_index, []).append((each_item, color))
-                    elif isinstance(info_value, dict):
-                        info_attrs = collections.ChainMap(
-                            dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
-                        display_overrides = {}
-                        display_dict = collections.ChainMap(display_overrides, info_value)
-                        if "identifier" in info_value:
-                            display_overrides['identifier'] = "..."
-                        _add_item(_graph._LOD.HIGH, depth, info_key, pformat(dict(display_dict)), info_attrs)
-                    elif isinstance(info_value, list):
-                        _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]", attrs)
-                    else:
-                        _add_item(_graph._LOD.HIGH, depth, info_key, (str(info_value)), attrs)
-
-                prim_attrs = {'bgcolor': NVIDIA_GREEN, 'fontcolor': WHITE_BG}
-                all_items[this_spec_index] = _graph._TableItem(_graph._LOD.MID, depth, spec.name, str(typeName),
-                                                               prim_attrs)
-
-            elif path.IsAbsoluteRootPath():
-                pseudoRoot = layer.pseudoRoot
-                infoKeys = pseudoRoot.ListInfoKeys()
-                if set(infoKeys) - {"subLayerOffsets", "comment", "documentation"}:
-                    _add_separator(_graph._LOD.MID)
-
-                    for info_key in infoKeys:
-                        if info_key in {"subLayerOffsets", "comment", "documentation"}:
-                            continue
-
-                        try:
-                            info_value = pseudoRoot.GetInfo(info_key)
-                        except TypeError as exc:
-                            print(f"Could not retrieve {info_key} from pseudoRoot: {exc}")
-                            continue
-
-                        if info_key == "subLayers":
-                            edge_color = _EDGE_COLORS[info_key]
-                            this_index = _add_item(_graph._LOD.MID, depth, info_key, f"@...@",
-                                                   collections.ChainMap(edge_color, {'bgcolor': _BG_CELL_COLOR}))
-                            for sublayer in info_value:
-                                upstream_dependencies.setdefault(this_index, []).append(
-                                    (layer, (sublayer, path, edge_color, info_key))
-                                )
-                        elif isinstance(info_value, list):
-                            _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]",
-                                      BG_CELL_ATTRS)
-                        else:
-                            this_index = _add_item(_graph._LOD.HIGH, depth, info_key, str(info_value), BG_CELL_ATTRS)
-                            if info_key == "defaultPrim":
-                                port_by_spec_path[layer.defaultPrim] = this_index
-
-                    _add_separator(_graph._LOD.MID)
-
-                # Add the main Layer label (LOW LOD)
-                this_spec_index = _add_item(_graph._LOD.LOW, depth, layer.GetDisplayName(), _TOTAL_SPAN,
-                                            {'bgcolor': _BG_SPACE_COLOR, 'fontcolor': "#6C6C6C"})
-                port_by_spec_path[path] = this_spec_index
-
-        layer.Traverse(layer.pseudoRoot.path, item_collector)
-        self.add_node(node_id)
-
-        self.add_edges_from(edges)
-        return node_id
+            ...
+            # if path.IsPrimPropertyPath():
+            #     depth = len(prefixes) +1 - 1  # nvidia places properties under the prim's depth
+            #     attrs['bgcolor'] = "#FAFDF3"  # nvidia's almost white
+            #
+            # if path.IsPrimPath():
+            #     typeName = ' - '
+            #         elif isinstance(info_value, (Sdf.TokenListOp, Sdf.StringListOp)):
+            #                     dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+            #         elif isinstance(info_value, Sdf.PathListOp):
+            #                 color = _EDGE_COLORS.get(info_key, {"fontcolor": FONT_COLOR_GRAY})
+            #         elif isinstance(info_value, dict):
+            #                 dict(fontcolor=_EDGE_COLORS.get(info_key, {}).get('color', FONT_COLOR_GRAY)), attrs)
+            #             if "identifier" in info_value:
+            #                 display_overrides['identifier'] = "..."
+            #             _add_item(_graph._LOD.HIGH, depth, info_key, pformat(dict(display_dict)), info_attrs)
+            #         elif isinstance(info_value, list):
+            #             _add_item(_graph._LOD.HIGH, depth, info_key, f"[{len(info_value)} entries]", attrs)
+            #     prim_attrs = {'bgcolor': NVIDIA_GREEN, 'fontcolor': WHITE_BG}
 
     def _prepare_for_display(self, node_id):
         if node_id not in self.nodes:
@@ -595,7 +483,6 @@ class _AssetStructureGraph(nx.MultiDiGraph):
             port_id, item = item_entry
             return item.lod == _graph._LOD.LOW
 
-        # low_lod_label, __ = _to_table(all_items, low_filter)
         low_lod_label, low_ports = _to_table(all_items, low_filter)
 
         self.nodes[node_id]._data.update(
@@ -648,11 +535,6 @@ class _AssetStructureGraphNAS(_AssetStructureGraph):
         self.graph['graph'] = {'rankdir': 'RL'}
 
     def _find_nodeid_for_dependency(self, anchor_layer, source_node_key, source_port_key, layer, dependency_info):
-        # TODO: make LOD 1 be root layer only, LOD2 layerstack only, LOD3 layerstack + scene description
-        # TODO: upon recursive init, cycle edges are drawn like a triangle, should be hidden (gets fixed after swapping lod back and forth)
-        # TODO: sublayers should be added last to their parent, instead of at the end of the node
-        # TODO: fragments with only default prims miss last cell of blue background
-        # print(f"Checking ----------------------------------- {locals()}")
         asset_path, spec_path, edge_attrs, dependency_type, dependency_lod = dependency_info
         if dependency_type == "subLayers":
             return source_node_key
@@ -908,14 +790,11 @@ if __name__ == "__main__":
     from pyinstrument import Profiler
     profiler = Profiler()
     profiler.start()
-    # graph, root_nodes = _asset_structure_graph(layer)
 
-    # Good opportunity to:
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=True)
     # widget = _launch_asset_structure_browser(layer, None, None, recursive=False)
     widget = _launch_asset_structure_browser_nas(layer, None, None, recursive=False)
     widget2 = _launch_asset_structure_browser_nvidia(layer, None, None, recursive=False)
-    # widget.
     profiler.stop()
     profiler.print()
 
@@ -1156,74 +1035,6 @@ if __name__ == "__main__":
     #    │        └─ 1.065 write_dot  networkx\drawing\nx_agraph.py:183
     #    │              [22 frames hidden]  networkx, pygraphviz, <frozen _collec...
     #    └─ 0.184 _AssetStructureBrowser.show  <built-in>
-
-    # 2025/11/02
-    #
-    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 11:47:03  Samples:  4969
-    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 6.948     CPU time: 7.922
-    # /   _/                      v5.0.1
-    #
-    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:1351
-    #
-    # 6.948 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
-    # └─ 6.948 _launch_asset_structure_browser_nas  A:\write\code\git\grill\grill\views\_diagrams.py:1153
-    #    └─ 6.911 _AssetStructureBrowserNAS.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:1206
-    #       ├─ 3.730 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:788
-    #       │  └─ 3.723 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:830
-    #       │     ├─ 2.256 _add_node  A:\write\code\git\grill\grill\views\_graph.py:869
-    #       │     │  └─ 2.219 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:138
-    #       │     │     ├─ 2.027 _Node.setHtml  <built-in>
-    #       │     │     └─ 0.116 [self]  A:\write\code\git\grill\grill\views\_graph.py
-    #       │     └─ 1.398 graphviz_layout  networkx\drawing\nx_agraph.py:226
-    #       │           [6 frames hidden]  networkx, pygraphviz, threading, <bui...
-    #       └─ 3.127 _AssetStructureGraphNAS._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:174
-    #          ├─ 2.730 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:180
-    #          │  ├─ 1.964 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:37
-    #          │  └─ 0.716 _AssetStructureGraphNAS._add_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:233
-    #          │     ├─ 0.342 _traverse  A:\write\code\git\grill\grill\views\_diagrams.py:266
-    #          │     ├─ 0.208 [self]  A:\write\code\git\grill\grill\views\_diagrams.py
-    #          │     └─ 0.121 _AssetStructureGraphNAS.add_node  networkx\classes\digraph.py:439
-    #          ├─ 0.297 _AssetStructureGraphNAS._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:543
-    #          │  └─ 0.243 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:549
-    #          │     └─ 0.174 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1178
-    #          └─ 0.074 set.update  <built-in>
-
-    # 2025/11/09
-    # parsing more of layers
-    #   _     ._   __/__   _ _  _  _ _/_   Recorded: 14:48:32  Samples:  7583
-    #  /_//_/// /_\ / //_// / //_'/ //     Duration: 11.463    CPU time: 11.203
-    # /   _/                      v5.0.1
-    #
-    # Profile at A:\write\code\git\grill\grill\views\_diagrams.py:815
-    #
-    # 11.463 <module>  A:\write\code\git\grill\grill\views\_diagrams.py:1
-    # └─ 11.463 _launch_asset_structure_browser  A:\write\code\git\grill\grill\views\_diagrams.py:603
-    #    └─ 11.342 _AssetStructureBrowser.__init__  A:\write\code\git\grill\grill\views\_diagrams.py:663
-    #       ├─ 7.359 _AssetStructureGraphView.view  A:\write\code\git\grill\grill\views\_graph.py:832
-    #       │  └─ 7.349 _AssetStructureGraphView._load_graph  A:\write\code\git\grill\grill\views\_graph.py:874
-    #       │     ├─ 3.613 graphviz_layout  networkx\drawing\nx_agraph.py:226
-    #       │     │     [6 frames hidden]  networkx, pygraphviz, threading
-    #       │     │        2.676 _ThreadHandle.join  <built-in>
-    #       │     ├─ 2.249 _add_node  A:\write\code\git\grill\grill\views\_graph.py:914
-    #       │     │  └─ 2.205 _Node.__init__  A:\write\code\git\grill\grill\views\_graph.py:138
-    #       │     │     └─ 2.017 _Node.setHtml  <built-in>
-    #       │     └─ 1.263 _Edge.__init__  A:\write\code\git\grill\grill\views\_graph.py:352
-    #       │        ├─ 0.758 _Edge.adjust  A:\write\code\git\grill\grill\views\_graph.py:486
-    #       │        │  └─ 0.575 _Node._activatePort  A:\write\code\git\grill\grill\views\_graph.py:286
-    #       │        │     ├─ 0.302 [self]  A:\write\code\git\grill\grill\views\_graph.py
-    #       │        │     └─ 0.141 __build_class__  <built-in>
-    #       │        ├─ 0.232 [self]  A:\write\code\git\grill\grill\views\_graph.py
-    #       │        └─ 0.167 _Edge._update_plug_position_for_port  A:\write\code\git\grill\grill\views\_graph.py:434
-    #       └─ 3.927 _AssetStructureGraph._expand_dependencies  A:\write\code\git\grill\grill\views\_diagrams.py:76
-    #          ├─ 3.195 _handle_upstream_dependency  A:\write\code\git\grill\grill\views\_diagrams.py:79
-    #          │  ├─ 2.203 _find_layer  A:\write\code\git\grill\grill\views\_diagrams.py:39
-    #          │  └─ 0.910 _AssetStructureGraph._add_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:146
-    #          │     └─ 0.825 _AssetStructureGraph._update_node_from_layer  A:\write\code\git\grill\grill\views\_diagrams.py:169
-    #          │        ├─ 0.631 _traverse  A:\write\code\git\grill\grill\views\_diagrams.py:192
-    #          │        └─ 0.150 [self]  A:\write\code\git\grill\grill\views\_diagrams.py
-    #          └─ 0.622 _AssetStructureGraph._prepare_for_display  A:\write\code\git\grill\grill\views\_diagrams.py:465
-    #             └─ 0.503 _to_table  A:\write\code\git\grill\grill\views\_diagrams.py:472
-    #                └─ 0.358 _to_table  A:\write\code\git\grill\grill\views\_graph.py:1236
 
     # 2025/11/23
     # NAS diagrams

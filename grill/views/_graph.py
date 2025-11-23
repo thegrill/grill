@@ -7,7 +7,6 @@ import enum
 import sys
 import typing
 import logging
-import operator
 import tempfile
 import configparser
 import networkx as nx
@@ -41,8 +40,8 @@ _IS_QT5 = QtCore.qVersion().startswith("5")
 #   - Tooltip on nodes for _GraphViewer
 #   - Context menu items
 #   - Ability to move further in canvas after Nodes don't exist
-#   - when switching a node left to right with precise source layers, the source node ports do not refresh if we're moving the target node
 #   - refactor conditionals for _GraphSVGViewer from the description module
+#   - NVidia mid lod does not update edge position
 
 
 _NO_PEN = QtGui.QPen(QtCore.Qt.NoPen)
@@ -144,12 +143,6 @@ class _Node(QtWidgets.QGraphicsTextItem):
         """
         super().__init__(parent)
         self._name = node_name
-        # if hasattr(node_data, "_lods"):
-        #     # these are all the possible ports, while _ports may have only
-        #     ports = node_data._data['ports'][node_data.lod]
-        # else:
-        #     ports = node_data.get('ports', ())
-        #     ports = dict(zip(ports, range(len(ports))))
         self._data = node_data
         ports = self._ports_from_data
         self._ports_from_label = None
@@ -200,8 +193,7 @@ class _Node(QtWidgets.QGraphicsTextItem):
             self.setFlag(QtWidgets.QGraphicsItem.ItemIsSelectable)
             self.setAcceptHoverEvents(True)
         else:
-            ...
-            # self.setVisible(False)
+            self.setVisible(False)
         self.setFlag(QtWidgets.QGraphicsItem.ItemSendsGeometryChanges)
         self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
@@ -266,26 +258,15 @@ class _Node(QtWidgets.QGraphicsTextItem):
         return super().paint(painter, option, widget)
 
     def add_edge(self, edge: _Edge, port):
-        # if port is not None and port not in (ports := self._ports):
-        #     if self._data.lod != _LOD.HIGH and edge._source == edge._target:
-        #         edge.setVisible(False)
-        #     elif self._data.lod != _LOD.MID and edge._source == edge._target:
-        #         edge.setVisible(False)
-        #     else:
-        #         edge.setVisible(False)
-        #         #TODO: restore this exception, bypassed atm because of bug of NAS LOD adaptation
-        #         # raise KeyError(f"{port=} does not exist on {ports=} of {self}")
         self._edges[edge] = port
 
     def itemChange(self, change: QtWidgets.QGraphicsItem.GraphicsItemChange, value):
         if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
-            # Batch edge adjustments to reduce redraws
             for edge in self._edges:
                 edge.adjust()
         return super().itemChange(change, value)
 
     def _activatePort(self, edge, port, side, position):
-        """Optimized port activation with reduced object creation."""
         if port is None:
             return
 
@@ -295,7 +276,6 @@ class _Node(QtWidgets.QGraphicsTextItem):
             # First time activating this port
             radius = 4
 
-            # Create both port items at once to reduce scene updates
             class PortPlugItem(QtWidgets.QGraphicsEllipseItem):
                 def __repr__(this):
                     return f"{type(this).__name__}({port=})"
@@ -306,7 +286,6 @@ class _Node(QtWidgets.QGraphicsTextItem):
             for item in (left_item, right_item):
                 item.setPen(_NO_PEN)
                 item.setZValue(self.zValue())
-                # item.setVisible(False)  # Start hidden
                 self.scene().addItem(item)
 
             self._port_items[port] = (left_item, right_item)
@@ -319,73 +298,35 @@ class _Node(QtWidgets.QGraphicsTextItem):
 
         port_items = self._port_items[port]
 
-        # Only update visibility if needed
         if not inactive_ports:
-            ...
-            # port_items[other_side].setVisible(False)
+            port_items[other_side].setVisible(False)
 
         this_item = port_items[side]
         if not this_item.isVisible():
             this_item.setVisible(True)
 
-        # Batch updates
         this_item.setBrush(edge._brush)
         this_item.setPos(position)
 
-
-@cache
-def _columns_for_edge(rankdir, src_node, tgt_node):
-    if src_node == tgt_node:
-        headport_col_index = '0'
-        tailport_col_index = '1'
-    elif rankdir == 'RL':
-        headport_col_index = '1'
-        tailport_col_index = '0'
-    else:
-        headport_col_index = '0'
-        tailport_col_index = '1'
-
-    return headport_col_index, tailport_col_index
 
 class _Edge(QtWidgets.QGraphicsItem):
     def __repr__(self):
         return f"{type(self).__name__}(source={self._source}, target={self._target}, source_port={self._source_port}, target_port={self._target_port})"
 
-    def __init__(self, source: _Node, target: _Node, *, edge_data, is_bidirectional=False, graph_rankdir='LR', parent: QtWidgets.QGraphicsItem = None):
-        """Source port: index of the source node to connect to"""
+    def __init__(self, source: _Node, target: _Node, *, edge_data, is_bidirectional=False, parent: QtWidgets.QGraphicsItem = None):
         super().__init__(parent)
         color = edge_data['color']
         label = edge_data.get('label', '')
         self._data = edge_data
 
-        source_port, target_port = None, None
-        headport_col_index, tailport_col_index = _columns_for_edge(graph_rankdir, source, target)
-
-        if source._ports or target._ports:
-            if hasattr(edge_data, "_source_plug_attrs"):
-                target_port = self._target_port
-                source_port = self._source_port
-            else:
-                if (headport_key := edge_data.get('headport')) is not None:
-                    # print(f"{headport_key=}, searching for C{headport_col_index}R, {source=}, {target=}, {source==target=}")
-                    # TODO: this is for asset structure tables with 2 columns. Assess on how to handle this better
-                    if isinstance(headport_key, str) and headport_key.startswith(f"C{headport_col_index}R"):
-                        headport_key = int(headport_key.removeprefix(f"C{headport_col_index}R"))
-                    target_port = headport_key
-                if (tailport_key := edge_data.get('tailport')) is not None:
-                    # print(f"{tailport_key=}, searching for C{tailport_col_index}R, {source=}, {target=}, {source==target=}")
-                    if isinstance(tailport_key, str) and tailport_key.startswith(f"C{tailport_col_index}R"):
-                        tailport_key = int(tailport_key.removeprefix(f"C{tailport_col_index}R"))
-                    source_port = tailport_key
+        target_port = self._target_port
+        source_port = self._source_port
 
         self._source = source
         self._target = target
 
         source.add_edge(self, source_port)
         target.add_edge(self, target_port)
-
-        # if edge_data.get('style', "") == "invis":
-        #     self.setVisible(False)
 
         self._is_source_port_used = source_port is not None
         self._is_target_port_used = target_port is not None
@@ -447,14 +388,9 @@ class _Edge(QtWidgets.QGraphicsItem):
                     port_items[side].setVisible(False)
 
     def _update_plug_position_for_port(self, node, port):
-        """Optimized with early exit and cached calculations."""
         if port is not None and port not in node._ports:
-            # self.setVisible(False)
-            # print(f"Port {port} from edge {self} not visibile on {node}. Skipping")
+            #TODO: handle "center" specially here?
             return
-        # self.setVisible(True)
-        # if not self.isVisible():
-        #     return
 
         is_cycle = self._is_cycle
         bounds = node.boundingRect()
@@ -840,27 +776,15 @@ class GraphView(_GraphicsViewport):
             qnode.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
             for edge in qnode._edges:
-                # TODO: if in the future we update the source / target ports from edges when setting LOD, it should happen here
                 for neighbor, port_getter, plug_attributes in (
                         (edge._source, lambda: edge._source_port, edge._data._source_plug_attrs),
                         (edge._target, lambda: edge._target_port, edge._data._target_plug_attrs),
                 ):
                     current_port = port_getter()
-                    # if plug_attributes.lod == neighbor._data.lod:
-                    #     continue
                     plug_attributes.lod = neighbor._data.lod
                     new_port = port_getter()
                     edge._update_plug_position_for_port(qnode, new_port)
                     edge._deactivate_port(neighbor, current_port)
-                    # if new_port not in neighbor._ports:
-
-                    # if qnode is neighbor:  # we're a cycle
-                    #     if qnode._data.lod != _LOD.HIGH and edge._source == edge._target:
-                    #         edge.setVisible(False)
-                    #         edge._deactivate_port(qnode, port)
-                    #     else:
-                    #         edge.setVisible(True)
-                    #         edge._update_plug_position_for_port(qnode, port)
 
             for edge in qnode._edges:
                 edge.adjust()
@@ -878,7 +802,6 @@ class GraphView(_GraphicsViewport):
         filters = {}
         if self.filter_edges:
             filters['filter_edge'] = self.filter_edges
-        print(f"{filters=}")
         if filters:
             subgraph = nx.subgraph_view(subgraph, **filters)
 
@@ -944,7 +867,6 @@ class GraphView(_GraphicsViewport):
 
         _logger.debug("LOADING GRAPH")
         self._nodes_map.clear()
-        graph_rankdir = graph.graph.get('graph', {}).get('rankdir', '')
         edge_color = graph.graph.get('edge', {}).get("color", "")
         graph_node_attrs = graph.graph.get('node', {})
 
@@ -986,13 +908,7 @@ class GraphView(_GraphicsViewport):
             if 'color' not in edge_data:
                 edge_data['color'] = edge_color
 
-            # if edge_data['source_port_key'] not in source._ports:
-            #     # print(f"Skipping edge for {source_id=}, {target_id=}, {port=} because {edge_data['source_port_key']} not in {source._ports}")
-            #     continue
-            # if edge_data['target_port_key'] not in target._ports:
-            #     # print(f"Skipping edge for {target_id=}, {target_id=}, {port=} because {edge_data['target_port_key']} not in {target._ports}")
-            #     continue
-            edge = _Edge(source, target, edge_data=edge_data, is_bidirectional=is_bidirectional, graph_rankdir=graph_rankdir)
+            edge = _Edge(source, target, edge_data=edge_data, is_bidirectional=is_bidirectional)
             self.scene().addItem(edge)
 
 
@@ -1096,8 +1012,7 @@ class _DotViewer(QtWidgets.QFrame):
         self._graph_view.load(filepath)
 
 
-
-def _graph_view_dot(graph):
+def _write_dot(graph):
     fd, fp = tempfile.mkstemp()
     try:
         with open(fp, "w", encoding="utf-8") as fobj:
@@ -1168,7 +1083,7 @@ class _GraphSVGViewer(_DotViewer):
             filters['filter_edge'] = self.filter_edges
         if filters:
             subgraph = nx.subgraph_view(subgraph, **filters)
-        return _graph_view_dot(subgraph)
+        return _write_dot(subgraph)
 
     def view(self, node_indices: typing.Iterable):
         error, dot_path = self._subgraph_dot_path(tuple(node_indices))
@@ -1187,7 +1102,6 @@ class _GraphSVGViewer(_DotViewer):
         self._subgraph_dot_path.cache_clear()
         self.sticky_nodes.clear()
         self._graph = graph
-
 
 
 ####
@@ -1212,16 +1126,12 @@ class _TableItem:
     value: str
     display_attributes: dict
 
-from functools import lru_cache
 
-
-# @lru_cache(2048)
 @cache
 def _cached_escape(text):
     return html.escape(text)
 
 
-# @lru_cache(2048)
 @cache
 def _format_display_cell(
         is_total_span: bool,
@@ -1251,18 +1161,7 @@ def _format_display_cell(
         # TODO: this shouldnot happen, check and fix
         colspan = 1
     bgcolor_attr = f' BGCOLOR="{bgcolor}"' if bgcolor else ''
-    # if not safe_entry:
-    #     safe_entry = " "
-    # if safe_entry:
-    #     safe_entry = f"<b><i>{safe_entry}</i></b>"
-    # else:
-    #     safe_entry = " "
-    # font_wrap = f'<FONT COLOR="{fontcolor}" FACE="Impact">{safe_entry}</FONT>' if fontcolor else safe_entry
-    # import random
-    # font_face = random.choice(["Times-Roman", "Impact", "Helvetica"])
-    # font_face = random.choice(["Times-Roman", "Helvetica"])
-    # font_face = "Helvetica"
-    # font_wrap = f'<FONT COLOR="{fontcolor}" FACE="{font_face}">{safe_entry}</FONT>' if fontcolor else safe_entry
+
     font_wrap = f'<FONT COLOR="{fontcolor}">{safe_entry}</FONT>' if fontcolor else safe_entry
 
     if is_total_span:  # No border, may have height for spacing
@@ -1279,7 +1178,6 @@ def _format_display_cell(
     )
 
 
-# def _to_table(items: dict[int, _TableItem], direction='LR'):
 def _to_table(items: dict[int, _TableItem]):
     if not items:
         return
@@ -1294,11 +1192,6 @@ def _to_table(items: dict[int, _TableItem]):
 
     escape = _cached_escape
     format_cell = _format_display_cell
-
-    # if direction == 'RL':
-    #     col_index = '1'
-    # else:
-    #     col_index = '0'
 
     for port_row_key, item in items.items():
         attrs = item.display_attributes
