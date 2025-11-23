@@ -425,11 +425,11 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     @property
     def _source_port(self):
-        return self._data['source_port_key']
+        return self._data.get('source_port_key')
 
     @property
     def _target_port(self):
-        return self._data['target_port_key']
+        return self._data.get('target_port_key')
 
     def _deactivate_port(self, node, port):
         if port is None: # nothing to do
@@ -448,7 +448,7 @@ class _Edge(QtWidgets.QGraphicsItem):
 
     def _update_plug_position_for_port(self, node, port):
         """Optimized with early exit and cached calculations."""
-        if port not in node._ports:
+        if port is not None and port not in node._ports:
             # self.setVisible(False)
             # print(f"Port {port} from edge {self} not visibile on {node}. Skipping")
             return
@@ -530,15 +530,13 @@ class _Edge(QtWidgets.QGraphicsItem):
                 self._source.boundingRect().center().x() + source_pos.x() < target_bounds.center().x() + target_pos.x()
         )
 
-        # is_source_port_used = self._is_source_port_used
-        # is_target_port_used = self._is_target_port_used
         source_side = source_on_left if is_source_port_used else None
 
         if self._source == self._target:
             target_side = source_side if is_target_port_used else None
         else:
             target_side = not source_side if is_target_port_used else None
-
+        # breakpoint()
         source_point = source_pos + self._port_positions[self._source, _source_port][source_side]
         target_point = target_pos + self._port_positions[self._target, _target_port][target_side]
 
