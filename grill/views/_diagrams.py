@@ -103,12 +103,12 @@ class _AssetStructureGraph(nx.MultiDiGraph):
         resolver_context = self._resolver_context
         def _handle_upstream_dependency(anchor_layer, dependency_info, source_node_key, source_port_key, lod):
             asset_path, spec_path, edge_attrs, dependency_type, dependency_lod = dependency_info
+            updated_nodes = set()
             if not (dependency_layer := _find_layer(asset_path, anchor_layer, resolver_context)):
                 print(f"-------> Could not find dependency {asset_path} to traverse from {anchor_layer}")
-                return
+                return updated_nodes
 
             target_node_key = self._find_nodeid_for_dependency(anchor_layer, source_node_key, source_port_key, dependency_layer, dependency_info)
-            updated_nodes = set()
 
             def prepare_edge():
                 edge_key = (source_port_key, target_port_key)
