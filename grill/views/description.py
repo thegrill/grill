@@ -334,6 +334,7 @@ def _graph_from_shade_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     }
 
     traversed_prims = set()
+    
     def traverse(api: UsdShade.ConnectableAPI):
         current_prim = api.GetPrim()
         if current_prim in traversed_prims:
