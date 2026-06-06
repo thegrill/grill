@@ -7,7 +7,7 @@ Creating Assets
 Repository Path
 ~~~~~~~~~~~~~~~
 
-Creating assets requires a repository path to be set. This change lasts during the duration of the current application (or python process), so it is needed only once.
+Creating assets requires a repository path to be set. Setting it lasts for the duration of the current application (or python process), so it is needed only once.
 
 **API:** :py:data:`grill.cook.Repository`
 
