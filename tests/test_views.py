@@ -127,6 +127,27 @@ class TestViews(unittest.TestCase):
         self.assertEqual(graph.nodes[str(pbrShader.GetPrim().GetPath())]['ports'], ['', cycle_input.GetBaseName(), roughness_name, cycle_output.GetBaseName(), surface_name])
         viewer.setPrim(None)
 
+    def test_exec_connection_view(self):
+        stage = Usd.Stage.Open(str(Path(__file__).parent / "mini_test_bed" / "waddlerRig.usda"))
+        joint2 = stage.GetPrimAtPath("/Rig/Anim/Joint1/Joint2")
+        viewer = description._ConnectableAPIViewer()
+        viewer._graph_view.view = lambda indices: None
+        viewer.setPrim(joint2)
+        graph = viewer._graph_view._graph
+
+        self.assertIn("/Rig/Control/Switch2", graph.nodes)
+        self.assertIn("/Rig/Control/Rig1/FK2", graph.nodes)
+        self.assertTrue(any(
+            edge[2].get("tooltip") == (
+                "/Rig/Control/Switch2.out:space -> /Rig/Anim/Joint1/Joint2.posed:space"
+            )
+            for edge in graph.edges(data=True)
+        ))
+        switch2_ports = graph.nodes["/Rig/Control/Switch2"]["ports"]
+        for port_name in ("switch", "rig1__space", "rig2__space", "out__space"):
+            self.assertIn(port_name, switch2_ports)
+        viewer.setPrim(None)
+
     def test_scenegraph_composition(self):
         """Confirm that bidirectionality between layer stacks completes.
 
