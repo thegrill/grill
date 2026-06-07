@@ -278,10 +278,7 @@ def _get_url_for_usd_target(app, target):
         "Usd_PrimFlagsConjunction": "primFlags.h",
     }.get(pxr_obj_namespace, pxr_obj_namespace)
     part = _get_doxylink_part(pxr_obj_namespace)
-    try:
-        url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
-    except LookupError:
-        return None
+    url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
     full_url = _doxylink_ext.join(_USD_DOXYGEN_ROOT_DIR, url.file)
     reftitle = _get_usd_ref_tooltip(app)
     return part + " " + reftitle, full_url
@@ -291,9 +288,8 @@ def _handle_missing_usd_reference(app, env, node, contnode):
     from docutils import nodes
 
     if (target := node['reftarget']).startswith('pxr.'):
-        if result := _get_url_for_usd_target(app, target):
-            reftitle, refuri = result
-            return nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
+        reftitle, refuri = _get_url_for_usd_target(app, target)
+        return nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
 
 
 def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
