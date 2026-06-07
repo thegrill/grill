@@ -265,7 +265,8 @@ def _get_usd_ref_tooltip(app):
 def _get_url_for_usd_target(app, target):
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
     pxr_obj_namespace = {
-        "UsdInitialLoadSet": "UsdStage::InitialLoadSet",   # there's indirection in the python bindings
+        "UsdStageInitialLoadSet": "UsdStage::InitialLoadSet",  # pxr.Usd.Stage.InitialLoadSet
+        "UsdInitialLoadSet": "UsdStage::InitialLoadSet",       # legacy alias
         # nested PrimCompositionQuery types (pxr.Usd.PrimCompositionQuery.* -> UsdPrimCompositionQuery*)
         "UsdPrimCompositionQueryFilter": "UsdPrimCompositionQuery::Filter",
         "UsdPrimCompositionQueryDependencyTypeFilter": "UsdPrimCompositionQuery::DependencyTypeFilter",
