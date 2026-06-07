@@ -266,13 +266,22 @@ def _get_url_for_usd_target(app, target):
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
     pxr_obj_namespace = {
         "UsdInitialLoadSet": "UsdStage::InitialLoadSet",   # there's indirection in the python bindings
-        "UsdFilter": "UsdPrimCompositionQuery::Filter",    # filter is a member of the query type
+        # nested PrimCompositionQuery types (pxr.Usd.PrimCompositionQuery.* -> UsdPrimCompositionQuery*)
+        "UsdPrimCompositionQueryFilter": "UsdPrimCompositionQuery::Filter",
+        "UsdPrimCompositionQueryDependencyTypeFilter": "UsdPrimCompositionQuery::DependencyTypeFilter",
+        "UsdPrimCompositionQueryArcTypeFilter": "UsdPrimCompositionQuery::ArcTypeFilter",
+        "UsdPrimCompositionQueryArcIntroducedFilter": "UsdPrimCompositionQuery::ArcIntroducedFilter",
+        "UsdPrimCompositionQueryHasSpecsFilter": "UsdPrimCompositionQuery::HasSpecsFilter",
+        "UsdFilter": "UsdPrimCompositionQuery::Filter",    # legacy alias
         "UsdCompositionArc": "UsdPrimCompositionQueryArc",
         "Usd_Term": "primFlags.h",
         "Usd_PrimFlagsConjunction": "primFlags.h",
     }.get(pxr_obj_namespace, pxr_obj_namespace)
     part = _get_doxylink_part(pxr_obj_namespace)
-    url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
+    try:
+        url = app.env.doxylink_cache[_USD_DOXYGEN_CACHE_NAME]['mapping'][part]
+    except LookupError:
+        return None
     full_url = _doxylink_ext.join(_USD_DOXYGEN_ROOT_DIR, url.file)
     reftitle = _get_usd_ref_tooltip(app)
     return part + " " + reftitle, full_url
@@ -282,8 +291,9 @@ def _handle_missing_usd_reference(app, env, node, contnode):
     from docutils import nodes
 
     if (target := node['reftarget']).startswith('pxr.'):
-        reftitle, refuri = _get_url_for_usd_target(app, target)
-        return nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
+        if result := _get_url_for_usd_target(app, target):
+            reftitle, refuri = result
+            return nodes.reference('', contnode.astext(), internal=False, refuri=refuri, reftitle=reftitle)
 
 
 def _grill_process_signature(app, what, name, obj, options, signature, return_annotation):
