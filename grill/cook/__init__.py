@@ -363,7 +363,7 @@ def spawn_unit(parent: Usd.Prim, child: Usd.Prim, path: Sdf.Path = Sdf.Path.empt
 
       1. Turning parent into an :ref:`glossary:assembly`.
       2. Ensuring intermediate prims between parent and child are also :ref:`glossary:model`.
-      3. Setting explicit :ref:`glossary:instanceable`. on spawned children that are components.
+      3. Setting explicit :ref:`glossary:instanceable` metadata on spawned children that are components.
 
     .. seealso:: :func:`spawn_many` and :func:`create_unit`
     """
@@ -375,11 +375,11 @@ def spawn_many(parent: Usd.Prim, child: Usd.Prim, paths: list[Sdf.Path], labels:
 
     * Both parent and child must be existing units in the catalogue.
     * ``paths`` can be relative or absolute. If absolute, they must include ``parent``'s `path <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Path>`_ as a prefix.
-    * A valid `Model Hierarchy <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-ModelHierarchy>`_ is preserved by:
+    * A valid :ref:`glossary:model hierarchy` is preserved by:
 
-      1. Turning parent into an `assembly <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Assembly>`_ if ``child`` is a Model.
-      2. Ensuring intermediate prims between ``parent`` and spawned children are also `models <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Model>`_.
-      3. Setting explicit `instanceable <https://graphics.pixar.com/usd/docs/USD-Glossary.html#USDGlossary-Instanceable>`_. on spawned children that are components.
+      1. Turning parent into an :ref:`glossary:assembly` if ``child`` is a :ref:`glossary:model`.
+      2. Ensuring intermediate prims between ``parent`` and spawned children are also :ref:`glossary:model`.
+      3. Setting explicit :ref:`glossary:instanceable` metadata on spawned children that are components.
 
     Spawned prims and ancestors are `defined <https://openusd.org/release/glossary.html#def>`_.
 

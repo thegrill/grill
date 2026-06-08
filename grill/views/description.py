@@ -222,18 +222,102 @@ def _compute_layerstack_graph(prims, url_prefix) -> _GraphInfo:
     )
 
 
-def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
-    connections_api = UsdShade.ConnectableAPI(prim)
+_CONNECTION_GRAPH_OUTLINE = "#4682B4"  # steelblue
+_CONNECTION_GRAPH_BACKGROUND = "#F0FFFF"  # azure
+_CONNECTION_GRAPH_OUTPUT = "#F08080"  # lightcoral
+_CONNECTION_GRAPH_SWITCH = "#DAA520"  # goldenrod
+_CONNECTION_GRAPH_PASSTHROUGH = "#D3D3D3"  # lightgray
+_CONNECTION_TABLE_ROW = (
+    '<tr><td port="{port}" border="0" bgcolor="{color}" style="ROUNDED">{text}</td></tr>'
+)
+
+
+def _graphviz_port_id(port_name: str) -> str:
+    """Graphviz port identifiers cannot contain ':' (e.g. posed:space)."""
+    return port_name.replace(":", "__")
+
+
+def _init_connection_graph() -> nx.MultiDiGraph:
     graph = nx.MultiDiGraph()
-    outline_color = "#4682B4"  # 'steelblue'
-    background_color = "#F0FFFF"  # 'azure'
     graph.graph['graph'] = {'rankdir': 'LR'}
-
-    graph.graph['node'] = {'shape': 'none', 'color': outline_color, 'fillcolor': background_color}  # color and fillcolor used for HTML view
+    graph.graph['node'] = {
+        'shape': 'none',
+        'color': _CONNECTION_GRAPH_OUTLINE,
+        'fillcolor': _CONNECTION_GRAPH_BACKGROUND,
+    }
     graph.graph['edge'] = {"color": 'crimson'}
+    return graph
 
-    all_nodes = dict()  # {node_id: {graphviz_attr: value}}
-    edges = list()  # [(source_node_id, target_node_id, {source_port_name, target_port_name, graphviz_attrs})]
+
+def _make_port_table_node(
+    prim_name: str,
+    port_entries: list[tuple[str, str]],
+    *,
+    prim_type: str = "",
+) -> tuple[str, list]:
+    """Build a Graphviz HTML table label and ports list for connection graph nodes."""
+    outline_color = _CONNECTION_GRAPH_OUTLINE
+    background_color = _CONNECTION_GRAPH_BACKGROUND
+    header = prim_name if not prim_type else f"{prim_name} ({prim_type})"
+    label = (
+        f'<<table border="1" cellspacing="2" style="ROUNDED" '
+        f'bgcolor="{background_color}" color="{outline_color}">'
+    )
+    label += _CONNECTION_TABLE_ROW.format(
+        port="",
+        color="white",
+        text=f'<font color="{outline_color}"><b>{header}</b></font>',
+    )
+    ports = [""]
+    for port_name, color in port_entries:
+        port_id = _graphviz_port_id(port_name)
+        label += _CONNECTION_TABLE_ROW.format(
+            port=port_id,
+            color=color,
+            text=f'<font color="#242828">{port_name}</font>',
+        )
+        ports.append(port_id)
+    label += '</table>>'
+    return label, ports
+
+
+def _port_color_for_attribute(
+    prim: Usd.Prim,
+    attr_name: str,
+    *,
+    has_connections: bool,
+    is_edge_tail: bool,
+    is_edge_head: bool,
+) -> str:
+    prop = prim.GetPrimDefinition().GetPropertyDefinition(attr_name)
+    role = prop.GetMetadata("irRole") if prop else None
+    if role == "OutputAttribute":
+        return _CONNECTION_GRAPH_OUTPUT
+    if role == "SwitchAttribute":
+        return _CONNECTION_GRAPH_SWITCH
+    if role == "PassthroughAttribute":
+        return _CONNECTION_GRAPH_PASSTHROUGH
+    if role == "InputAttribute":
+        return (
+            _CONNECTION_GRAPH_OUTLINE
+            if has_connections or is_edge_head
+            else _CONNECTION_GRAPH_BACKGROUND
+        )
+    if is_edge_tail and not is_edge_head:
+        return _CONNECTION_GRAPH_OUTPUT
+    if has_connections or is_edge_head:
+        return _CONNECTION_GRAPH_OUTLINE
+    return _CONNECTION_GRAPH_BACKGROUND
+
+
+def _graph_from_shade_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
+    connections_api = UsdShade.ConnectableAPI(prim)
+    graph = _init_connection_graph()
+    outline_color = _CONNECTION_GRAPH_OUTLINE
+    background_color = _CONNECTION_GRAPH_BACKGROUND
+
+    all_nodes = dict()
+    edges = list()
 
     @cache
     def _get_node_id(api):
@@ -245,31 +329,32 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
         edges.append((src_node, tgt_node, {"tailport": src_name, "headport": tgt_name, "tooltip": tooltip}))
 
     port_colors = {
-        UsdShade.Input: outline_color,  # blue
-        UsdShade.Output: "#F08080"  # "lightcoral",  # pink
+        UsdShade.Input: outline_color,
+        UsdShade.Output: _CONNECTION_GRAPH_OUTPUT,
     }
-    table_row = '<tr><td port="{port}" border="0" bgcolor="{color}" style="ROUNDED">{text}</td></tr>'
 
     traversed_prims = set()
+    
     def traverse(api: UsdShade.ConnectableAPI):
         current_prim = api.GetPrim()
         if current_prim in traversed_prims:
             return
         traversed_prims.add(current_prim)
         node_id = _get_node_id(current_prim)
-        label = f'<<table border="1" cellspacing="2" style="ROUNDED" bgcolor="{background_color}" color="{outline_color}">'
-        label += table_row.format(port="", color="white", text=f'<font color="{outline_color}"><b>{api.GetPrim().GetName()}</b></font>')
-        ports = [""]  # port names for this node. Empty string is used to refer to the node itself (no port).
+        port_entries = list()
         for port in chain(api.GetInputs(), api.GetOutputs()):
             port_name = port.GetBaseName()
-            sources, __ = port.GetConnectedSources()  # (valid, invalid): we care only about valid sources (index 0)
-            color = port_colors[type(port)] if isinstance(port, UsdShade.Output) or sources else background_color
-            label += table_row.format(port=port_name, color=color, text=f'<font color="#242828">{port_name}</font>')
+            sources, __ = port.GetConnectedSources()
+            color = (
+                port_colors[type(port)]
+                if isinstance(port, UsdShade.Output) or sources
+                else background_color
+            )
+            port_entries.append((port_name, color))
             for source in sources:
                 _add_edges(_get_node_id(source.source.GetPrim()), source.sourceName, node_id, port_name)
                 traverse(source.source)
-            ports.append(port_name)
-        label += '</table>>'
+        label, ports = _make_port_table_node(api.GetPrim().GetName(), port_entries)
         all_nodes[node_id] = dict(label=label, ports=ports)
 
     traverse(connections_api)
@@ -277,6 +362,89 @@ def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
     graph.add_nodes_from(all_nodes.items())
     graph.add_edges_from(edges)
     return graph
+
+
+def _graph_from_attribute_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
+    graph = _init_connection_graph()
+    stage = prim.GetStage()
+    traversed_prims = set()
+    edges = list()
+    edge_tails = set()
+    edge_heads = set()
+
+    def traverse(current_prim: Usd.Prim):
+        if current_prim in traversed_prims:
+            return
+        traversed_prims.add(current_prim)
+        node_id = str(current_prim.GetPath())
+        for attr in current_prim.GetAttributes():
+            for src_path in attr.GetConnections():
+                src_attr = stage.GetAttributeAtPath(src_path)
+                if not src_attr:
+                    continue
+                src_prim = src_attr.GetPrim()
+                src_node = str(src_prim.GetPath())
+                src_name = src_attr.GetName()
+                tgt_name = attr.GetName()
+                tooltip = f"{src_node}.{src_name} -> {node_id}.{tgt_name}"
+                edge_tails.add((src_node, src_name))
+                edge_heads.add((node_id, tgt_name))
+                edges.append((
+                    src_node,
+                    node_id,
+                    {
+                        "tailport": _graphviz_port_id(src_name),
+                        "headport": _graphviz_port_id(tgt_name),
+                        "tooltip": tooltip,
+                    },
+                ))
+                traverse(src_prim)
+
+    traverse(prim)
+
+    all_nodes = dict()
+    for current_prim in traversed_prims:
+        node_id = str(current_prim.GetPath())
+        port_names = set()
+        for attr in current_prim.GetAttributes():
+            name = attr.GetName()
+            if (
+                attr.GetConnections()
+                or (node_id, name) in edge_tails
+                or (node_id, name) in edge_heads
+            ):
+                port_names.add(name)
+
+        port_entries = [
+            (
+                port_name,
+                _port_color_for_attribute(
+                    current_prim,
+                    port_name,
+                    has_connections=bool(current_prim.GetAttribute(port_name).GetConnections()),
+                    is_edge_tail=(node_id, port_name) in edge_tails,
+                    is_edge_head=(node_id, port_name) in edge_heads,
+                ),
+            )
+            for port_name in sorted(port_names)
+        ]
+        label, ports = _make_port_table_node(
+            current_prim.GetName(),
+            port_entries,
+            prim_type=current_prim.GetTypeName(),
+        )
+        all_nodes[node_id] = dict(label=label, ports=ports)
+
+    graph.add_nodes_from(all_nodes.items())
+    graph.add_edges_from(edges)
+    return graph
+
+
+def _graph_from_connections(prim: Usd.Prim) -> nx.MultiDiGraph:
+    connections_api = UsdShade.ConnectableAPI(prim)
+    if connections_api.GetInputs() or connections_api.GetOutputs():
+        return _graph_from_shade_connections(prim)
+    return _graph_from_attribute_connections(prim)
 
 
 def _launch_content_browser(layers, parent, context, paths=tuple()):
