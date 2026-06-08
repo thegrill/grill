@@ -264,16 +264,13 @@ def _get_usd_ref_tooltip(app):
 @functools.cache
 def _get_url_for_usd_target(app, target):
     pxr_obj_namespace = target.removeprefix('pxr.').replace(".", "")
+    # Some doxylink urls from python binding members not map directly yet.
+    # Add entries here for exceptions such as: LookupError: No documentation entry matching "UsdStageInitialLoadSet"
+    # Enclosed as:
+    # sphinx.errors.ExtensionError: Handler <function _handle_missing_usd_reference at 0x000001C8C34A5B10> for event 'missing-reference' threw an exception (exception: No documentation entry matching "UsdStageInitialLoadSet")
     pxr_obj_namespace = {
-        "UsdStageInitialLoadSet": "UsdStage::InitialLoadSet",  # pxr.Usd.Stage.InitialLoadSet
-        "UsdInitialLoadSet": "UsdStage::InitialLoadSet",       # legacy alias
-        # nested PrimCompositionQuery types (pxr.Usd.PrimCompositionQuery.* -> UsdPrimCompositionQuery*)
+        "UsdStageInitialLoadSet": "UsdStage::InitialLoadSet",
         "UsdPrimCompositionQueryFilter": "UsdPrimCompositionQuery::Filter",
-        "UsdPrimCompositionQueryDependencyTypeFilter": "UsdPrimCompositionQuery::DependencyTypeFilter",
-        "UsdPrimCompositionQueryArcTypeFilter": "UsdPrimCompositionQuery::ArcTypeFilter",
-        "UsdPrimCompositionQueryArcIntroducedFilter": "UsdPrimCompositionQuery::ArcIntroducedFilter",
-        "UsdPrimCompositionQueryHasSpecsFilter": "UsdPrimCompositionQuery::HasSpecsFilter",
-        "UsdFilter": "UsdPrimCompositionQuery::Filter",    # legacy alias
         "UsdCompositionArc": "UsdPrimCompositionQueryArc",
         "Usd_Term": "primFlags.h",
         "Usd_PrimFlagsConjunction": "primFlags.h",
