@@ -10,7 +10,6 @@ Try ``grill.cook`` and ``grill.names`` in your browser. Packages are loaded via 
 .. py-repl::
    :packages: grill-usd-core==26.8, grill-names>=2.6.0, grill==0.19.1
    :repl-title: Grill Cook Playground
-   :theme: catppuccin-latte
    :no-banner:
 
    >>> from grill import cook, names
