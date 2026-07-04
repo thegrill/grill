@@ -46,7 +46,6 @@ extensions = [
     'sphinx_toggleprompt',
     'sphinx_togglebutton',
     'sphinx_inline_tabs',
-    'hoverxref.extension',
     'sphinx.ext.autosectionlabel',
     'sphinxcontrib.doxylink',
 ]
@@ -62,12 +61,6 @@ intersphinx_mapping = {
     'grill.names': ('https://grill-names.readthedocs.io/en/latest/', None)
 }
 
-hoverxref_auto_ref = True
-hoverxref_default_type = 'tooltip'
-
-hoverxref_intersphinx = list(set(intersphinx_mapping) - {'python', 'usd', 'networkx'})  # only works for RTD hosted docs
-hoverxref_intersphinx_types = dict.fromkeys(intersphinx_mapping, hoverxref_default_type)
-hoverxref_domains = ['py']
 always_document_param_types = True
 autodoc_member_order = 'groupwise'
 maximum_signature_line_length = 150

@@ -1,8 +1,8 @@
 version: 2  # required for PY39+
 build:
-  os: ubuntu-20.04
+  os: ubuntu-lts-latest
   tools:
-    python: "3.10"
+    python: "3.14"
   apt_packages:
     - "graphviz"
 
