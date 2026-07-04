@@ -41,7 +41,8 @@ jobs:
           python -m pip install ${{ matrix.install-arguments }}
       - name: Test
         run: |
-          PYTHONWARNINGS=error,ignore:::pyparsing pytest --cov --durations=10 .
+          # pydot uses pre-PEP8 pyparsing APIs; pyparsing 3.3+ emits DeprecationWarnings under error mode.
+          PYTHONWARNINGS=error,ignore::DeprecationWarning pytest --cov --durations=10 .
         # https://github.com/marketplace/actions/codecov
       - name: Codecov Report
         uses: codecov/codecov-action@v4
