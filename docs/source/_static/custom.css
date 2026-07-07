@@ -29,9 +29,3 @@ div.xl\:hidden {
         max-width: none;
     }
 }
-
-py-repl .pyrepl,
-.pyrepl {
-    min-height: 28rem;
-    width: 100%;
-}
