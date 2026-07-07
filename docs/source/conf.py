@@ -147,6 +147,10 @@ html_css_files = [
   'custom.css',
 ]
 
+pyrepl_doctest_blocks = "autodoc"
+pyrepl_autodoc_packages = ":project:"
+pyrepl_project_root = "../.."
+
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
@@ -315,8 +319,20 @@ def _create_doxylink_role_with_title(app, *args, **kwargs):
 _doxylink_ext.create_role = _create_doxylink_role_with_title
 
 
+def _augment_pyrepl_packages(app):
+    """Append WASM USD and grill-names to the auto-built project wheel."""
+    try:
+        wheel = object.__getattribute__(app, "_pyrepl_resolved_autodoc_packages")
+    except AttributeError:
+        return
+    app._pyrepl_resolved_autodoc_packages = (
+        "grill-usd-core==26.8, grill-names>=2.6.0, " + wheel
+    )
+
+
 def setup(app):
     """Setup Sphinx to handle missing USD references. This can be removed when the USD C++ docs ship with an inventory of the USD types for python bindings."""
     app.connect("autodoc-process-signature", _grill_process_signature)
     app.connect("missing-reference", _handle_missing_usd_reference)
+    app.connect("builder-inited", _augment_pyrepl_packages, priority=500)
     return {"parallel_read_safe": True, "parallel_write_safe": True}
