@@ -8,7 +8,7 @@ Try ``grill.cook`` and ``grill.names`` in your browser. Packages are loaded via 
    This REPL is experimental. Asset creation writes to a temporary in-browser filesystem that is lost on refresh.
 
 .. py-repl::
-   :packages: grill-usd-core==26.8, grill-names>=2.6.0, grill==0.19.1
+   :packages: :project:,grill-usd-core==26.8,grill-names>=2.6.0
    :repl-title: Grill Cook Playground
    :no-banner:
 
