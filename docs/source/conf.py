@@ -149,7 +149,6 @@ html_css_files = [
 
 pyrepl_doctest_blocks = "autodoc"
 pyrepl_autodoc_packages = ":project:,grill-usd-core==26.8,grill-names>=2.6.0"
-pyrepl_project_root = "../.."
 
 # -- Options for HTMLHelp output ------------------------------------------
 
