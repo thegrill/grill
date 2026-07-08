@@ -17,6 +17,7 @@
    pipeline
    views
    end_to_end
+   playground
    api
 
 Indices and tables
